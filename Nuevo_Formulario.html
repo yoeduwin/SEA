@@ -1,0 +1,1544 @@
+<!DOCTYPE html><html lang="es"><head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Perfil de Datos - Ejecutiva Ambiental</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family: Arial, sans-serif; background:#f5f5f5; padding:20px; font-size:12px; }
+    .main-container { max-width:1200px; margin:0 auto; background:#fff; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,.1); overflow:hidden; }
+    .header { background: linear-gradient(135deg, #1e5a3e, #2d7a4f); color:#fff; padding:25px 30px; display:flex; justify-content:space-between; align-items:center; }
+    .logo-section { display:flex; align-items:center; gap:15px; }
+    .logo { width:50px; height:50px; background:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#1e5a3e; font-weight:bold; font-size:20px; }
+    .company-info h1 { margin:0; font-size:18px; font-weight:bold; }
+    .company-info p { margin:3px 0 0 0; font-size:10px; opacity:.95; max-width:500px; }
+    .document-info h2 { margin:0; font-size:22px; font-weight:bold; text-align:right; }
+    .document-info p { margin:3px 0 0 0; font-size:11px; opacity:.9; text-align:right; }
+    .form-content { padding:30px 40px; }
+    .section { border-bottom:1px solid #e0e0e0; margin-bottom:30px; padding-bottom:25px; }
+    .section:last-child { border-bottom:none; }
+    .section-header { background:#1e5a3e; color:#fff; padding:10px 20px; margin:0 -40px 25px -40px; font-weight:bold; font-size:12px; text-transform:uppercase; letter-spacing:.5px; }
+    .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:20px; }
+    .form-group { display:flex; flex-direction:column; }
+    .form-group.full-width { grid-column: 1 / -1; }
+    label { font-weight:bold; color:#333; margin-bottom:6px; font-size:11px; text-transform:uppercase; }
+    label .required { color:#dc3545; margin-left:3px; }
+    label .optional { color:#6c757d; font-weight:normal; text-transform:none; margin-left:5px; font-size:10px; }
+    input[type="text"], input[type="email"], input[type="tel"], input[type="number"],
+    textarea, select, input[type="file"] {
+      border:1px solid #ccc; padding:8px 10px; font-size:11px; border-radius:3px;
+      background:#f9f9f9; font-family:inherit; transition:all .2s;
+    }
+    input:focus, textarea:focus, select:focus { outline:none; border-color:#1e5a3e; background:#fff; box-shadow:0 0 0 2px rgba(30,90,62,.1); }
+    textarea { resize:vertical; min-height:80px; font-family: Arial, sans-serif; }
+    input[type="file"] { padding:6px 8px; cursor:pointer; font-size:10px; }
+    .helper-text { font-size:10px; color:#666; margin-top:4px; font-style:italic; }
+    .file-preview { margin-top:8px; padding:8px 12px; background:#e8f5e9; border-left:3px solid #4caf50; border-radius:3px; font-size:11px; display:none; }
+    .file-preview.active { display:block; }
+    .file-preview-content { display:flex; align-items:center; justify-content:space-between; }
+    .file-info { display:flex; align-items:center; gap:8px; }
+    .file-icon { font-size:16px; }
+    .file-name { font-weight:600; color:#2e7d32; }
+    .file-size { color:#666; font-size:10px; }
+    .file-remove { background:#dc3545; color:white; border:none; padding:4px 10px; border-radius:3px; cursor:pointer; font-size:10px; transition:background .2s; }
+    .file-remove:hover { background:#c82333; }
+    .radio-group { display:flex; gap:20px; margin-top:10px; }
+    .radio-option { display:flex; align-items:center; gap:8px; cursor:pointer; }
+    .radio-option input[type="radio"] { width:18px; height:18px; cursor:pointer; }
+    .radio-option label { margin:0; cursor:pointer; text-transform:none; font-weight:normal; }
+    .conditional-section { display:none; margin-top:20px; padding:20px; background:#fff3cd; border-left:4px solid #ffc107; border-radius:5px; }
+    .conditional-section.active { display:block; }
+    .conditional-header { font-weight:bold; color:#856404; margin-bottom:15px; font-size:12px; }
+    .submit-section { margin-top:40px; padding-top:30px; border-top:2px solid #e0e0e0; text-align:center; }
+    .btn-submit { background: linear-gradient(135deg, #1e5a3e, #2d7a4f); color:white; padding:15px 50px; font-size:14px; font-weight:600; border:none; border-radius:5px; cursor:pointer; transition: all .3s ease; box-shadow:0 4px 15px rgba(30,90,62,.3); text-transform:uppercase; letter-spacing:.5px; }
+    .btn-submit:hover { transform: translateY(-2px); box-shadow:0 6px 20px rgba(30,90,62,.4); }
+    .btn-submit:disabled { opacity:.6; cursor:not-allowed; transform:none; }
+    .message { padding:15px 20px; border-radius:5px; margin-top:20px; display:none; text-align:left; font-weight:500; font-size:13px; line-height:1.8; }
+    .success-message { background:#d4edda; color:#155724; border:1px solid #c3e6cb; }
+    .error-message { background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; }
+    .loading { display:none; text-align:center; margin-top:20px; }
+    .loading-spinner { border:3px solid #f3f3f3; border-top:3px solid #1e5a3e; border-radius:50%; width:40px; height:40px; animation: spin 1s linear infinite; margin:0 auto; }
+    @keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
+    .loading-text { margin-top:15px; color:#1e5a3e; font-weight:500; }
+    .floating-buttons { position:fixed; bottom:30px; right:30px; display:flex; flex-direction:column; gap:15px; z-index:1000; }
+    .floating-btn { width:60px; height:60px; border-radius:50%; display:flex; align-items:center; justify-content:center; text-decoration:none; font-size:28px; box-shadow:0 4px 15px rgba(0,0,0,.3); transition:all .3s ease; cursor:pointer; }
+    .floating-btn:hover { transform: translateY(-5px); box-shadow:0 6px 20px rgba(0,0,0,.4); }
+    .floating-btn.phone { background: linear-gradient(135deg, #1e5a3e, #2d7a4f); color:white; }
+    .floating-btn.whatsapp { background:#25D366; color:white; }
+    .floating-btn-tooltip { position:absolute; right:75px; background:rgba(0,0,0,.8); color:white; padding:8px 15px; border-radius:5px; white-space:nowrap; font-size:13px; opacity:0; pointer-events:none; transition:opacity .3s; }
+    .floating-btn:hover .floating-btn-tooltip { opacity:1; }
+    .modal-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,.8); z-index:9999; justify-content:center; align-items:center; overflow-y:auto; padding:20px; }
+    .modal-overlay.active { display:flex; }
+    .modal-content { background:white; border-radius:10px; max-width:800px; width:100%; max-height:90vh; overflow-y:auto; box-shadow:0 10px 40px rgba(0,0,0,.3); }
+    .modal-header { background: linear-gradient(135deg, #1e5a3e, #2d7a4f); color:white; padding:20px 30px; border-radius:10px 10px 0 0; }
+    .modal-header h2 { margin:0; font-size:20px; }
+    .modal-body { padding:30px; }
+    .confirmation-section { margin-bottom:25px; padding-bottom:20px; border-bottom:1px solid #e0e0e0; }
+    .confirmation-section:last-child { border-bottom:none; }
+    .confirmation-section h3 { color:#1e5a3e; font-size:14px; margin-bottom:15px; display:flex; align-items:center; gap:10px; }
+    .confirmation-item { display:flex; justify-content:space-between; padding:8px 0; font-size:12px; }
+    .confirmation-label { font-weight:bold; color:#666; }
+    .confirmation-value { color:#333; text-align:right; max-width:60%; }
+    .file-list { list-style:none; padding:0; }
+    .file-list li { padding:8px 12px; background:#f0f9f4; margin-bottom:5px; border-radius:3px; font-size:11px; display:flex; align-items:center; gap:8px; }
+    .warning-box { background:#fff3cd; border-left:4px solid #ffc107; padding:15px; border-radius:5px; margin-top:20px; }
+    .warning-box p { margin:0; color:#856404; font-size:12px; line-height:1.6; }
+    .modal-buttons { display:flex; gap:15px; justify-content:center; margin-top:30px; }
+    .btn-modal { padding:12px 30px; border:none; border-radius:5px; font-size:13px; font-weight:600; cursor:pointer; transition:all .3s; }
+    .btn-confirm { background: linear-gradient(135deg, #1e5a3e, #2d7a4f); color:white; }
+    .btn-cancel { background:#6c757d; color:white; }
+    .version-tag { position:fixed; bottom:10px; left:10px; background:rgba(30,90,62,0.1); color:#1e5a3e; padding:4px 10px; border-radius:4px; font-size:10px; font-weight:600; z-index:100; border:1px solid rgba(30,90,62,0.2); }
+    @media (max-width:768px){
+      body{padding:10px;}
+      .form-grid{grid-template-columns:1fr;}
+      .form-content{padding:20px;}
+      .section-header{margin:0 -20px 20px -20px;}
+      .header{flex-direction:column; gap:15px; text-align:center;}
+      .document-info h2,.document-info p{ text-align:center; }
+      .floating-buttons{bottom:20px; right:20px; gap:12px;}
+      .floating-btn{width:55px; height:55px; font-size:24px;}
+      .floating-btn-tooltip{display:none;}
+      .modal-body{padding:20px;}
+      .modal-buttons{flex-direction:column;}
+      .version-tag{font-size:9px; padding:3px 8px;}
+    }
+    .file-upload-group { border:2px dashed #ccc; border-radius:5px; padding:15px; background:#fafafa; transition:all .3s; }
+    .file-upload-group:hover { border-color:#1e5a3e; background:#f0f9f4; }
+    .file-upload-group.has-file { border-color:#4caf50; background:#e8f5e9; }
+    .file-upload-group label { margin-bottom:8px; }
+    .btn-returning { background: rgba(255,255,255,0.15); color: #fff; border: 1px solid rgba(255,255,255,0.4); padding: 8px 16px; border-radius: 5px; cursor: pointer; font-size: 11px; font-weight: 600; transition: all .3s; text-transform: uppercase; letter-spacing: .3px; }
+    .btn-returning:hover { background: rgba(255,255,255,0.25); border-color: #fff; }
+    .rfc-search-modal .modal-search-box { display: flex; gap: 10px; margin: 20px 0; }
+    .rfc-search-modal .modal-search-box input { flex: 1; padding: 12px 15px; font-size: 16px; border: 2px solid #ccc; border-radius: 5px; text-transform: uppercase; font-weight: 600; letter-spacing: 1px; }
+    .rfc-search-modal .modal-search-box input:focus { border-color: #1e5a3e; outline: none; }
+    .rfc-search-modal .btn-search { background: #1e5a3e; color: #fff; border: none; padding: 12px 25px; border-radius: 5px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .rfc-search-modal .btn-search:disabled { opacity: .5; cursor: not-allowed; }
+    .rfc-search-result { padding: 15px; border-radius: 5px; margin-top: 15px; display: none; }
+    .rfc-search-result.found { display: block; background: #e8f5e9; border-left: 4px solid #4caf50; }
+    .rfc-search-result.not-found { display: block; background: #fff3cd; border-left: 4px solid #ffc107; }
+    .rfc-search-result.error { display: block; background: #f8d7da; border-left: 4px solid #dc3545; }
+    .file-on-record { display: none; padding: 10px 15px; background: #e3f2fd; border-left: 4px solid #2196f3; border-radius: 3px; margin-bottom: 10px; font-size: 11px; color: #1565c0; align-items: center; justify-content: space-between; }
+    .file-on-record.active { display: flex; }
+    .file-on-record .on-record-text { font-weight: 600; }
+    .file-on-record .btn-upload-new { background: none; border: 1px solid #1565c0; color: #1565c0; padding: 4px 10px; border-radius: 3px; cursor: pointer; font-size: 10px; font-weight: 600; }
+    .file-on-record .btn-upload-new:hover { background: #1565c0; color: #fff; }
+    .returning-banner { display: none; background: linear-gradient(135deg, #e8f5e9, #c8e6c9); border-left: 4px solid #4caf50; padding: 15px 20px; margin: 0 -40px 25px -40px; font-size: 12px; color: #2e7d32; align-items: center; justify-content: space-between; }
+    .returning-banner.active { display: flex; }
+    .returning-banner .banner-text strong { font-size: 13px; }
+    .returning-banner .btn-clear-prefill { background: none; border: 1px solid #2e7d32; color: #2e7d32; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600; }
+    .returning-banner .btn-clear-prefill:hover { background: #2e7d32; color: #fff; }
+    @media (max-width:768px) { .btn-returning { font-size:10px; padding:6px 12px; } .returning-banner { margin:0 -20px 20px -20px; flex-direction:column; gap:10px; } }
+  </style>
+</head>
+<body>
+  <div class="version-tag">v2.3 (Conectado a API Central)</div>
+  <div id="welcomeModal" class="modal-overlay">
+    <div style="background: white; border-radius: 10px; max-width: 600px; width: 90%; padding: 40px; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
+      <div style="width: 80px; height: 80px; background: #1e5a3e; border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; color: white; font-size: 40px; font-weight: bold;">EA</div>
+      <h2 style="color: #1e5a3e; margin: 0 0 20px 0; font-size: 24px;">¡Bienvenido!</h2>
+      <p style="color: #333; font-size: 16px; line-height: 1.6; margin-bottom: 15px;"><strong>ESTIMADO CLIENTE,</strong></p>
+      <p style="color: #666; font-size: 15px; line-height: 1.8; margin-bottom: 20px;">
+        Hemos creado esta plataforma para mejorar su experiencia con nosotros. Es por ello que le agradecemos enormemente su confianza.
+      </p>
+      <div style="background: #f0f9f4; border-left: 4px solid #1e5a3e; padding: 20px; margin: 25px 0; border-radius: 5px;">
+        <p style="color: #1e5a3e; font-size: 14px; margin: 0; font-weight: 500;">
+          <strong>¿Tiene alguna duda?</strong><br>
+          <span style="color: #666; font-weight: normal;">Por favor, no dude en comunicarse con nosotros:</span>
+        </p>
+      </div>
+      <div style="display: flex; gap: 15px; justify-content: center; margin: 30px 0;">
+        <a href="tel:2229417295" style="flex: 1; background: #1e5a3e; color: white; padding: 15px 20px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; display:flex; align-items:center; justify-content:center; gap:8px;">
+          <span style="font-size: 20px;">📞</span> Llamar Ahora
+        </a>
+        <a href="https://wa.me/522791113533" target="_blank" style="flex: 1; background: #25D366; color: white; padding: 15px 20px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; display:flex; align-items:center; justify-content:center; gap:8px;">
+          <span style="font-size: 20px;">💬</span> WhatsApp
+        </a>
+      </div>
+      <button onclick="closeWelcomeModal()" style="background: #6c757d; color: white; border: none; padding: 12px 40px; border-radius: 5px; font-size: 15px; font-weight: 600; cursor: pointer;">
+        Continuar al Formulario
+      </button>
+    </div>
+  </div>
+  <div id="returningModal" class="modal-overlay">
+    <div class="rfc-search-modal" style="background:white; border-radius:10px; max-width:500px; width:90%; padding:30px; box-shadow:0 10px 40px rgba(0,0,0,0.3);">
+      <h2 style="color:#1e5a3e; margin:0 0 5px 0; font-size:20px;">Ya soy cliente</h2>
+      <p style="color:#666; font-size:13px; margin:0 0 15px 0;">Ingrese su RFC y pre-llenaremos sus datos para agilizar el proceso.</p>
+      <div class="modal-search-box">
+        <input type="text" id="rfcSearch" placeholder="RFC (ej. ABC123456XX0)" maxlength="13" autocomplete="off">
+        <button type="button" class="btn-search" id="btnSearchRFC" onclick="searchClientByRFC()">Buscar</button>
+      </div>
+      <div id="rfcSearchResult" class="rfc-search-result"></div>
+      <div style="text-align:center; margin-top:20px;">
+        <button type="button" onclick="closeReturningModal()" style="background:#6c757d; color:white; border:none; padding:10px 30px; border-radius:5px; font-size:13px; cursor:pointer;">Cerrar</button>
+      </div>
+    </div>
+  </div>
+  <div id="confirmationModal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header"><h2>⚠️ Verificar Información Antes de Enviar</h2></div>
+      <div class="modal-body" id="confirmationContent"></div>
+    </div>
+  </div>
+  <div class="main-container">
+    <div class="header">
+      <div class="logo-section">
+        <div class="logo">EA</div>
+        <div class="company-info">
+          <h1>EJECUTIVA AMBIENTAL</h1>
+          <p>SEGURIDAD E HIGIENE, CAPACITACIÓN, MANTENIMIENTO INDUSTRIAL, PROTECCIÓN CIVIL, MEDIO AMBIENTE</p>
+        </div>
+      </div>
+      <div class="document-info">
+        <h2>PERFIL DE DATOS</h2>
+        <p>Información del Cliente</p>
+        <button type="button" class="btn-returning" onclick="openReturningModal()" style="margin-top:8px;">Ya soy cliente</button>
+      </div>
+    </div>
+    <div class="form-content">
+      <form id="perfilDatosForm">
+        <div class="section">
+          <div class="section-header">Información General</div>
+          <div id="returningBanner" class="returning-banner">
+            <div class="banner-text">
+              <strong>Cliente identificado</strong><br>
+              Hemos pre-llenado sus datos. Verifique que estén correctos y complete solo lo nuevo.
+            </div>
+            <button type="button" class="btn-clear-prefill" onclick="clearPrefill()">Limpiar datos</button>
+          </div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>Nombre y puesto solicitante<span class="required">*</span></label>
+              <input type="text" name="nombre_solicitante" required>
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>Denominación/Razón social<span class="required">*</span></label>
+              <input type="text" name="razon_social" required>
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>Sucursal<span class="required">*</span></label>
+              <input type="text" name="sucursal" required placeholder="Ej: Matriz, Planta Norte, Sucursal Centro, etc.">
+              <span class="helper-text">Especifique el nombre de la sucursal o ubicación específica</span>
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label>RFC<span class="required">*</span></label>
+              <input type="text" name="rfc" required maxlength="13" style="text-transform: uppercase;">
+            </div>
+            <div class="form-group">
+              <label>Teléfono empresa<span class="required">*</span></label>
+              <input type="tel" name="telefono_empresa" required>
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>Representante legal<span class="required">*</span></label>
+              <input type="text" name="representante_legal" required>
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>Dirección donde se evaluará<span class="required">*</span></label>
+              <input type="text" name="direccion_evaluacion" required>
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Responsable de atendernos<span class="required">*</span></label>
+              <input type="text" name="responsable" required>
+            </div>
+            <div class="form-group">
+              <label>Teléfono<span class="required">*</span></label>
+              <input type="tel" name="telefono_responsable" required>
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>Giro de la empresa<span class="required">*</span></label>
+              <input type="text" name="giro" required>
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>Actividad principal</label>
+              <input type="text" name="actividad_principal">
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Registro patronal</label>
+              <input type="text" name="registro_patronal">
+            </div>
+            <div class="form-group">
+              <label>Capacidad instalada</label>
+              <input type="text" name="capacidad_instalada">
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>Capacidad de operación</label>
+              <input type="text" name="capacidad_operacion">
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>Días, turnos y horarios de trabajo<span class="required">*</span></label>
+              <textarea name="dias_turnos_horarios" required placeholder="Ej: Lunes a Viernes, 2 turnos (8:00-16:00 y 16:00-00:00)"></textarea>
+              <span class="helper-text">Especifique los días de la semana, número de turnos y horarios</span>
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-header">Sobre el Informe de Resultados</div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>Nombre de a quién se dirige<span class="required">*</span></label>
+              <input type="text" name="nombre_dirigido" required>
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>Puesto de a quién se dirige<span class="required">*</span></label>
+              <input type="text" name="puesto_dirigido" required>
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>Correo electrónico para enviar el informe digital<span class="required">*</span></label>
+              <input type="email" name="correo_informe" required>
+              <span class="helper-text">⚠️ Verifique que el correo sea correcto - aquí recibirá su informe mediante nuestra plataforma</span>
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-header">Coordinación de Evaluación</div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>Fechas preferidas para evaluación en sitio<span class="required">*</span></label>
+              <textarea name="fechas_preferidas" required placeholder="Ej: Preferimos la primera semana de febrero o tercera semana de marzo" rows="3"></textarea>
+              <span class="helper-text">⚠️ OBLIGATORIO - Esto nos ayuda a coordinar mejor la visita. Indique rangos de fechas o semanas de preferencia</span>
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-header">Descripción del Proceso</div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>Breve descripción del proceso operativo o productivo</label>
+              <textarea name="descripcion_proceso" placeholder="Describa brevemente el proceso operativo de su empresa..."></textarea>
+              <span class="helper-text">También puede adjuntar documento más adelante</span>
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-header">Archivos Adjuntos</div>
+          <div class="form-grid">
+            <div class="form-group full-width file-upload-group" data-upload-group="planos">
+              <label>1) Planos generales - Layout de la empresa<span class="required">*</span></label>
+              <input type="file" name="planos" accept=".pdf,.jpg,.jpeg,.png,.dwg" required data-file-input="planos">
+              <span class="helper-text">⚠️ OBLIGATORIO - Formatos: PDF, ZIP, JPG, PNG, DWG (Máx. 10MB)</span>
+              <div class="file-preview" data-preview="planos">
+                <div class="file-preview-content">
+                  <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                  <button type="button" class="file-remove" data-clear="planos">Eliminar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group full-width file-upload-group" data-upload-group="mantenimiento">
+              <label>2) Programa de mantenimiento</label>
+              <input type="file" name="mantenimiento" accept=".pdf,.doc,.docx,.xls,.xlsx" data-file-input="mantenimiento">
+              <span class="helper-text">Luminarias, maquinaria, sistema de tierras (según aplique) - Formatos: PDF, JPG, PNG (Máx. 10MB)</span>
+              <div class="file-preview" data-preview="mantenimiento">
+                <div class="file-preview-content">
+                  <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                  <button type="button" class="file-remove" data-clear="mantenimiento">Eliminar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group full-width file-upload-group" data-upload-group="proceso_produccion">
+              <label>3) Proceso de producción / Hojas de Seguridad</label>
+              <input type="file" name="proceso_produccion" accept=".pdf,.doc,.docx" data-file-input="proceso_produccion">
+              <span class="helper-text">Descripción del proceso u hojas de seguridad (NOM-010) - Formatos: PDF, DOC, ZIP (Máx. 10MB)</span>
+              <div class="file-preview" data-preview="proceso_produccion">
+                <div class="file-preview-content">
+                  <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                  <button type="button" class="file-remove" data-clear="proceso_produccion">Eliminar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group full-width file-upload-group" data-upload-group="requisitos_ingreso">
+              <label>4) Requisitos obligatorios para ingresar a planta - </label>
+              <input type="file" name="requisitos_ingreso" accept=".pdf,.doc,.docx" data-file-input="requisitos_ingreso">
+              <span class="helper-text">EPP, documentación u otros</span>
+              <div class="file-preview" data-preview="requisitos_ingreso">
+                <div class="file-preview-content">
+                  <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                  <button type="button" class="file-remove" data-clear="requisitos_ingreso">Eliminar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-header">NOM-020-STPS - RECIPIENTES, CALDERAS Y GENERADORES DE VAPOR</div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label style="font-size:13px; text-transform:none;">
+                   ¿El servicio es para evaluación de NOM-020-STPS-2011 (Recipientes sujetos a presión, recipientes criogénicos y generadores de vapor o calderas)?<span class="required">*</span>
+              </label>
+              <div class="radio-group">
+                <div class="radio-option">
+                  <input type="radio" id="nom020_si" name="aplica_nom020" value="si" required>
+                  <label for="nom020_si">Sí</label>
+                </div>
+                <div class="radio-option">
+                  <input type="radio" id="nom020_no" name="aplica_nom020" value="no">
+                  <label for="nom020_no">No, no aplica para nosotros</label>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="documentacionLegalSection" class="conditional-section">
+            <div class="conditional-header">⚠️ DOCUMENTACIÓN OBLIGATORIA PARA NOM-020-STPS</div>
+            <div class="form-grid">
+              <div class="form-group full-width file-upload-group" data-upload-group="ine_atencion">
+                <label>A) INE de quien nos atenderá<span class="required">*</span></label>
+                <input type="file" name="ine_atencion" accept=".pdf,.jpg,.jpeg,.png" data-file-input="ine_atencion" data-conditional-required="nom020">
+                <span class="helper-text">Copia por ambos lados</span>
+                <div class="file-preview" data-preview="ine_atencion">
+                  <div class="file-preview-content">
+                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                    <button type="button" class="file-remove" data-clear="ine_atencion">Eliminar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="form-group">
+                <label>B) Nombre y puesto Testigo 1<span class="required">*</span></label>
+                <input type="text" name="testigo1" data-conditional-required="nom020">
+              </div>
+              <div class="form-group file-upload-group" data-upload-group="ine_testigo1">
+                <label>INE Testigo 1<span class="required">*</span></label>
+                <input type="file" name="ine_testigo1" accept=".pdf,.jpg,.jpeg,.png" data-file-input="ine_testigo1" data-conditional-required="nom020">
+                <span class="helper-text">Ambos lados</span>
+                <div class="file-preview" data-preview="ine_testigo1">
+                  <div class="file-preview-content">
+                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                    <button type="button" class="file-remove" data-clear="ine_testigo1">Eliminar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="form-group">
+                <label>C) Nombre y puesto Testigo 2<span class="required">*</span></label>
+                <input type="text" name="testigo2" data-conditional-required="nom020">
+              </div>
+              <div class="form-group file-upload-group" data-upload-group="ine_testigo2">
+                <label>INE Testigo 2<span class="required">*</span></label>
+                <input type="file" name="ine_testigo2" accept=".pdf,.jpg,.jpeg,.png" data-file-input="ine_testigo2" data-conditional-required="nom020">
+                <span class="helper-text">Ambos lados</span>
+                <div class="file-preview" data-preview="ine_testigo2">
+                  <div class="file-preview-content">
+                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                    <button type="button" class="file-remove" data-clear="ine_testigo2">Eliminar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="form-group full-width file-upload-group" data-upload-group="poder_notarial">
+                <label>D) Poder notarial<span class="required">*</span></label>
+                <input type="file" name="poder_notarial" accept=".pdf" data-file-input="poder_notarial" data-conditional-required="nom020">
+                <div class="file-preview" data-preview="poder_notarial">
+                  <div class="file-preview-content">
+                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                    <button type="button" class="file-remove" data-clear="poder_notarial">Eliminar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="form-group full-width file-upload-group" data-upload-group="ine_representante">
+                <label>E) INE del representante legal<span class="required">*</span></label>
+                <input type="file" name="ine_representante" accept=".pdf,.jpg,.jpeg,.png" data-file-input="ine_representante" data-conditional-required="nom020">
+                <span class="helper-text">Copia por ambos lados</span>
+                <div class="file-preview" data-preview="ine_representante">
+                  <div class="file-preview-content">
+                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                    <button type="button" class="file-remove" data-clear="ine_representante">Eliminar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="form-group full-width file-upload-group" data-upload-group="situacion_fiscal">
+                <label>F) Constancia de situación fiscal<span class="required">*</span></label>
+                <input type="file" name="situacion_fiscal" accept=".pdf" data-file-input="situacion_fiscal" data-conditional-required="nom020">
+                <div class="file-preview" data-preview="situacion_fiscal">
+                  <div class="file-preview-content">
+                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                    <button type="button" class="file-remove" data-clear="situacion_fiscal">Eliminar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="form-group full-width file-upload-group" data-upload-group="licencia">
+                <label>G) Licencia de uso de suelo / Licencia de funcionamiento / Cédula IMSS<span class="required">*</span></label>
+                <input type="file" name="licencia" accept=".pdf" data-file-input="licencia" data-conditional-required="nom020">
+                <div class="file-preview" data-preview="licencia">
+                  <div class="file-preview-content">
+                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                    <button type="button" class="file-remove" data-clear="licencia">Eliminar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="form-group full-width file-upload-group" data-upload-group="dc3">
+                <label>H) DC-3 de personal operador<span class="required">*</span></label>
+                <input type="file" name="dc3" accept=".pdf" data-file-input="dc3" data-conditional-required="nom020">
+                <span class="helper-text">Recipientes a presión o fogonero (calderas)</span>
+                <div class="file-preview" data-preview="dc3">
+                  <div class="file-preview-content">
+                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                    <button type="button" class="file-remove" data-clear="dc3">Eliminar</button>
+                  </div>
+                </div>
+              </div>
+               <div class="form-grid">
+              <div class="form-group full-width file-upload-group" data-upload-group="calibracion_valvula">
+                <label>I) Dictamen de Calibración de la válvula <span class="required" id="asterisco_calib">*</span></label>
+                <div style="background: #fff8e1; border: 1px solid #ffe082; padding: 10px; border-radius: 4px; margin-bottom: 10px; display: flex; align-items: flex-start; gap: 8px;">
+                  <input type="checkbox" id="check_sin_calibracion" name="sin_calibracion" style="margin-top: 3px; cursor: pointer;">
+                  <label for="check_sin_calibracion" style="cursor: pointer; font-size: 11px; color: #f57f17; text-transform: none; margin: 0; line-height: 1.4;">
+                    <strong>Si no tienes calibradas tus válvulas</strong><br>
+                    Puedes contratar con Ejecutiva este servicio adicional el mismo día de la dictaminación en tus instalaciones.
+                  </label>
+                </div>
+                <input type="file" name="calibracion_valvula" accept=".pdf" data-file-input="calibracion_valvula" data-conditional-required="nom020">
+                <span class="helper-text" id="help_text_calib">Adjunte el archivo PDF de su última calibración.</span>
+                <div class="file-preview" data-preview="calibracion_valvula">
+                  <div class="file-preview-content">
+                    <div class="file-info">
+                      <span class="file-icon">📄</span>
+                      <div><div class="file-name"></div><div class="file-size"></div></div>
+                    </div>
+                    <button type="button" class="file-remove" data-clear="calibracion_valvula">Eliminar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div id="seccion_archivo_calibracion" style="display:none; background:#e8f5e9; padding:15px; border-radius:5px; margin-bottom:20px;">
+              <div class="form-group full-width file-upload-group" data-upload-group="calibracion_valvula">
+                <label>Adjuntar dictamen de calibración<span class="required">*</span></label>
+                <input type="file" name="calibracion_valvula" accept=".pdf" data-file-input="calibracion_valvula">
+                <div class="file-preview" data-preview="calibracion_valvula">
+                  <div class="file-preview-content">
+                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                    <button type="button" class="file-remove" data-clear="calibracion_valvula">Eliminar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div id="seccion_mensaje_calibracion" style="display:none; margin-bottom:20px;">
+              <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; border-radius: 5px;">
+                <p style="margin: 0; color: #856404; font-size: 12px;">
+                  <strong>✅ Enterado.</strong> Puede comunicarse con el área comercial o atención a clientes para solicitar informes sobre ese servicio, nosotros lo podemos realizar en sus instalaciones
+                </p>
+              </div>
+            </div>
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-header">Programa Interno de Protección Civil (PIPC)</div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label style="font-size: 13px; text-transform: none;">¿El servicio es para realizar su Programa Interno de Protección Civil?<span class="required">*</span></label>
+              <div class="radio-group">
+                <div class="radio-option">
+                  <input type="radio" id="pipc_si" name="requiere_pipc" value="si" required>
+                  <label for="pipc_si">Sí, requiero PIPC</label>
+                </div>
+                <div class="radio-option">
+                  <input type="radio" id="pipc_no" name="requiere_pipc" value="no">
+                  <label for="pipc_no">No, no aplica</label>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="documentacionPIPCSection" class="conditional-section">
+            <div class="conditional-header">📋 DOCUMENTACIÓN REQUERIDA PARA PIPC</div>
+            <div style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 15px; border-radius: 5px; margin-bottom: 25px;">
+              <p style="margin: 0; color: #1565c0; font-size: 12px; line-height: 1.6;">
+                <strong>ℹ️ NOTA IMPORTANTE:</strong> Los requisitos presentados a continuación son la <strong>base mínima</strong> para el Programa Interno de Protección Civil.
+                Sin embargo, <strong>algunos municipios de Puebla pueden solicitar documentación adicional</strong> según sus normativas locales.
+                En caso de que su municipio requiera requisitos extra, <strong>Atención a Clientes se comunicará con usted</strong> para informarle qué documentos adicionales son necesarios.
+              </p>
+            </div>
+            <h4 style="color: #1e5a3e; margin: 0 0 15px 0; font-size: 13px; text-transform: uppercase; border-bottom: 2px solid #1e5a3e; padding-bottom: 8px;">
+              📄 Documentos Base (Siempre Obligatorios)
+            </h4>
+            <div class="form-grid">
+              <div class="form-group full-width file-upload-group" data-upload-group="pipc_licencia_funcionamiento">
+                <label>1) Licencia de funcionamiento (Tesorería Municipal)<span class="required">*</span></label>
+                <input type="file" name="pipc_licencia_funcionamiento" accept=".pdf,.jpg,.jpeg,.png" data-file-input="pipc_licencia_funcionamiento" data-conditional-required="pipc">
+                <div class="file-preview" data-preview="pipc_licencia_funcionamiento">
+                  <div class="file-preview-content">
+                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                    <button type="button" class="file-remove" data-clear="pipc_licencia_funcionamiento">Eliminar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="form-group full-width file-upload-group" data-upload-group="pipc_uso_suelo">
+                <label>2) Licencia de uso de suelo específico (posterior a 1997)<span class="required">*</span></label>
+                <input type="file" name="pipc_uso_suelo" accept=".pdf,.jpg,.jpeg,.png" data-file-input="pipc_uso_suelo" data-conditional-required="pipc">
+                <span class="helper-text">Expedida por Dirección de Desarrollo Urbano</span>
+                <div class="file-preview" data-preview="pipc_uso_suelo">
+                  <div class="file-preview-content">
+                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                    <button type="button" class="file-remove" data-clear="pipc_uso_suelo">Eliminar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="form-group full-width file-upload-group" data-upload-group="pipc_predial">
+                <label>3) Predial<span class="required">*</span></label>
+                <input type="file" name="pipc_predial" accept=".pdf,.jpg,.jpeg,.png" data-file-input="pipc_predial" data-conditional-required="pipc">
+                <div class="file-preview" data-preview="pipc_predial">
+                  <div class="file-preview-content">
+                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                    <button type="button" class="file-remove" data-clear="pipc_predial">Eliminar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="form-group full-width file-upload-group" data-upload-group="pipc_poliza_seguro">
+                <label>4) Póliza de seguro de responsabilidad civil (Vigente)<span class="required">*</span></label>
+                <input type="file" name="pipc_poliza_seguro" accept=".pdf" data-file-input="pipc_poliza_seguro" data-conditional-required="pipc">
+                <div class="file-preview" data-preview="pipc_poliza_seguro">
+                  <div class="file-preview-content">
+                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                    <button type="button" class="file-remove" data-clear="pipc_poliza_seguro">Eliminar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="form-group full-width file-upload-group" data-upload-group="pipc_mant_extintores">
+                <label>5) Comprobante de mantenimiento a extintores<span class="required">*</span></label>
+                <input type="file" name="pipc_mant_extintores" accept=".pdf,.jpg,.jpeg,.png" data-file-input="pipc_mant_extintores" data-conditional-required="pipc">
+                <span class="helper-text">Factura, carta garantía o dictamen</span>
+                <div class="file-preview" data-preview="pipc_mant_extintores">
+                  <div class="file-preview-content">
+                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                    <button type="button" class="file-remove" data-clear="pipc_mant_extintores">Eliminar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="form-group full-width file-upload-group" data-upload-group="pipc_situacion_fiscal">
+                <label>6) Constancia de Situación Fiscal (Actualizada)<span class="required">*</span></label>
+                <input type="file" name="pipc_situacion_fiscal" accept=".pdf" data-file-input="pipc_situacion_fiscal" data-conditional-required="pipc">
+                <div class="file-preview" data-preview="pipc_situacion_fiscal">
+                  <div class="file-preview-content">
+                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                    <button type="button" class="file-remove" data-clear="pipc_situacion_fiscal">Eliminar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="form-group full-width file-upload-group" data-upload-group="pipc_ine_representante">
+                <label>7) INE del representante legal o propietario<span class="required">*</span></label>
+                <input type="file" name="pipc_ine_representante" accept=".pdf,.jpg,.jpeg,.png" data-file-input="pipc_ine_representante" data-conditional-required="pipc">
+                <div class="file-preview" data-preview="pipc_ine_representante">
+                  <div class="file-preview-content">
+                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                    <button type="button" class="file-remove" data-clear="pipc_ine_representante">Eliminar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="form-group full-width file-upload-group" data-upload-group="pipc_acta_constitutiva">
+                <label>8) Acta Constitutiva<span class="required">*</span></label>
+                <input type="file" name="pipc_acta_constitutiva" accept=".pdf" data-file-input="pipc_acta_constitutiva" data-conditional-required="pipc">
+                <span class="helper-text">Solo si el establecimiento está registrado como persona moral</span>
+                <div class="file-preview" data-preview="pipc_acta_constitutiva">
+                  <div class="file-preview-content">
+                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                    <button type="button" class="file-remove" data-clear="pipc_acta_constitutiva">Eliminar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="form-group full-width file-upload-group" data-upload-group="pipc_poder_notarial">
+                <label>9) Poder Notarial<span class="required">*</span></label>
+                <input type="file" name="pipc_poder_notarial" accept=".pdf" data-file-input="pipc_poder_notarial" data-conditional-required="pipc">
+                <div class="file-preview" data-preview="pipc_poder_notarial">
+                  <div class="file-preview-content">
+                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                    <button type="button" class="file-remove" data-clear="pipc_poder_notarial">Eliminar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="form-group full-width file-upload-group" data-upload-group="pipc_evidencia_simulacros">
+                <label>10) Evidencia fotográfica de simulacros<span class="required">*</span></label>
+                <input type="file" name="pipc_evidencia_simulacros" accept=".pdf,.jpg,.jpeg,.png,.zip" data-file-input="pipc_evidencia_simulacros" data-conditional-required="pipc">
+                <span class="helper-text">Evidencia fotográfica de los últimos simulacros realizados</span>
+                <div class="file-preview" data-preview="pipc_evidencia_simulacros">
+                  <div class="file-preview-content">
+                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                    <button type="button" class="file-remove" data-clear="pipc_evidencia_simulacros">Eliminar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="form-group full-width file-upload-group" data-upload-group="pipc_organigrama_brigadas">
+                <label>11) Organigrama de Brigadas<span class="required">*</span></label>
+                <input type="file" name="pipc_organigrama_brigadas" accept=".pdf" data-file-input="pipc_organigrama_brigadas" data-conditional-required="pipc">
+                <span class="helper-text">PDF con cronograma de personal que pertenece al equipo de brigadas (nombre completo y puesto)</span>
+                <div class="file-preview" data-preview="pipc_organigrama_brigadas">
+                  <div class="file-preview-content">
+                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                    <button type="button" class="file-remove" data-clear="pipc_organigrama_brigadas">Eliminar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="form-group full-width file-upload-group" data-upload-group="pipc_detectores_humo">
+                <label>12) Mantenimiento de detectores de humo<span class="required">*</span></label>
+                <input type="file" name="pipc_detectores_humo" accept=".pdf,.xls,.xlsx" data-file-input="pipc_detectores_humo" data-conditional-required="pipc">
+                <span class="helper-text">Bitácora de limpieza y reemplazo de baterías</span>
+                <div class="file-preview" data-preview="pipc_detectores_humo">
+                  <div class="file-preview-content">
+                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                    <button type="button" class="file-remove" data-clear="pipc_detectores_humo">Eliminar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <hr style="border: none; border-top: 2px solid #1e5a3e; margin: 30px 0;">
+            <h4 style="color: #856404; margin: 0 0 15px 0; font-size: 13px; text-transform: uppercase; border-bottom: 2px solid #ffc107; padding-bottom: 8px;">
+              ⚠️ Documentos Adicionales (Según Aplique)
+            </h4>
+            <div class="form-grid">
+              <div class="form-group full-width">
+                <label style="font-size: 12px; text-transform: none; margin-bottom: 10px;">13) ¿Cuenta con constancia de medidas preventivas contra incendios?</label>
+                <div class="radio-group">
+                  <div class="radio-option">
+                    <input type="radio" id="pipc_tiene_medidas_si" name="pipc_tiene_medidas" value="si">
+                    <label for="pipc_tiene_medidas_si">Sí, cuento con ella</label>
+                  </div>
+                  <div class="radio-option">
+                    <input type="radio" id="pipc_tiene_medidas_no" name="pipc_tiene_medidas" value="no">
+                    <label for="pipc_tiene_medidas_no">No cuento con ella (debe tramitarse)</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div id="pipc_medidas_preventivas_section" class="conditional-section" style="display: none; background: #fff9e6; border-left-color: #ff9800;">
+              <div class="form-grid">
+                <div class="form-group full-width file-upload-group" data-upload-group="pipc_medidas_preventivas">
+                  <label>Adjuntar constancia de medidas preventivas<span class="required">*</span></label>
+                  <input type="file" name="pipc_medidas_preventivas" accept=".pdf,.jpg,.jpeg,.png" data-file-input="pipc_medidas_preventivas" data-conditional-required="pipc_medidas">
+                  <span class="helper-text">Solo si cuenta con ella</span>
+                  <div class="file-preview" data-preview="pipc_medidas_preventivas">
+                    <div class="file-preview-content">
+                      <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                      <button type="button" class="file-remove" data-clear="pipc_medidas_preventivas">Eliminar</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="form-grid" style="margin-top: 20px;">
+              <div class="form-group full-width">
+                <label style="font-size: 12px; text-transform: none; margin-bottom: 10px;">14) ¿La instalación cuenta con suministro de Gas Natural?</label>
+                <div class="radio-group">
+                  <div class="radio-option">
+                    <input type="radio" id="pipc_tiene_gas_si" name="pipc_tiene_gas" value="si">
+                    <label for="pipc_tiene_gas_si">Sí, contamos con Gas Natural</label>
+                  </div>
+                  <div class="radio-option">
+                    <input type="radio" id="pipc_tiene_gas_no" name="pipc_tiene_gas" value="no">
+                    <label for="pipc_tiene_gas_no">No contamos con Gas Natural</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div id="pipc_gas_natural_section" class="conditional-section" style="display: none; background: #fff9e6; border-left-color: #ff9800;">
+              <div class="form-grid">
+                <div class="form-group full-width file-upload-group" data-upload-group="pipc_gas_natural">
+                  <label>Contrato y 3 últimos comprobantes de pago de Gas Natural<span class="required">*</span></label>
+                  <input type="file" name="pipc_gas_natural" accept=".pdf,.zip" data-file-input="pipc_gas_natural" data-conditional-required="pipc_gas">
+                  <span class="helper-text">Puede adjuntar un PDF con todos los documentos o un archivo ZIP</span>
+                  <div class="file-preview" data-preview="pipc_gas_natural">
+                    <div class="file-preview-content">
+                      <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                      <button type="button" class="file-remove" data-clear="pipc_gas_natural">Eliminar</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="form-grid" style="margin-top: 20px;">
+              <div class="form-group full-width">
+                <label style="font-size: 12px; text-transform: none; margin-bottom: 10px;">15) ¿Manejan sustancias químicas peligrosas?</label>
+                <div class="radio-group">
+                  <div class="radio-option">
+                    <input type="radio" id="pipc_tiene_quimicos_si" name="pipc_tiene_quimicos" value="si">
+                    <label for="pipc_tiene_quimicos_si">Sí, manejamos sustancias químicas</label>
+                  </div>
+                  <div class="radio-option">
+                    <input type="radio" id="pipc_tiene_quimicos_no" name="pipc_tiene_quimicos" value="no">
+                    <label for="pipc_tiene_quimicos_no">No manejamos sustancias químicas</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div id="pipc_sustancias_quimicas_section" class="conditional-section" style="display: none; background: #fff9e6; border-left-color: #ff9800;">
+              <div class="form-grid">
+                <div class="form-group full-width file-upload-group" data-upload-group="pipc_sustancias_quimicas">
+                  <label>Evidencia de cumplimiento NOM-005-STPS-1998<span class="required">*</span></label>
+                  <input type="file" name="pipc_sustancias_quimicas" accept=".pdf,.jpg,.jpeg,.png" data-file-input="pipc_sustancias_quimicas" data-conditional-required="pipc_quimicos">
+                  <span class="helper-text">Almacenamiento de sustancias químicas peligrosas</span>
+                  <div class="file-preview" data-preview="pipc_sustancias_quimicas">
+                    <div class="file-preview-content">
+                      <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                      <button type="button" class="file-remove" data-clear="pipc_sustancias_quimicas">Eliminar</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="form-grid" style="margin-top: 20px;">
+              <div class="form-group full-width">
+                <label style="font-size: 12px; text-transform: none; margin-bottom: 10px;">16) ¿Cuentan con montacargas u operadores de maquinaria especializada?</label>
+                <div class="radio-group">
+                  <div class="radio-option">
+                    <input type="radio" id="pipc_tiene_montacargas_si" name="pipc_tiene_montacargas" value="si">
+                    <label for="pipc_tiene_montacargas_si">Sí, contamos con ellos</label>
+                  </div>
+                  <div class="radio-option">
+                    <input type="radio" id="pipc_tiene_montacargas_no" name="pipc_tiene_montacargas" value="no">
+                    <label for="pipc_tiene_montacargas_no">No contamos con este equipo</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div id="pipc_dc3_operadores_section" class="conditional-section" style="display: none; background: #fff9e6; border-left-color: #ff9800;">
+              <div class="form-grid">
+                <div class="form-group full-width file-upload-group" data-upload-group="pipc_dc3_operadores">
+                  <label>DC-3 de operadores especializados<span class="required">*</span></label>
+                  <input type="file" name="pipc_dc3_operadores" accept=".pdf" data-file-input="pipc_dc3_operadores" data-conditional-required="pipc_montacargas">
+                  <span class="helper-text">Constancias de competencias de montacargas u otros operadores</span>
+                  <div class="file-preview" data-preview="pipc_dc3_operadores">
+                    <div class="file-preview-content">
+                      <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                      <button type="button" class="file-remove" data-clear="pipc_dc3_operadores">Eliminar</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div style="background: #e8f5e9; border: 1px solid #4caf50; padding: 15px; border-radius: 5px; margin-top: 30px;">
+              <h4 style="color: #2e7d32; margin: 0 0 10px 0; font-size: 13px;">📌 Verificación en sitio (no requiere documentos):</h4>
+              <ul style="margin: 0; padding-left: 20px; color: #333; font-size: 11px; line-height: 1.8;">
+                <li><strong>Punto de reunión:</strong> Señalética colocada o pintada</li>
+                <li><strong>Alarma:</strong> Señalética que identifique el medio de alertamiento</li>
+                <li><strong>Delimitación de áreas:</strong> Áreas productivas y de almacén claramente delimitadas</li>
+                <li><strong>Señaléticas de estiba máxima:</strong> En cada área correspondiente</li>
+              </ul>
+              <p style="margin: 10px 0 0 0; color: #666; font-size: 10px; font-style: italic;">
+                Estos puntos se verificarán durante el levantamiento del servicio en su instalación
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="submit-section">
+          <button type="submit" class="btn-submit" id="submitBtn">Revisar y Enviar Información</button>
+          <div class="loading" id="loading">
+            <div class="loading-spinner"></div>
+            <p class="loading-text">🔄 Subiendo documentos a Drive...</p>
+          </div>
+          <div class="message success-message" id="successMsg">
+            <strong>¡Información enviada correctamente!</strong><br><br>
+            Nuestro equipo revisará la información y se comunicará con usted en las próximas <strong>24 horas</strong>.
+          </div>
+          <div class="message error-message" id="errorMsg">
+            ✗ <span id="errorMsgText">Error al enviar la información. Por favor, intente nuevamente o contáctenos directamente.</span>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div class="floating-buttons">
+    <a href="tel:2229417295" class="floating-btn phone" title="Llamar ahora">
+      <span class="floating-btn-tooltip">¿Dudas con el formulario? Llámanos: 222 941 7295</span>📞
+    </a>
+    <a href="https://wa.me/522791113533" target="_blank" class="floating-btn whatsapp" title="WhatsApp">
+      <span class="floating-btn-tooltip">¿Necesitas ayuda llenando esto? WhatsApp: 279 111 3533</span>💬
+    </a>
+  </div>
+  
+  <script>
+    // ✅ URL NUEVA ACTUALIZADA
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby8t7Py-cilePxLiGa-Lq7Df73XaRlmkRYV_kXbTs79HFydaJyub8muA0PBLRkPevUuXg/exec';
+    
+    const MAX_FILE_SIZE = 10 * 1024 * 1024;
+    const WELCOME_COOKIE_NAME = 'ea_welcome_shown';
+    const WELCOME_COOKIE_DAYS = 30;
+
+    function setCookie(name, value, days) {
+      const date = new Date();
+      date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+      document.cookie = `${name}=${value};expires=${date.toUTCString()};path=/`;
+    }
+    function getCookie(name) {
+      const nameEQ = name + "=";
+      const ca = document.cookie.split(';');
+      for (let c of ca) {
+        while (c.charAt(0) === ' ') c = c.substring(1);
+        if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length);
+      }
+      return null;
+    }
+
+    window.addEventListener('load', () => {
+      if (!getCookie(WELCOME_COOKIE_NAME)) {
+        setTimeout(() => {
+          const wm = document.getElementById('welcomeModal');
+          if (wm) wm.style.display = 'flex';
+        }, 500);
+      }
+    });
+
+    function closeWelcomeModal() {
+      const wm = document.getElementById('welcomeModal');
+      if (wm) wm.style.display = 'none';
+      setCookie(WELCOME_COOKIE_NAME, 'true', WELCOME_COOKIE_DAYS);
+    }
+    window.closeWelcomeModal = closeWelcomeModal;
+
+    function formatFileSize(bytes) {
+      if (!bytes) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+    }
+
+    function clearFileUI(fileKey) {
+      const input = document.querySelector(`[data-file-input="${fileKey}"]`);
+      const preview = document.querySelector(`[data-preview="${fileKey}"]`);
+      const uploadGroup = document.querySelector(`[data-upload-group="${fileKey}"]`);
+      if (input) input.value = '';
+      if (preview) preview.classList.remove('active');
+      if (uploadGroup) uploadGroup.classList.remove('has-file');
+    }
+
+    function clearConditionalFilesByAttr(attrValue) {
+      document.querySelectorAll(`[data-conditional-required="${attrValue}"]`).forEach(field => {
+        field.required = false;
+        if (field.type === 'file') {
+          const key = field.dataset.fileInput;
+          if (key) clearFileUI(key);
+          else field.value = '';
+        }
+      });
+    }
+
+    document.querySelectorAll('input[type="file"]').forEach(input => {
+      input.addEventListener('change', function () {
+        const fileKey = this.dataset.fileInput;
+        const preview = document.querySelector(`[data-preview="${fileKey}"]`);
+        const uploadGroup = document.querySelector(`[data-upload-group="${fileKey}"]`);
+        if (!preview) return;
+        if (this.files && this.files[0]) {
+          const file = this.files[0];
+          if (file.size > MAX_FILE_SIZE) {
+            alert('El archivo es demasiado grande. Máximo 10MB por archivo.');
+            this.value = '';
+            preview.classList.remove('active');
+            if (uploadGroup) uploadGroup.classList.remove('has-file');
+            return;
+          }
+          const nameEl = preview.querySelector('.file-name');
+          const sizeEl = preview.querySelector('.file-size');
+          if (nameEl) nameEl.textContent = file.name;
+          if (sizeEl) sizeEl.textContent = formatFileSize(file.size);
+          preview.classList.add('active');
+          if (uploadGroup) uploadGroup.classList.add('has-file');
+        } else {
+          preview.classList.remove('active');
+          if (uploadGroup) uploadGroup.classList.remove('has-file');
+        }
+      });
+    });
+
+    document.querySelectorAll('.file-remove').forEach(btn => {
+      btn.addEventListener('click', function () {
+        const key = this.dataset.clear;
+        if (key) clearFileUI(key);
+      });
+    });
+
+    const docLegalSection = document.getElementById('documentacionLegalSection');
+    document.querySelectorAll('input[name="aplica_nom020"]').forEach(r => {
+      r.addEventListener('change', function () {
+        const on = this.value === 'si';
+        if (docLegalSection) docLegalSection.classList.toggle('active', on);
+        document.querySelectorAll('[data-conditional-required="nom020"]').forEach(f => (f.required = on));
+        if (!on) {
+          document.querySelectorAll('[data-conditional-required="nom020"]').forEach(f => {
+            if (f.type === 'file') {
+              const key = f.dataset.fileInput;
+              if (key) clearFileUI(key);
+            } else {
+              f.value = '';
+            }
+          });
+        }
+      });
+    });
+
+    const docPIPCSection = document.getElementById('documentacionPIPCSection');
+    const radioPIPC = document.querySelectorAll('input[name="requiere_pipc"]');
+    const radioMedidas = document.querySelectorAll('input[name="pipc_tiene_medidas"]');
+    const sectionMedidas = document.getElementById('pipc_medidas_preventivas_section');
+    const radioGas = document.querySelectorAll('input[name="pipc_tiene_gas"]');
+    const sectionGas = document.getElementById('pipc_gas_natural_section');
+    const radioQuimicos = document.querySelectorAll('input[name="pipc_tiene_quimicos"]');
+    const sectionQuimicos = document.getElementById('pipc_sustancias_quimicas_section');
+    const radioMontacargas = document.querySelectorAll('input[name="pipc_tiene_montacargas"]');
+    const sectionMontacargas = document.getElementById('pipc_dc3_operadores_section');
+
+    function resetPIPCConditionals() {
+      document.querySelectorAll('input[name^="pipc_tiene_"]').forEach(r => (r.checked = false));
+      if (sectionMedidas) sectionMedidas.style.display = 'none';
+      if (sectionGas) sectionGas.style.display = 'none';
+      if (sectionQuimicos) sectionQuimicos.style.display = 'none';
+      if (sectionMontacargas) sectionMontacargas.style.display = 'none';
+      clearConditionalFilesByAttr('pipc_medidas');
+      clearConditionalFilesByAttr('pipc_gas');
+      clearConditionalFilesByAttr('pipc_quimicos');
+      clearConditionalFilesByAttr('pipc_montacargas');
+    }
+
+    radioPIPC.forEach(radio => {
+      radio.addEventListener('change', function () {
+        if (!docPIPCSection) return;
+        const on = this.value === 'si';
+        docPIPCSection.classList.toggle('active', on);
+        document.querySelectorAll('[data-conditional-required="pipc"]').forEach(field => {
+          field.required = on;
+        });
+        if (!on) {
+          document.querySelectorAll('[data-conditional-required="pipc"]').forEach(field => {
+            field.required = false;
+            if (field.type === 'file') {
+              const key = field.dataset.fileInput;
+              if (key) clearFileUI(key);
+            } else {
+              field.value = '';
+            }
+          });
+          resetPIPCConditionals();
+        }
+      });
+    });
+
+    radioMedidas.forEach(radio => {
+      radio.addEventListener('change', function () {
+        if (!sectionMedidas) return;
+        if (this.value === 'si') {
+          sectionMedidas.style.display = 'block';
+          document.querySelectorAll('[data-conditional-required="pipc_medidas"]').forEach(f => (f.required = true));
+        } else {
+          sectionMedidas.style.display = 'none';
+          clearConditionalFilesByAttr('pipc_medidas');
+        }
+      });
+    });
+
+    radioGas.forEach(radio => {
+      radio.addEventListener('change', function () {
+        if (!sectionGas) return;
+        if (this.value === 'si') {
+          sectionGas.style.display = 'block';
+          document.querySelectorAll('[data-conditional-required="pipc_gas"]').forEach(f => (f.required = true));
+        } else {
+          sectionGas.style.display = 'none';
+          clearConditionalFilesByAttr('pipc_gas');
+        }
+      });
+    });
+
+    radioQuimicos.forEach(radio => {
+      radio.addEventListener('change', function () {
+        if (!sectionQuimicos) return;
+        if (this.value === 'si') {
+          sectionQuimicos.style.display = 'block';
+          document.querySelectorAll('[data-conditional-required="pipc_quimicos"]').forEach(f => (f.required = true));
+        } else {
+          sectionQuimicos.style.display = 'none';
+          clearConditionalFilesByAttr('pipc_quimicos');
+        }
+      });
+    });
+
+    radioMontacargas.forEach(radio => {
+      radio.addEventListener('change', function () {
+        if (!sectionMontacargas) return;
+        if (this.value === 'si') {
+          sectionMontacargas.style.display = 'block';
+          document.querySelectorAll('[data-conditional-required="pipc_montacargas"]').forEach(f => (f.required = true));
+        } else {
+          sectionMontacargas.style.display = 'none';
+          clearConditionalFilesByAttr('pipc_montacargas');
+        }
+      });
+    });
+
+    const rfcInput = document.querySelector('input[name="rfc"]');
+    if (rfcInput) {
+      rfcInput.addEventListener('input', function () {
+        this.value = this.value.toUpperCase();
+        if (this.value.length >= 12) {
+          const rfcPattern = /^[A-Z&Ñ]{3,4}[0-9]{6}[A-Z0-9]{3}$/;
+          this.style.borderColor = rfcPattern.test(this.value) ? '#28a745' : '#dc3545';
+        }
+      });
+    }
+
+    function closeConfirmationModal() {
+      const cm = document.getElementById('confirmationModal');
+      if (cm) cm.classList.remove('active');
+    }
+    window.closeConfirmationModal = closeConfirmationModal;
+
+    const formMain = document.getElementById('perfilDatosForm');
+    if (formMain) {
+      formMain.addEventListener('submit', function (e) {
+        e.preventDefault();
+        showConfirmationModal();
+      });
+    }
+
+    function showConfirmationModal() {
+      const form = document.getElementById('perfilDatosForm');
+      const formData = new FormData(form);
+      let filesCount = 0;
+      const filesInfo = [];
+      document.querySelectorAll('input[type="file"]').forEach(input => {
+        if (input.files && input.files[0]) {
+          filesCount++;
+          const labelEl = input.parentElement?.querySelector('label');
+          filesInfo.push({
+            label: labelEl ? labelEl.textContent.replace('*', '').trim() : input.name,
+            name: input.files[0].name,
+            size: formatFileSize(input.files[0].size)
+          });
+        }
+      });
+      let confirmationHTML = `
+        <div class="confirmation-section">
+          <h3>📋 DATOS GENERALES</h3>
+          <div class="confirmation-item"><span class="confirmation-label">Razón Social:</span><span class="confirmation-value">${formData.get('razon_social') || ''}</span></div>
+          <div class="confirmation-item"><span class="confirmation-label">Sucursal:</span><span class="confirmation-value">${formData.get('sucursal') || ''}</span></div>
+          <div class="confirmation-item"><span class="confirmation-label">RFC:</span><span class="confirmation-value">${formData.get('rfc') || ''}</span></div>
+          <div class="confirmation-item"><span class="confirmation-label">Responsable:</span><span class="confirmation-value">${formData.get('responsable') || ''}</span></div>
+          <div class="confirmation-item"><span class="confirmation-label">Correo para informe:</span><span class="confirmation-value" style="font-weight:bold;color:#1e5a3e;">${formData.get('correo_informe') || ''}</span></div>
+        </div>
+        <div class="confirmation-section">
+          <h3>📎 ARCHIVOS ADJUNTOS (${filesCount} archivos)</h3>
+          ${filesCount > 0 ? `
+            <ul class="file-list">
+              ${filesInfo.map(f => `<li>✓ ${f.label} <br><strong>${f.name}</strong> (${f.size})</li>`).join('')}
+            </ul>
+          ` : '<p style="color:#856404;">⚠️ No se adjuntaron archivos</p>'}
+        </div>
+      `;
+      const aplicaNom020 = formData.get('aplica_nom020');
+      confirmationHTML += `
+        <div class="confirmation-section">
+          <h3>⚠️ DOCUMENTACIÓN NOM-020-STPS</h3>
+          <p>${aplicaNom020 === 'si' ? '<strong>Aplica</strong> evaluación de recipientes/calderas' : 'No aplica para este cliente'}</p>
+        </div>
+      `;
+      const requierePIPC = formData.get('requiere_pipc');
+      if (requierePIPC === 'si') {
+        confirmationHTML += `
+          <div class="confirmation-section">
+            <h3>🧯 PROTECCIÓN CIVIL (PIPC)</h3>
+            <p style="color:#1e5a3e; font-weight:bold;">Sí requiere PIPC (se validará documentación)</p>
+          </div>
+        `;
+      } else if (requierePIPC === 'no') {
+        confirmationHTML += `
+          <div class="confirmation-section">
+            <h3>🧯 PROTECCIÓN CIVIL (PIPC)</h3>
+            <p>No requiere PIPC</p>
+          </div>
+        `;
+      }
+      confirmationHTML += `
+        <div class="warning-box">
+          <p><strong>⚠️ IMPORTANTE:</strong> Verifique que toda la información sea correcta antes de enviar. El correo electrónico es especialmente importante.</p>
+        </div>
+        <div class="modal-buttons">
+          <button type="button" class="btn-modal btn-confirm" onclick="confirmAndSend()">✓ Confirmar y Enviar</button>
+          <button type="button" class="btn-modal btn-cancel" onclick="closeConfirmationModal()">← Corregir Datos</button>
+        </div>
+      `;
+      document.getElementById('confirmationContent').innerHTML = confirmationHTML;
+      document.getElementById('confirmationModal').classList.add('active');
+    }
+
+    function showError(message, detail = '') {
+      const errorMsg = document.getElementById('errorMsg');
+      const errorMsgText = document.getElementById('errorMsgText');
+      if (errorMsgText) {
+        let fullMessage = message;
+        if (detail) {
+          fullMessage += `<br><small style="opacity:0.8; font-size:11px;">(${detail})</small>`;
+        }
+        errorMsgText.innerHTML = fullMessage;
+      }
+      if (errorMsg) {
+        errorMsg.style.display = 'block';
+        errorMsg.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+
+    async function confirmAndSend() {
+      closeConfirmationModal();
+      const form = document.getElementById('perfilDatosForm');
+      const submitBtn = document.getElementById('submitBtn');
+      const loading = document.getElementById('loading');
+      const successMsg = document.getElementById('successMsg');
+      const errorMsg = document.getElementById('errorMsg');
+      if (successMsg) successMsg.style.display = 'none';
+      if (errorMsg) errorMsg.style.display = 'none';
+      if (submitBtn) submitBtn.disabled = true;
+      if (loading) loading.style.display = 'block';
+      try {
+        const formData = new FormData(form);
+        
+        // ✅ INYECCIÓN EN JSON: Agregamos el action maestro aquí
+        const data = { action: 'registrarCliente' };
+        
+        let totalFileSize = 0;
+        for (let [key, value] of formData.entries()) {
+          if (value instanceof File && value.size > 0) {
+            totalFileSize += value.size;
+            data[key] = await fileToBase64(value);
+            data[key + '_filename'] = value.name;
+            data[key + '_size'] = value.size;
+          } else {
+            data[key] = value;
+          }
+        }
+        const MAX_TOTAL_SIZE = 25 * 1024 * 1024;
+        if (totalFileSize > MAX_TOTAL_SIZE) {
+          throw new Error('ARCHIVOS_MUY_GRANDES');
+        }
+        console.log('Enviando datos al servidor...', { totalFileSize: (totalFileSize / 1024 / 1024).toFixed(2) + ' MB' });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 120000); 
+        
+        const response = await fetch(SCRIPT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify(data),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        if (!response.ok) {
+          throw new Error(`HTTP_ERROR_${response.status}`);
+        }
+        let result;
+        const responseText = await response.text();
+        try {
+          result = JSON.parse(responseText);
+        } catch (parseError) {
+          if (response.ok && responseText.includes('success')) {
+            result = { success: true };
+          } else if (response.ok) {
+            result = { success: true };
+          } else {
+            throw new Error('RESPUESTA_INVALIDA');
+          }
+        }
+        if (result.success === false) {
+          throw new Error(result.error || 'ERROR_SERVIDOR');
+        }
+        if (loading) loading.style.display = 'none';
+        if (successMsg) successMsg.style.display = 'block';
+        form.reset();
+        document.querySelectorAll('.file-preview').forEach(p => p.classList.remove('active'));
+        document.querySelectorAll('.file-upload-group').forEach(g => g.classList.remove('has-file'));
+        if (docLegalSection) docLegalSection.classList.remove('active');
+        document.querySelectorAll('[data-conditional-required="nom020"]').forEach(f => (f.required = false));
+        if (docPIPCSection) docPIPCSection.classList.remove('active');
+        document.querySelectorAll('[data-conditional-required="pipc"]').forEach(f => (f.required = false));
+        resetPIPCConditionals();
+        if (successMsg) successMsg.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch (error) {
+        console.error('Error en envío:', error);
+        if (loading) loading.style.display = 'none';
+        if (error.name === 'AbortError' || error.message === 'AbortError') {
+          showError('La solicitud tardó demasiado tiempo. Puede ser que los archivos sean muy grandes.', 'Intente con archivos más pequeños o contáctenos directamente');
+        } else if (error.message === 'ARCHIVOS_MUY_GRANDES') {
+          showError('Los archivos adjuntos son demasiado grandes en total (máx. 25MB).', 'Intente comprimir los archivos PDF o reducir el tamaño de las imágenes');
+        } else if (error.message === 'Failed to fetch' || error.message.includes('NetworkError')) {
+          showError('Error de conexión. Verifique su conexión a Internet.', 'Si el problema persiste, contáctenos por WhatsApp');
+        } else if (error.message.startsWith('HTTP_ERROR_')) {
+          const status = error.message.replace('HTTP_ERROR_', '');
+          showError(`Error del servidor (código ${status}). Por favor intente nuevamente.`, 'Si el problema persiste, contáctenos directamente');
+        } else if (error.message === 'RESPUESTA_INVALIDA' || error.message === 'ERROR_SERVIDOR') {
+          showError('El servidor no pudo procesar la solicitud. Por favor intente nuevamente.', 'Si el problema persiste, contáctenos por WhatsApp o teléfono');
+        } else {
+          showError('Error al enviar la información. Por favor, intente nuevamente o contáctenos directamente.', error.message || 'Error desconocido');
+        }
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
+      }
+    }
+    window.confirmAndSend = confirmAndSend;
+
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+      });
+    }
+
+    let isReturningClient = false;
+    function openReturningModal() {
+      const modal = document.getElementById('returningModal');
+      if (modal) modal.style.display = 'flex';
+      const input = document.getElementById('rfcSearch');
+      if (input) { input.value = ''; input.focus(); }
+      const result = document.getElementById('rfcSearchResult');
+      if (result) { result.className = 'rfc-search-result'; result.style.display = 'none'; }
+    }
+    window.openReturningModal = openReturningModal;
+
+    function closeReturningModal() {
+      const modal = document.getElementById('returningModal');
+      if (modal) modal.style.display = 'none';
+    }
+    window.closeReturningModal = closeReturningModal;
+
+    const rfcSearchInput = document.getElementById('rfcSearch');
+    if (rfcSearchInput) {
+      rfcSearchInput.addEventListener('input', function() {
+        this.value = this.value.toUpperCase();
+      });
+      rfcSearchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); searchClientByRFC(); }
+      });
+    }
+
+    async function searchClientByRFC() {
+      const rfcInput = document.getElementById('rfcSearch');
+      const resultDiv = document.getElementById('rfcSearchResult');
+      const btnSearch = document.getElementById('btnSearchRFC');
+      const rfc = (rfcInput ? rfcInput.value.trim().toUpperCase() : '');
+      if (!rfc || rfc.length < 12) {
+        resultDiv.className = 'rfc-search-result error';
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = '<strong>RFC no válido.</strong> Debe tener al menos 12 caracteres.';
+        return;
+      }
+      btnSearch.disabled = true;
+      btnSearch.textContent = 'Buscando...';
+      resultDiv.style.display = 'none';
+      try {
+        // ✅ INYECCIÓN GET: Cambiamos a buscarClienteRFC
+        const url = SCRIPT_URL + '?action=buscarClienteRFC&rfc=' + encodeURIComponent(rfc);
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (data.found) {
+          // Adaptamos las variables del nuevo backend a lo que lee el frontend
+          data.nombre_solicitante = data.solicitante || data.nombre_solicitante;
+          data.correo_informe = data.email || data.correo_informe;
+          data.telefono_empresa = data.telefono || data.telefono_empresa;
+          data.direccion_evaluacion = data.direccion || data.direccion_evaluacion;
+            
+          resultDiv.className = 'rfc-search-result found';
+          resultDiv.style.display = 'block';
+          resultDiv.innerHTML = `
+            <strong>Cliente encontrado</strong><br>
+            <span style="font-size:13px;">${data.razon_social || ''}</span><br>
+            <small style="color:#666;">Autocompletar disponible para: ${data.sucursal || 'N/A'}</small><br><br>
+            <button type="button" onclick="applyClientData()" style="background:#1e5a3e; color:#fff; border:none; padding:10px 25px; border-radius:5px; font-size:13px; font-weight:600; cursor:pointer;">Usar estos datos</button>
+          `;
+          window._returningClientData = data;
+        } else {
+          resultDiv.className = 'rfc-search-result not-found';
+          resultDiv.style.display = 'block';
+          resultDiv.innerHTML = '<strong>RFC no encontrado.</strong><br><small>Puede continuar llenando el formulario como cliente nuevo.</small>';
+        }
+      } catch (err) {
+        resultDiv.className = 'rfc-search-result error';
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = '<strong>Error de conexión.</strong><br><small>Verifique su conexión a internet e intente nuevamente.</small>';
+      } finally {
+        btnSearch.disabled = false;
+        btnSearch.textContent = 'Buscar';
+      }
+    }
+    window.searchClientByRFC = searchClientByRFC;
+
+    function applyClientData() {
+      const data = window._returningClientData;
+      if (!data) return;
+      isReturningClient = true;
+      const fieldMap = {
+        'nombre_solicitante': data.nombre_solicitante,
+        'razon_social': data.razon_social,
+        'sucursal': data.sucursal,
+        'rfc': data.rfc,
+        'telefono_empresa': data.telefono_empresa,
+        'representante_legal': data.representante_legal,
+        'direccion_evaluacion': data.direccion_evaluacion,
+        'responsable': data.responsable,
+        'telefono_responsable': data.telefono_responsable,
+        'giro': data.giro,
+        'actividad_principal': data.actividad_principal,
+        'registro_patronal': data.registro_patronal,
+        'capacidad_instalada': data.capacidad_instalada,
+        'capacidad_operacion': data.capacidad_operacion,
+        'dias_turnos_horarios': data.dias_turnos_horarios,
+        'nombre_dirigido': data.nombre_dirigido,
+        'puesto_dirigido': data.puesto_dirigido,
+        'correo_informe': data.correo_informe,
+        'descripcion_proceso': data.descripcion_proceso
+      };
+      for (const [fieldName, value] of Object.entries(fieldMap)) {
+        if (value) {
+          const el = document.querySelector(`[name="${fieldName}"]`);
+          if (el) el.value = value;
+        }
+      }
+      const rfcField = document.querySelector('input[name="rfc"]');
+      if (rfcField && rfcField.value.length >= 12) {
+        rfcField.style.borderColor = '#28a745';
+      }
+      const banner = document.getElementById('returningBanner');
+      if (banner) banner.classList.add('active');
+      if (data.tenia_archivos || data.link_drive_cliente) {
+        showOnRecordIndicators();
+      }
+      closeReturningModal();
+      const formContent = document.querySelector('.form-content');
+      if (formContent) formContent.scrollIntoView({ behavior: 'smooth' });
+    }
+    window.applyClientData = applyClientData;
+
+    function showOnRecordIndicators() {
+      const generalFileKeys = [
+        'planos', 'mantenimiento', 'proceso_produccion', 'requisitos_ingreso'
+      ];
+      generalFileKeys.forEach(key => {
+        const uploadGroup = document.querySelector(`[data-upload-group="${key}"]`);
+        if (!uploadGroup) return;
+        if (uploadGroup.querySelector('.file-on-record')) return;
+        const fileInput = uploadGroup.querySelector('input[type="file"]');
+        if (!fileInput) return;
+        const indicator = document.createElement('div');
+        indicator.className = 'file-on-record active';
+        indicator.dataset.onRecordFor = key;
+        indicator.innerHTML = `
+          <span class="on-record-text">Ya tenemos este documento en expediente</span>
+          <button type="button" class="btn-upload-new" onclick="showFileInput('${key}')">Subir nuevo</button>
+        `;
+        fileInput.style.display = 'none';
+        fileInput.removeAttribute('required');
+        uploadGroup.insertBefore(indicator, fileInput);
+        const helper = uploadGroup.querySelector('.helper-text');
+        if (helper) helper.style.display = 'none';
+      });
+    }
+
+    function showFileInput(fileKey) {
+      const uploadGroup = document.querySelector(`[data-upload-group="${fileKey}"]`);
+      if (!uploadGroup) return;
+      const indicator = uploadGroup.querySelector('.file-on-record');
+      if (indicator) indicator.classList.remove('active');
+      const fileInput = uploadGroup.querySelector('input[type="file"]');
+      if (fileInput) {
+        fileInput.style.display = '';
+        if (fileKey === 'planos') fileInput.required = true;
+      }
+      const helper = uploadGroup.querySelector('.helper-text');
+      if (helper) helper.style.display = '';
+    }
+    window.showFileInput = showFileInput;
+
+    function clearPrefill() {
+      isReturningClient = false;
+      const form = document.getElementById('perfilDatosForm');
+      if (form) form.reset();
+      const banner = document.getElementById('returningBanner');
+      if (banner) banner.classList.remove('active');
+      document.querySelectorAll('.file-on-record').forEach(indicator => {
+        const key = indicator.dataset.onRecordFor;
+        indicator.remove();
+        if (key) {
+          const uploadGroup = document.querySelector(`[data-upload-group="${key}"]`);
+          if (uploadGroup) {
+            const fileInput = uploadGroup.querySelector('input[type="file"]');
+            if (fileInput) {
+              fileInput.style.display = '';
+              if (key === 'planos') fileInput.required = true;
+            }
+            const helper = uploadGroup.querySelector('.helper-text');
+            if (helper) helper.style.display = '';
+          }
+        }
+      });
+      document.querySelectorAll('.file-preview').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.file-upload-group').forEach(g => g.classList.remove('has-file'));
+      if (docLegalSection) docLegalSection.classList.remove('active');
+      document.querySelectorAll('[data-conditional-required="nom020"]').forEach(f => (f.required = false));
+      if (docPIPCSection) docPIPCSection.classList.remove('active');
+      document.querySelectorAll('[data-conditional-required="pipc"]').forEach(f => (f.required = false));
+      resetPIPCConditionals();
+      const rfcField = document.querySelector('input[name="rfc"]');
+      if (rfcField) rfcField.style.borderColor = '';
+      window._returningClientData = null;
+    }
+    window.clearPrefill = clearPrefill;
+  </script>
+</body>
+</html>
