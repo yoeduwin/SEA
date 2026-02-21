@@ -974,5 +974,91 @@
     document.getElementById('filter-search').addEventListener('input', aplicarFiltros);
   });
 </script>
+
+<script>
+  // Parche de compatibilidad para reducir conflictos de merge en zonas centrales del archivo
+  (() => {
+    const hasValue = (id) => {
+      const el = document.getElementById(id);
+      return el && el.value && el.value.trim();
+    };
+
+    // NOM más tolerante (acepta variantes con o sin sufijos)
+    window.extraerCodigoNOM = function(nom) {
+      const clean = String(nom || '').trim().toUpperCase();
+      const m = clean.match(/^NOM-(\d{3}(?:-\d+)?)(?:-[A-Z]+)?(?:-\d{4})?/);
+      return m ? m[1] : clean;
+    };
+
+    const originalEnviarTodo = window.enviarTodo;
+    window.enviarTodo = async function() {
+      const evidenciasCount =
+        (document.getElementById('up-ot')?.files.length || 0) +
+        (document.getElementById('up-campo')?.files.length || 0) +
+        (document.getElementById('up-croquis')?.files.length || 0) +
+        (document.getElementById('up-fotos')?.files.length || 0);
+
+      if (evidenciasCount === 0) {
+        alert('⚠️ Para crear el expediente, primero sube al menos un archivo de evidencia (OT, HDC, Croquis o Fotos).');
+        return;
+      }
+
+      let numInforme = (document.getElementById('field-num-informe')?.value || '').trim();
+      if (!numInforme || numInforme.includes('Automático')) {
+        if (typeof window.generarNumeroInforme === 'function') await window.generarNumeroInforme();
+        numInforme = (document.getElementById('field-num-informe')?.value || '').trim();
+      }
+      if (!/^EA-\d{4}-.+-\d{4}$/.test(numInforme)) {
+        alert('⚠️ No se pudo generar un número de informe válido. Verifica OT y NOM.');
+        return;
+      }
+
+      return originalEnviarTodo.apply(this, arguments);
+    };
+
+    const originalRenderTablero = window.renderTablero;
+    window.renderTablero = function(data) {
+      const soloExpedientes = (data || []).filter(r => String((r && r.numInforme) || '').trim() !== '');
+      return originalRenderTablero.call(this, soloExpedientes);
+    };
+
+    const originalLimpiarFormulario = window.limpiarFormulario;
+    window.limpiarFormulario = function() {
+      const sectionNuevo = document.getElementById('section-nuevo');
+      if (sectionNuevo) {
+        sectionNuevo.querySelectorAll('input:not([type="hidden"])').forEach(i => i.value = '');
+        sectionNuevo.querySelectorAll('select').forEach(s => s.selectedIndex = 0);
+        const infoBox = document.getElementById('ot-autofill-box');
+        if (infoBox) infoBox.style.display = 'none';
+        if (typeof window.validarProgreso === 'function') window.validarProgreso();
+      } else if (typeof originalLimpiarFormulario === 'function') {
+        originalLimpiarFormulario.apply(this, arguments);
+      }
+    };
+
+    const originalValidarProgreso = window.validarProgreso;
+    window.validarProgreso = function() {
+      if (typeof originalValidarProgreso === 'function') originalValidarProgreso.apply(this, arguments);
+      const card2 = document.getElementById('card-paso2');
+      const btn = document.getElementById('btn-enviar');
+      if (!card2 || !btn) return;
+      const listoPaso1 = hasValue('field-ot') && hasValue('field-nom') && hasValue('field-cliente-inicial') && hasValue('field-cliente-final') && hasValue('field-fecha') && hasValue('field-responsable');
+      if (listoPaso1) {
+        card2.classList.remove('step-locked');
+        btn.disabled = false;
+      } else {
+        card2.classList.add('step-locked');
+        btn.disabled = true;
+      }
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const btn = document.getElementById('btn-enviar');
+      if (btn) btn.textContent = '🚀 Crear Expediente al Subir Evidencias';
+      if (typeof window.validarProgreso === 'function') window.validarProgreso();
+    });
+  })();
+</script>
+
 </body>
 </html>
