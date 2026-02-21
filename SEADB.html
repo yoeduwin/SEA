@@ -339,11 +339,19 @@
                 
                 if(result.success) {
                     allData = result.data.map(row => {
+                        // Normalizar campos: soportar tanto snake_case como camelCase del backend
+                        const fechaVisitaRaw = row.fecha_visita || row.fecha || '';
+                        const personalRaw = row.personal || row.personal_asignado || row.responsable || '';
+                        const linkDriveRaw = row.link_drive || row.linkDrive || row.link_drive_cliente || '';
+                        const clienteRaw = row.cliente || row.cliente_razon_social || '';
+                        const nomRaw = row.nom || row.nom_servicio || '';
+                        const estatusRaw = row.estatus || 'PENDIENTE';
+
                         // Calcular fechas automáticas
                         let fDigital = '';
                         let fFisico = '';
-                        const dVisita = parseFecha(row.fecha_visita);
-                        
+                        const dVisita = parseFecha(fechaVisitaRaw);
+
                         if (dVisita) {
                             const d1 = new Date(dVisita); d1.setDate(d1.getDate() + 15); fDigital = formatearFechaSLA(d1);
                             const d2 = new Date(dVisita); d2.setDate(d2.getDate() + 25); fFisico = formatearFechaSLA(d2);
@@ -351,19 +359,19 @@
 
                         return {
                             ot: row.ot || '',
-                            referencia: '', 
-                            clienteInicial: row.cliente || '',
+                            referencia: '',
+                            clienteInicial: clienteRaw,
                             clienteFinal: row.sucursal || '',
-                            nom: row.nom || '',
+                            nom: nomRaw,
                             proveedor: '',
-                            personal: row.personal || '',
-                            fechaVisita: row.fecha_visita || '',
-                            fechaDigital: fDigital, // ¡Dinámico!
-                            fechaFisico: fFisico,   // ¡Dinámico!
-                            estatusAuto: row.estatus || 'PENDIENTE',
-                            entregadoManual: row.estatus === 'ENTREGADO' ? 'ENTREGADO' : '',
-                            fechaRealEntrega: row.fechaRealEntrega || '',
-                            linkOT: row.link_drive || '',
+                            personal: personalRaw,
+                            fechaVisita: fechaVisitaRaw,
+                            fechaDigital: fDigital,
+                            fechaFisico: fFisico,
+                            estatusAuto: estatusRaw,
+                            entregadoManual: estatusRaw === 'ENTREGADO' ? 'ENTREGADO' : '',
+                            fechaRealEntrega: row.fechaRealEntrega || row.fecha_real_entrega || '',
+                            linkOT: linkDriveRaw,
                             rawRow: row
                         };
                     }).filter(row => row.ot);

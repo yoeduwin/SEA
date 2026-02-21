@@ -452,8 +452,8 @@
         result.data.forEach(orden => {
           const option = document.createElement('option');
           option.value = orden.ot;
-          option.dataset.clienteInicial = orden.clienteInicial || orden.cliente || '';
-          option.dataset.clienteFinal = orden.clienteFinal || '';
+          option.dataset.clienteInicial = orden.clienteInicial || orden.cliente || orden.cliente_razon_social || '';
+          option.dataset.clienteFinal = orden.clienteFinal || orden.sucursal || '';
           option.textContent = `${orden.ot} - ${option.dataset.clienteInicial}`;
           select.appendChild(option);
         });
@@ -639,7 +639,9 @@
         const priority = allFiles.filter(f => f.category === 'ORDEN_TRABAJO' || f.category === 'PERFIL_DATOS');
         const others = allFiles.filter(f => f.category !== 'ORDEN_TRABAJO' && f.category !== 'PERFIL_DATOS');
         for (const item of priority) basePayload.files.push(await fileToB64(item.file, item.category));
-        await fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(basePayload) });
+        const mainResp = await fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(basePayload) });
+        const mainResult = await mainResp.json();
+        if (!mainResult.success) throw new Error(mainResult.error || 'Error al crear expediente');
         await new Promise(r => setTimeout(r, 3000));
         let currentBatch = [], currentSize = 0, batches = [];
         for (const item of others) {
@@ -650,12 +652,16 @@
         for (let b of batches) {
           const batchPayload = { action: 'addFilesToExpediente', ot: ot, files: [] };
           for (const item of b) batchPayload.files.push(await fileToB64(item.file, item.category));
-          await fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(batchPayload) });
+          const batchResp = await fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(batchPayload) });
+          const batchResult = await batchResp.json();
+          if (!batchResult.success) console.warn('Error en lote de archivos:', batchResult.error);
           await new Promise(r => setTimeout(r, 2000));
         }
       } else {
         for (const item of allFiles) basePayload.files.push(await fileToB64(item.file, item.category));
-        await fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(basePayload) });
+        const resp = await fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(basePayload) });
+        const result = await resp.json();
+        if (!result.success) throw new Error(result.error || 'Error al crear expediente');
       }
       setTimeout(() => {
         document.getElementById('main-loader').style.display = 'none';
@@ -691,11 +697,30 @@
       const response = await fetch(`${SCRIPT_URL}?action=getTablero`);
       const result = await response.json();
       if (result && result.success) {
-        allTableroData = result.data || [];
+        // Normalizar nombres de campo: el backend puede devolver snake_case o camelCase
+        allTableroData = (result.data || []).map(r => ({
+          ...r,
+          numInforme: r.numInforme || r.num_informe || '',
+          ot: r.ot || '',
+          nom: r.nom || r.nom_servicio || '',
+          fecha: r.fecha || r.fecha_visita || '',
+          fechaEntrega: r.fechaEntrega || r.fecha_entrega || r.fecha_entrega_limite || '',
+          cliente: r.cliente || r.cliente_razon_social || '',
+          sucursal: r.sucursal || '',
+          solicitante: r.solicitante || r.nombre_solicitante || '',
+          rfc: r.rfc || '',
+          telefono: r.telefono || r.telefono_empresa || '',
+          direccion: r.direccion || r.direccion_evaluacion || '',
+          responsable: r.responsable || r.personal || r.personal_asignado || '',
+          estatus: r.estatus || 'NO INICIADO',
+          linkDrive: r.linkDrive || r.link_drive || r.link_drive_cliente || '',
+          tipoOrden: r.tipoOrden || r.tipo_orden || ''
+        }));
         aplicarFiltros();
       }
     } catch (e) {
       console.error('Error cargando tablero:', e);
+      document.getElementById('tablero-box').innerHTML = '<tr><td colspan="8" style="text-align:center; color:#c0392b;">Error al cargar datos. Intente de nuevo.</td></tr>';
     }
   }
 

@@ -174,7 +174,7 @@
     <div class="excel-controls">
       <strong>🔧 Gestión de Orden:</strong>
       <button onclick="generateWorkOrder()">Generar desde Perfil</button>
-      <button onclick="registerToSheets()" style="background:#007bff;">🚀 Registrar OT en API</button>
+      <button onclick="registerToSheets(event)" style="background:#007bff;">🚀 Registrar OT en API</button>
       <button onclick="printWorkOrder()">Imprimir/PDF</button>
       <button onclick="sendWorkOrder()">Enviar por Email</button>
       <span id="workorderStatus"></span>
@@ -482,9 +482,10 @@
   }
 
   // ================== REGISTRO A LA API CENTRAL ==================
-  async function registerToSheets() {
-    const btn = event.target; const originalText = btn.textContent;
-    btn.textContent = '⏳ Registrando...'; btn.disabled = true;
+  async function registerToSheets(e) {
+    const btn = (e && e.target) ? e.target : document.querySelector('[onclick*="registerToSheets"]');
+    const originalText = btn ? btn.textContent : '';
+    if (btn) { btn.textContent = '⏳ Registrando...'; btn.disabled = true; }
     showStatus('workorderStatus','Enviando datos a Base Maestra...','warning');
 
     try {
@@ -492,7 +493,10 @@
       const company = document.getElementById('wo_clientName')?.value || '';
       const branch = document.getElementById('wo_branch')?.value || '';
       const rfc = document.getElementById('rfc')?.value || profileData.rfc || '';
-      
+
+      if (!orderNumber) { showStatus('workorderStatus','Falta el N° de Orden de Servicio','error'); return; }
+      if (!company) { showStatus('workorderStatus','Falta el nombre del cliente. Cargue el perfil primero.','error'); return; }
+
       const services = [], personnel = [], dates = [];
       document.querySelectorAll('#workTableBody tr').forEach(row => {
         const fields = row.querySelectorAll('input, select, textarea');
@@ -533,9 +537,9 @@
         showStatus('workorderStatus', '❌ Error: ' + result.error, 'error');
       }
     } catch (e) {
-      showStatus('workorderStatus','❌ Error de conexión','error');
+      showStatus('workorderStatus','❌ Error de conexión: ' + (e.message || ''),'error');
     } finally {
-      if(btn) { btn.textContent = originalText; btn.disabled = false; }
+      if (btn) { btn.textContent = originalText; btn.disabled = false; }
     }
   }
 

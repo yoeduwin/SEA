@@ -1030,6 +1030,27 @@
       });
     });
 
+    // Handler del checkbox "sin calibración de válvulas" para NOM-020
+    const checkSinCalibracion = document.getElementById('check_sin_calibracion');
+    if (checkSinCalibracion) {
+      checkSinCalibracion.addEventListener('change', function() {
+        const fileInput = document.querySelector('[data-file-input="calibracion_valvula"]');
+        const asterisco = document.getElementById('asterisco_calib');
+        const helpText = document.getElementById('help_text_calib');
+        if (this.checked) {
+          // No tiene calibración - ocultar archivo, quitar obligatorio
+          if (fileInput) { fileInput.required = false; fileInput.style.display = 'none'; clearFileUI('calibracion_valvula'); }
+          if (asterisco) asterisco.style.display = 'none';
+          if (helpText) helpText.textContent = 'Ejecutiva Ambiental realizará la calibración el día de la dictaminación.';
+        } else {
+          // Sí tiene calibración - mostrar archivo, hacerlo obligatorio
+          if (fileInput) { fileInput.style.display = ''; fileInput.required = true; }
+          if (asterisco) asterisco.style.display = '';
+          if (helpText) helpText.textContent = 'Adjunte el archivo PDF de su última calibración.';
+        }
+      });
+    }
+
     const docPIPCSection = document.getElementById('documentacionPIPCSection');
     const radioPIPC = document.querySelectorAll('input[name="requiere_pipc"]');
     const radioMedidas = document.querySelectorAll('input[name="pipc_tiene_medidas"]');
