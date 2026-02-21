@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sistema de Gestión de Expedientes - Ejecutiva Ambiental</title>
+  <link rel="icon" href="data:," />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
     :root {
@@ -341,7 +342,7 @@
               </div>
             </div>
             <div style="text-align: center; margin-top: 30px;">
-              <button id="btn-enviar" class="ea-btn-submit" onclick="enviarTodo()" disabled>🚀 Generar Expediente y Enviar</button>
+              <button id="btn-enviar" class="ea-btn-submit" onclick="enviarTodo()" disabled>🚀 Crear Expediente al Subir Evidencias</button>
             </div>
             <div id="main-loader" class="loader">
               <div class="spinner"></div>
@@ -544,8 +545,9 @@
   ];
 
   function extraerCodigoNOM(nom) {
-    const m = String(nom || '').match(/^NOM-(\d{3}(?:-\d+)?)-STPS/);
-    return m ? m[1] : nom;
+    const clean = String(nom || '').trim().toUpperCase();
+    const m = clean.match(/^NOM-(\d{3}(?:-\d+)?)(?:-[A-Z]+)?(?:-\d{4})?/);
+    return m ? m[1] : clean;
   }
 
   // 2. LÓGICA DE EXCEL (OPCIONAL — complementa/sobreescribe datos de la OT)
@@ -653,6 +655,17 @@
     if(allTableroData && allTableroData.find(r => String(r.ot).toUpperCase() === ot.toUpperCase() && extraerCodigoNOM(String(r.nom)).toUpperCase() === nomCode.toUpperCase())) {
       alert(`⚠️ Ya existe un expediente registrado para la OT "${ot}" con el servicio "${nom}".`); return;
     }
+
+    const evidenciasCount =
+      (document.getElementById('up-ot').files.length || 0) +
+      (document.getElementById('up-campo').files.length || 0) +
+      (document.getElementById('up-croquis').files.length || 0) +
+      (document.getElementById('up-fotos').files.length || 0);
+    if (evidenciasCount === 0) {
+      alert('⚠️ Para crear el expediente, primero sube al menos un archivo de evidencia (OT, HDC, Croquis o Fotos).');
+      return;
+    }
+
     if (!confirm(`¿Confirmar creación de expediente para OT: ${ot} - ${nom}?`)) return;
     btn.disabled = true;
     document.getElementById('main-loader').style.display = 'block';
@@ -673,11 +686,20 @@
     });
 
     try {
+      let numInforme = document.getElementById('field-num-informe').value.trim();
+      if (!numInforme || numInforme.includes('Automático')) {
+        await generarNumeroInforme();
+        numInforme = document.getElementById('field-num-informe').value.trim();
+      }
+      if (!/^EA-\d{4}-.+-\d{4}$/.test(numInforme)) {
+        throw new Error('No se pudo generar un número de informe válido. Verifica OT y NOM.');
+      }
+
       const basePayload = {
         action: 'createExpediente',
         data: {
           ot, nom,
-          numInforme: document.getElementById('field-num-informe').value,
+          numInforme,
           cliente: document.getElementById('field-cliente-inicial').value.trim(),
           sucursal: document.getElementById('field-cliente-final').value.trim(),
           fecha: document.getElementById('field-fecha').value,
@@ -735,8 +757,9 @@
   }
 
   function limpiarFormulario() {
-    document.querySelectorAll('input:not([type="hidden"])').forEach(i => i.value = '');
-    document.querySelectorAll('select').forEach(s => s.selectedIndex = 0);
+    const sectionNuevo = document.getElementById('section-nuevo');
+    sectionNuevo.querySelectorAll('input:not([type="hidden"])').forEach(i => i.value = '');
+    sectionNuevo.querySelectorAll('select').forEach(s => s.selectedIndex = 0);
     perfilDataFile = null;
     const infoBox = document.getElementById('ot-autofill-box');
     if (infoBox) infoBox.style.display = 'none';
@@ -774,7 +797,7 @@
           estatus: r.estatus || 'NO INICIADO',
           linkDrive: r.linkDrive || r.link_drive || r.link_drive_cliente || '',
           tipoOrden: r.tipoOrden || r.tipo_orden || ''
-        }));
+        })).filter(r => String(r.numInforme || '').trim() !== '');
         aplicarFiltros();
       }
     } catch (e) {
@@ -953,11 +976,12 @@
     const btn = document.getElementById('btn-enviar');
     const ot = document.getElementById('field-ot').value;
     const nom = document.getElementById('field-nom').value;
+    const cInicial = document.getElementById('field-cliente-inicial').value.trim();
     const cFinal = document.getElementById('field-cliente-final').value.trim();
     const fecha = document.getElementById('field-fecha').value;
     const responsable = document.getElementById('field-responsable').value;
-    // Paso 2 se desbloquea cuando OT + NOM + Cliente + Fecha + Responsable están listos
-    const listoPaso1 = ot && nom && cFinal && fecha && responsable;
+    // Paso 2 se desbloquea cuando OT + NOM + Cliente inicial/final + Fecha + Responsable están listos
+    const listoPaso1 = ot && nom && cInicial && cFinal && fecha && responsable;
     if (listoPaso1) {
       card2.classList.remove('step-locked');
       btn.disabled = false;
