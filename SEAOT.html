@@ -1,0 +1,563 @@
+<!DOCTYPE html><html lang="es"><head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Generador de Orden de Trabajo - Ejecutiva Ambiental</title>
+  <style>
+    *{box-sizing:border-box}
+    body{ font-family: Arial, sans-serif; margin:0; padding:20px; background:#f5f5f5; font-size:12px; }
+    .main-container{max-width:1200px;margin:0 auto;}
+    .nav-tabs{display:flex;background:#fff;border-radius:8px 8px 0 0;overflow:hidden;box-shadow:0 2px 4px rgba(0,0,0,.1)}
+    .nav-tab{flex:1;padding:15px 20px;background:#e9ecef;border:0;cursor:pointer;font-weight:bold;font-size:14px;transition:.3s;display:flex;align-items:center;justify-content:center;gap:8px}
+    .nav-tab.active{background:#1e5a3e;color:#fff}
+    .nav-tab:hover:not(.active){background:#dee2e6}
+    .tab-content{display:none;background:#fff;border-radius:0 0 8px 8px;box-shadow:0 2px 10px rgba(0,0,0,.1);min-height:600px}
+    .tab-content.active{display:block}
+    .excel-controls{background:linear-gradient(135deg,#f8f9fa,#e9ecef);padding:15px;margin-bottom:0;border-left:4px solid #1e5a3e;display:flex;align-items:center;flex-wrap:wrap;gap:10px}
+    .excel-controls button{background:#1e5a3e;color:#fff;border:0;padding:8px 15px;border-radius:4px;cursor:pointer;font-size:11px}
+    .excel-controls button:hover{background:#2d7a4f}
+    .btn-db-search {background:#007bff !important;}
+    .btn-db-search:hover {background:#0056b3 !important;}
+    .file-input-label{background:#6c757d;color:#fff;padding:8px 15px;border-radius:4px;cursor:pointer;font-size:11px;display:inline-block}
+    .file-input-label:hover{background:#5a6268}
+    .file-input-label input{display:none}
+    .status-message{margin-left:10px;padding:5px 10px;border-radius:4px;font-size:10px;font-weight:bold}
+    .status-success{background:#d4edda;color:#155724}
+    .status-error{background:#f8d7da;color:#721c24}
+    .status-warning{background:#fff3cd;color:#856404}
+    .header{background:linear-gradient(135deg,#1e5a3e,#2d7a4f);color:#fff;padding:15px;display:flex;justify-content:space-between;align-items:center}
+    .logo-section{display:flex;align-items:center;gap:10px}
+    .logo{width:40px;height:40px;background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#1e5a3e;font-weight:bold}
+    .company-info h1{margin:0;font-size:16px;font-weight:bold}
+    .company-info p{margin:2px 0;font-size:10px;opacity:.9}
+    .document-info h2{margin:0;font-size:18px;font-weight:bold}
+    .section{border-bottom:1px solid #ddd}
+    .section-header{background:#1e5a3e;color:#fff;padding:8px 15px;font-weight:bold;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+    .section-content{padding:15px}
+    .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:15px}
+    .form-group{display:flex;flex-direction:column}
+    .form-group.full-width{grid-column:1 / -1}
+    label{font-weight:bold;color:#333;margin-bottom:3px;font-size:10px;text-transform:uppercase}
+    input[type="text"],input[type="date"],input[type="tel"],input[type="email"],textarea,select{border:1px solid #ccc;padding:6px 8px;font-size:11px;border-radius:3px;background:#f9f9f9}
+    input:focus,textarea:focus,select:focus{outline:0;border-color:#1e5a3e;background:#fff}
+    textarea{resize:vertical;min-height:60px}
+    .work-table{width:100%;border-collapse:collapse;margin-top:10px;table-layout:fixed;background:#fff}
+    .work-table th{background:#1e5a3e;color:#fff;font-weight:bold;text-align:center;padding:8px 4px;font-size:11px;border:1px solid #1e5a3e;white-space:normal;word-wrap:break-word}
+    .work-table td{border:1px solid #ddd;padding:4px;text-align:left;font-size:10px;vertical-align:middle;background:#fff}
+    .work-table input[type="text"],.work-table input[type="date"],.work-table select,.work-table textarea{border:1px solid transparent;width:100%;height:28px;padding:2px 4px;background:#f9f9f9;font-size:10px;margin:0;box-sizing:border-box}
+    .work-table textarea{min-height:28px;resize:vertical;font-family:Arial, sans-serif}
+    .work-table input:focus,.work-table textarea:focus,.work-table select:focus{background:#fff;border:1px solid #1e5a3e;outline:none}
+    .add-row-btn{background:#28a745;color:#fff;border:0;padding:8px 15px;border-radius:3px;cursor:pointer;font-size:11px;margin-top:10px}
+    .add-row-btn:hover{background:#218838}
+    .remove-row-btn{background:#dc3545;color:#fff;border:0;padding:4px 8px;border-radius:3px;cursor:pointer;font-size:10px}
+    .remove-row-btn:hover{background:#c82333}
+    .data-sync-indicator{position:fixed;top:20px;right:20px;background:#1e5a3e;color:#fff;padding:8px 15px;border-radius:20px;font-size:11px;z-index:1000;opacity:0;transition:opacity .3s}
+    .data-sync-indicator.show{opacity:1}
+    .excel-mapping-info{background:#e3f2fd;border:1px solid #1976d2;border-radius:4px;padding:10px;margin:10px 0;font-size:10px}
+    .excel-mapping-info strong{color:#1976d2}
+    .no-print{ }
+    .radio-group{display:flex;gap:20px;align-items:center;margin-top:5px;}
+    .radio-group label{font-weight:normal;text-transform:none;display:flex;align-items:center;gap:5px;cursor:pointer;}
+    .radio-group input[type="radio"]{cursor:pointer;}
+    .series-info{background:#fff3cd;border:1px solid #ffc107;border-radius:4px;padding:8px;margin:8px 0;font-size:10px;color:#856404;}
+    .service-autocomplete{position:relative;}
+    .service-suggestions{position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #1e5a3e;border-top:0;max-height:200px;overflow-y:auto;z-index:1000;display:none;box-shadow:0 4px 6px rgba(0,0,0,0.1);}
+    .service-suggestions div{padding:6px 8px;cursor:pointer;font-size:10px;border-bottom:1px solid #eee;color:#333;}
+    .service-suggestions div:hover{background:#f0f0f0;}
+    .service-suggestions.show{display:block;}
+    .modal-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,.8); z-index:9999; justify-content:center; align-items:center; padding:20px; }
+    .modal-content { background:white; border-radius:8px; width:100%; max-width:400px; padding:20px; box-shadow:0 10px 40px rgba(0,0,0,.3); }
+    .modal-content h3 { margin-top:0; color:#1e5a3e; font-size:16px;}
+    .search-box { display:flex; gap:10px; margin-top:15px; }
+    .search-box input { flex:1; padding:10px; font-size:14px; text-transform:uppercase; border:1px solid #ccc; border-radius:4px; }
+    .search-box button { background:#1e5a3e; color:white; border:none; padding:10px 20px; border-radius:4px; cursor:pointer; font-weight:bold; }
+    .close-modal { margin-top:15px; background:#6c757d; color:white; border:none; padding:8px 15px; border-radius:4px; cursor:pointer; width:100%; }
+    @media print{
+      .nav-tabs,.excel-controls,.excel-mapping-info,.no-print,.modal-overlay{display:none !important;}
+      .service-suggestions{display:none !important;}
+      body{background:#fff;padding:0;font-size:11px}
+      .main-container{margin:0;max-width:none;padding:0}
+      @page{size:A4;margin:10mm}
+      #profileTab{display:none !important;}
+      #workorderTab{display:block !important;}
+    }
+  </style>
+</head>
+<body>
+<div class="main-container">
+  <div id="syncIndicator" class="data-sync-indicator">✓ Datos sincronizados</div>
+
+  <div id="dbSearchModal" class="modal-overlay">
+    <div class="modal-content">
+      <h3>🔍 Buscar Cliente en BD Maestra</h3>
+      <p style="font-size:11px; color:#666;">Ingresa el RFC del cliente para extraer sus sucursales registradas.</p>
+      <div class="search-box">
+        <input type="text" id="dbSearchRFC" placeholder="EJ. ABC123456XX0" maxlength="13">
+        <button onclick="executeDbSearch()" id="btnSearchSubmit">Buscar</button>
+      </div>
+      <div id="dbSearchResult" style="margin-top:15px; font-size:11px;"></div>
+      <button class="close-modal" onclick="closeDbSearchModal()">Cerrar</button>
+    </div>
+  </div>
+
+  <div class="nav-tabs">
+    <button class="nav-tab active" id="profileTabButton" onclick="switchTab('profile')">👤 Perfil</button>
+    <button class="nav-tab" id="workorderTabButton" onclick="switchTab('workorder')">📋 Orden de trabajo</button>
+  </div>
+
+  <div id="profileTab" class="tab-content active">
+    <div class="excel-controls">
+      <strong>📊 Gestión de Perfil:</strong>
+      <label class="file-input-label">📂 Examinar...
+        <input type="file" id="profileFile" accept=".xlsx,.xls"/>
+      </label>
+      <span id="fileSelectedName" style="font-size:10px;color:#666;margin-right:10px;">No se ha seleccionado archivo.</span>
+      <button onclick="loadProfile()">Cargar Perfil</button>
+      <span style="color:#ccc; margin:0 10px;">|</span>
+      <button class="btn-db-search" onclick="openDbSearchModal()">🔍 Buscar en BD</button>
+      <span id="profileStatus"></span>
+    </div>
+    <div class="excel-mapping-info">
+      <strong>📊 Mapeo Excel / BD:</strong> Los datos se pueden cargar desde el archivo Excel original o consultando directamente la Base de Datos Maestra.
+    </div>
+    <div class="header">
+      <div class="logo-section">
+        <div class="logo">EA</div>
+        <div class="company-info">
+          <h1>EJECUTIVA AMBIENTAL</h1>
+          <p style="font-size:8px;">EA-FSOC-06.03, REV 01, EMISIÓN: ENERO, 2026</p>
+        </div>
+      </div>
+      <div class="document-info">
+        <h2>PERFIL DE DATOS DEL CLIENTE</h2>
+        <p>Información General y Contacto</p>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-header">Información General</div>
+      <div class="section-content">
+        <div class="form-grid">
+          <div class="form-group"><label>Nombre y puesto solicitante</label><input type="text" id="requestorName" onchange="syncData()"></div>
+          <div class="form-group"><label>Teléfono</label><input type="tel" id="requestorPhone" onchange="syncData()"></div>
+          <div class="form-group full-width"><label>Denominación/Razón Social</label><input type="text" id="companyName" onchange="syncData()"></div>
+          <div class="form-group"><label>RFC</label><input type="text" id="rfc" onchange="syncData()"></div>
+          <div class="form-group"><label>Sucursal</label><input type="text" id="branch" onchange="syncData()"></div>
+          <div class="form-group full-width"><label>Representante Legal</label><input type="text" id="legalRep" onchange="syncData()"></div>
+          <div class="form-group full-width"><label>Dirección donde se evaluará</label><textarea id="evaluationAddress" onchange="syncData()"></textarea></div>
+          <div class="form-group"><label>Responsable de atendernos</label><input type="text" id="contactPerson" onchange="syncData()"></div>
+          <div class="form-group"><label>Teléfono</label><input type="tel" id="contactPhone" onchange="syncData()"></div>
+          <div class="form-group full-width"><label>Giro</label><input type="text" id="businessType" onchange="syncData()"></div>
+          <div class="form-group full-width"><label>Actividad Principal</label><textarea id="mainActivity" onchange="syncData()"></textarea></div>
+          <div class="form-group"><label>Registro Patronal</label><input type="text" id="patronalRegistry" onchange="syncData()"></div>
+          <div class="form-group"><label>Capacidad de Operación</label><input type="text" id="operationCapacity" onchange="syncData()"></div>
+          <div class="form-group"><label>Capacidad Instalada</label><input type="text" id="installedCapacity" onchange="syncData()"></div>
+          <div class="form-group full-width"><label>Días, turnos y horarios de trabajo</label><textarea id="workSchedule" onchange="syncData()"></textarea></div>
+        </div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-header">Sobre el Informe de Resultados</div>
+      <div class="section-content">
+        <div class="form-grid">
+          <div class="form-group"><label>Nombre de a quien se dirige</label><input type="text" id="reportRecipientName" onchange="syncData()"></div>
+          <div class="form-group"><label>Puesto de a quien se dirige</label><input type="text" id="reportRecipientPosition" onchange="syncData()"></div>
+          <div class="form-group full-width"><label>Correo a enviar el informe digital</label><input type="email" id="reportEmail" onchange="syncData()"></div>
+        </div>
+        <div class="form-group full-width">
+          <label>Breve descripción del proceso operativo o productivo</label>
+          <textarea id="processDescription" onchange="syncData()" style="min-height:100px;"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="workorderTab" class="tab-content">
+    <div class="excel-controls">
+      <strong>🔧 Gestión de Orden:</strong>
+      <button onclick="generateWorkOrder()">Generar desde Perfil</button>
+      <button onclick="registerToSheets()" style="background:#007bff;">🚀 Registrar OT en API</button>
+      <button onclick="printWorkOrder()">Imprimir/PDF</button>
+      <button onclick="sendWorkOrder()">Enviar por Email</button>
+      <span id="workorderStatus"></span>
+    </div>
+    <div class="header">
+      <div class="logo-section">
+        <div class="logo">EA</div>
+        <div class="company-info">
+          <h1>EJECUTIVA AMBIENTAL</h1>
+          <p style="font-size:8px;">EA-FSOC-06.03, REV 01, EMISIÓN: ENERO, 2026</p>
+        </div>
+      </div>
+      <div class="document-info">
+        <h2>ORDEN DE TRABAJO</h2>
+        <p id="workOrderPageInfo">Página 1 de 1</p>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-header">Información del Servicio</div>
+      <div class="section-content">
+        <div class="form-grid">
+          <div class="form-group full-width no-print">
+            <label>Serie de Orden (Operativo)</label>
+            <div class="radio-group">
+              <label><input type="radio" name="orderSeries" value="OT" checked onchange="updateOrderNumber()"> Serie Normal (OT)</label>
+              <label><input type="radio" name="orderSeries" value="OTB" onchange="updateOrderNumber()"> Serie B (OTB)</label>
+            </div>
+            <div class="series-info" id="seriesInfo">Último: OT-000 | Siguiente sugerido: ...</div>
+          </div>
+          <div class="form-group"><label>N° de Orden de Servicio</label><input type="text" id="wo_orderNumber" placeholder="OT26-0106-001"></div>
+          <div class="form-group"><label>Fecha de Emisión</label><input type="date" id="wo_issueDate"></div>
+          <div class="form-group"><label>Referencia de Cotización</label><input type="text" id="wo_quoteRef"></div>
+        </div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-header">Información del Cliente</div>
+      <div class="section-content">
+        <div class="form-grid">
+          <div class="form-group"><label>Nombre o Razón Social</label><input type="text" id="wo_clientName" readonly style="background:#e9ecef"></div>
+          <div class="form-group"><label>Sucursal</label><input type="text" id="wo_branch" readonly style="background:#e9ecef"></div>
+          <div class="form-group full-width"><label>Dirección del Servicio</label><input type="text" id="wo_serviceAddress" readonly style="background:#e9ecef"></div>
+          <div class="form-group"><label>Responsable de atendernos</label><input type="text" id="wo_contactName" readonly style="background:#e9ecef"></div>
+          <div class="form-group"><label>Teléfono</label><input type="tel" id="wo_phone" readonly style="background:#e9ecef"></div>
+          <div class="form-group"><label>Correo</label><input type="email" id="wo_email"></div>
+        </div>
+        <div class="form-group">
+          <label>A quien se dirige el informe</label>
+          <div class="form-grid">
+            <div class="form-group"><label>Nombre</label><input type="text" id="wo_reportTo" readonly style="background:#e9ecef"></div>
+            <div class="form-group"><label>Puesto</label><input type="text" id="wo_reportPosition" readonly style="background:#e9ecef"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-header">Desarrollo del Trabajo</div>
+      <div class="section-content">
+        <table class="work-table" id="workTable">
+          <thead>
+          <tr>
+            <th style="width:15%">SERVICIO</th>
+            <th style="width:15%">PERSONAL ASIGNADO</th>
+            <th style="width:15%">FECHA</th>
+            <th style="width:15%">CANTIDAD</th>
+            <th style="width:38%">OBSERVACIONES</th>
+            <th style="width:2%"></th>
+          </tr>
+          </thead>
+          <tbody id="workTableBody">
+          <tr>
+            <td>
+              <div class="service-autocomplete">
+                <input type="text" class="service-input" placeholder="NOM-XXX-STPS">
+                <div class="service-suggestions"></div>
+              </div>
+            </td>
+            <td>
+              <select>
+                <option value="">Seleccionar...</option>
+                <option>Martín Luna</option><option>Jimmy Ayala</option><option>Iván Zárate</option>
+                <option>Eduardo Campos</option><option>Externo - Adrián H</option><option>Externo</option>
+              </select>
+            </td>
+            <td><input type="date"></td>
+            <td><input type="text" placeholder="10 puntos, 2 ZC... etc"></td>
+            <td><textarea rows="2"></textarea></td>
+            <td style="text-align:center;"><button class="remove-row-btn" onclick="removeRow(this)">✖</button></td>
+          </tr>
+          </tbody>
+        </table>
+        <button class="add-row-btn" onclick="addWorkRow()">+ Agregar Fila</button>
+        <div class="form-group full-width" style="margin-top:15px;">
+          <label>Observaciones Generales</label>
+          <textarea id="wo_generalObservations" style="min-height:80px;" placeholder="📋 RECORDATORIO: Portar EPP..."></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-header">Autorización y Firmas</div>
+      <div class="section-content">
+        <div class="form-grid">
+          <div class="form-group"><label>Realizó</label><select id="wo_preparedBy"><option value="">Seleccionar...</option><option value="MARTIN LUNA CÓRDOVA - JEFE DE LABORATORIO">MARTIN LUNA CÓRDOVA - JEFE DE LABORATORIO</option></select></div>
+          <div class="form-group"><label>Autorizó</label><input type="text" id="wo_authorizedBy" value="ING. EDUWIN IVÁN HERNÁNDEZ ZÁRATE - DIRECTOR" readonly style="background:#e9ecef"></div>
+        </div>
+        <div class="form-group full-width" style="margin-top:20px;padding:15px;border:1px solid #ddd;border-radius:4px;background:#f8f9fa;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div style="flex:2;margin-right:20px;">
+              <label style="font-weight:bold;color:#1e5a3e;">Firma del Cliente</label>
+              <p style="margin:10px 0;font-style:italic;font-size:11px;">"He recibido visita del proveedor para la realización de los servicios señalados en la presente orden."</p>
+              <div style="margin-top:30px;border-bottom:1px solid #333;width:70%;display:inline-block;"></div>
+              <p style="margin:5px 0;font-size:10px;">Firma y Nombre del Cliente</p>
+            </div>
+            <div style="flex:1;text-align:center;">
+              <div id="qrCodeContainer" style="text-align:center;padding:10px;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+  // ✅ NUEVA API CENTRAL
+  const SHEETS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby8t7Py-cilePxLiGa-Lq7Df73XaRlmkRYV_kXbTs79HFydaJyub8muA0PBLRkPevUuXg/exec';
+  const PREDEFINED_SERVICES = ['NOM-001-STPS','NOM-002-STPS','NOM-004-STPS','NOM-006-STPS','NOM-011-STPS','NOM-015-STPS','NOM-017-STPS','NOM-019-STPS','NOM-022-STPS','NOM-024-STPS','NOM-025-STPS','NOM-026-STPS','NOM-030-STPS','NOM-081-SEMARNAT','PROTECCIÓN CIVIL','CAPACITACIÓN','DICTAMEN ESTRUCTURAL','ESTUDIO DE RIESGO','PLAN DE EMERGENCIA','PROGRAMA INTERNO'];
+
+  let profileData = {};
+  const excelCellMapping = {
+    'requestorName':'D3','companyName':'D5','branch':'D6','rfc':'D7','requestorPhone':'I7','legalRep':'D9',
+    'evaluationAddress':'D11','contactPerson':'D13','contactPhone':'I13','businessType':'D15',
+    'mainActivity':'D17','patronalRegistry':'D19','operationCapacity':'D21','installedCapacity':'I21',
+    'workSchedule':'D23','reportRecipientName':'D26','reportEmail':'D30','reportRecipientPosition':'D28'
+  };
+
+  // ================== BÚSQUEDA BD MULTI-SUCURSAL ==================
+  function openDbSearchModal() {
+    document.getElementById('dbSearchModal').style.display = 'flex';
+    document.getElementById('dbSearchRFC').value = '';
+    document.getElementById('dbSearchResult').innerHTML = '';
+  }
+  function closeDbSearchModal() { document.getElementById('dbSearchModal').style.display = 'none'; }
+
+  async function executeDbSearch() {
+    const rfc = document.getElementById('dbSearchRFC').value.trim();
+    const resultDiv = document.getElementById('dbSearchResult');
+    const btn = document.getElementById('btnSearchSubmit');
+    if(!rfc || rfc.length < 12) { resultDiv.innerHTML = '<span style="color:#dc3545;">RFC inválido.</span>'; return; }
+    
+    btn.disabled = true; btn.textContent = 'Buscando...'; resultDiv.innerHTML = 'Buscando sucursales...';
+    
+    try {
+      const response = await fetch(`${SHEETS_SCRIPT_URL}?action=buscarClienteRFC&rfc=${encodeURIComponent(rfc)}`);
+      const data = await response.json();
+      
+      if(data.found && data.sucursales && data.sucursales.length > 0) {
+        window._returningClientBranches = data.sucursales;
+        let optionsHtml = '<option value="">-- Seleccione una sucursal --</option>';
+        data.sucursales.forEach((suc, idx) => {
+          optionsHtml += `<option value="${idx}">🏢 ${suc.sucursal || 'Matriz'}</option>`;
+        });
+        resultDiv.innerHTML = `
+          <strong>Cliente:</strong> <span style="font-size:13px;">${data.razon_social}</span><br><br>
+          <label style="font-size:11px; font-weight:bold; color:#1e5a3e;">Seleccione la sucursal para la OT:</label>
+          <select id="branchSelectModal" style="width:100%; padding:8px; margin-top:5px; margin-bottom:15px; border:1px solid #ccc; border-radius:4px;">
+            ${optionsHtml}
+          </select>
+          <button type="button" onclick="applyClientData()" style="background:#1e5a3e; color:#fff; border:none; padding:10px 25px; border-radius:5px; font-size:13px; font-weight:600; cursor:pointer; width:100%;">Cargar Datos</button>
+        `;
+      } else {
+        resultDiv.innerHTML = '<span style="color:#856404; background:#fff3cd; padding:5px; border-radius:3px;">No se encontró este RFC. Puedes cargar el Excel.</span>';
+      }
+    } catch(err) {
+      resultDiv.innerHTML = `<span style="color:#dc3545;">Error de conexión.</span>`;
+    } finally {
+      btn.disabled = false; btn.textContent = 'Buscar';
+    }
+  }
+
+  function applyClientData() {
+    const select = document.getElementById('branchSelectModal');
+    if (!select || select.value === "") { alert("Seleccione una sucursal."); return; }
+    
+    const data = window._returningClientBranches[select.value];
+    
+    // Mapeo adaptado a las llaves que devuelve la Fase 2 del Backend
+    document.getElementById('companyName').value = data.razon_social || '';
+    document.getElementById('branch').value = data.sucursal || '';
+    document.getElementById('rfc').value = data.rfc || '';
+    document.getElementById('evaluationAddress').value = data.direccion_evaluacion || '';
+    document.getElementById('contactPerson').value = data.responsable || '';
+    document.getElementById('contactPhone').value = data.telefono_responsable || '';
+    document.getElementById('reportEmail').value = data.correo_informe || '';
+    
+    profileData.link_drive_cliente = data.link_drive_cliente || ''; 
+    syncData();
+    closeDbSearchModal();
+    showStatus('profileStatus','Datos de sucursal cargados','success');
+  }
+
+  // ================== LÓGICA EXCEL Y UI ==================
+  function getCellValue(ws, cellRef) { try { const c = ws[cellRef]; return (c && c.v !== undefined) ? c.v : ''; } catch(e) { return ''; } }
+  function showStatus(elementId, message, type = 'success') {
+    const el = document.getElementById(elementId); if (!el) return;
+    el.innerHTML = `<span class="status-message status-${type}">${message}</span>`;
+    setTimeout(() => { el.innerHTML = ''; }, 3000);
+  }
+  function showSyncIndicator() {
+    const el = document.getElementById('syncIndicator');
+    if (el) { el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 2000); }
+  }
+
+  function switchTab(name) {
+    try { window.scrollTo({top:0, behavior:'smooth'}); } catch(e) { window.scrollTo(0,0); }
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    const tabMap = { 'profile': { content: 'profileTab', button: 'profileTabButton' }, 'workorder': { content: 'workorderTab', button: 'workorderTabButton' } };
+    if (tabMap[name]) {
+      document.getElementById(tabMap[name].content).classList.add('active');
+      document.getElementById(tabMap[name].button).classList.add('active');
+    }
+    syncData();
+  }
+
+  function syncData() {
+    ['companyName','branch','evaluationAddress','contactPerson','contactPhone','reportEmail','rfc'].forEach(id => {
+      const el = document.getElementById(id); if (el) profileData[id] = el.value;
+    });
+    const map = { 'companyName': 'wo_clientName','branch': 'wo_branch','evaluationAddress': 'wo_serviceAddress','contactPerson': 'wo_contactName','contactPhone': 'wo_phone','reportEmail': 'wo_email' };
+    Object.keys(map).forEach(k => { const f = document.getElementById(map[k]); if (f) f.value = profileData[k] || ''; });
+    showSyncIndicator();
+  }
+
+  function loadProfile() {
+    const input = document.getElementById('profileFile'); const file = input?.files[0];
+    if (!file) { showStatus('profileStatus','Selecciona un archivo Excel','warning'); return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const data = new Uint8Array(e.target.result); const wb = XLSX.read(data, {type:'array'}); const ws = wb.Sheets[wb.SheetNames[0]];
+        Object.keys(excelCellMapping).forEach(id => {
+          const el = document.getElementById(id); if (el) el.value = String(getCellValue(ws, excelCellMapping[id]));
+        });
+        profileData.link_drive_cliente = ''; // Manual excel = no drive link
+        syncData(); showStatus('profileStatus','Perfil cargado exitosamente','success');
+      } catch(err) { showStatus('profileStatus','Error al leer archivo Excel','error'); }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  // ================== LÓGICA OT ORIGINAL ==================
+  function getSelectedSeries() { const radio = document.querySelector('input[name="orderSeries"]:checked'); return radio ? radio.value : 'OT'; }
+  function getLastOrderNumber(series) { return localStorage.getItem(`lastOrder_${series}`) || `${series}-000`; }
+  function saveLastOrderNumber(series, orderNumber) { localStorage.setItem(`lastOrder_${series}`, orderNumber); }
+  function generateNextOrderNumber(series) {
+    const lastOrder = getLastOrderNumber(series); const parts = lastOrder.split('-'); const lastNum = parseInt(parts[parts.length - 1], 10) || 0;
+    const today = new Date(); const yy = String(today.getFullYear()).slice(-2); const mm = String(today.getMonth() + 1).padStart(2, '0'); const dd = String(today.getDate()).padStart(2, '0');
+    return `${series}${yy}-${mm}${dd}-${String(lastNum + 1).padStart(3, '0')}`;
+  }
+  function updateOrderNumber() {
+    const series = getSelectedSeries();
+    document.getElementById('seriesInfo').textContent = `Último: ${getLastOrderNumber(series)} | Siguiente sugerido: ${generateNextOrderNumber(series)}`;
+    document.getElementById('wo_orderNumber').value = generateNextOrderNumber(series);
+  }
+  function generateWorkOrder() {
+    document.getElementById('wo_issueDate').value = new Date().toISOString().split('T')[0];
+    updateOrderNumber(); syncData(); generateQRCode(); showStatus('workorderStatus','Orden de trabajo generada automáticamente','success');
+  }
+  function generateQRCode() {
+    const cont = document.getElementById('qrCodeContainer'); if (!cont) return; cont.innerHTML = '';
+    const img = document.createElement('img'); img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=tel:2229417295'; img.style.cssText = 'width:80px;height:80px;border:1px solid #ccc;border-radius:4px;'; cont.appendChild(img);
+  }
+  function addWorkRow() {
+    const tbody = document.getElementById('workTableBody'); const tr = document.createElement('tr');
+    tr.innerHTML = `<td><div class="service-autocomplete"><input type="text" class="service-input" placeholder="NOM-XXX-STPS"><div class="service-suggestions"></div></div></td><td><select><option value="">Seleccionar...</option><option>Martín Luna</option><option>Jimmy Ayala</option><option>Iván Zárate</option><option>Eduardo Campos</option><option>Externo - Adrián H</option><option>Externo</option></select></td><td><input type="date"></td><td><input type="text" placeholder="10 puntos, 2 ZC... etc"></td><td><textarea rows="2"></textarea></td><td style="text-align:center;"><button class="remove-row-btn" onclick="removeRow(this)">✖</button></td>`;
+    tbody.appendChild(tr); setupServiceAutocomplete(tr.querySelector('.service-input'));
+  }
+  function removeRow(btn) { if (btn && btn.closest) btn.closest('tr').remove(); }
+  function setupServiceAutocomplete(input) {
+    if (!input) return; const container = input.closest('.service-autocomplete'); const suggestionsDiv = container.querySelector('.service-suggestions');
+    input.addEventListener('input', function() {
+      const val = this.value.toUpperCase().trim();
+      if (val.length < 2) { suggestionsDiv.classList.remove('show'); return; }
+      const filtered = PREDEFINED_SERVICES.filter(s => s.toUpperCase().includes(val));
+      if (filtered.length) { suggestionsDiv.innerHTML = filtered.map(s => `<div data-service="${s}">${s}</div>`).join(''); suggestionsDiv.classList.add('show'); } else { suggestionsDiv.classList.remove('show'); }
+    });
+    suggestionsDiv.addEventListener('click', (e) => {
+      const item = e.target.closest('div[data-service]'); if (!item) return; input.value = item.getAttribute('data-service') || ''; suggestionsDiv.classList.remove('show');
+    });
+    document.addEventListener('click', (e) => { if (!container.contains(e.target)) suggestionsDiv.classList.remove('show'); }, {capture:true});
+  }
+
+  function printWorkOrder() {
+    const controls = document.querySelectorAll('.excel-controls, .nav-tabs, .excel-mapping-info'); controls.forEach(e => e.style.display = 'none');
+    document.getElementById('profileTab').style.display = 'none'; document.getElementById('workorderTab').style.display = 'block';
+    window.print();
+    setTimeout(() => { controls.forEach(e => e.style.display = ''); document.getElementById('profileTab').style.display = ''; switchTab('workorder'); }, 800);
+  }
+  function sendWorkOrder() {
+    const email = document.getElementById('wo_email')?.value; const orderNumber = document.getElementById('wo_orderNumber')?.value || 'Nueva';
+    if (!email) { showStatus('workorderStatus','No hay email de cliente disponible','warning'); return; }
+    window.location.href = `mailto:${email}?cc=eduwin.ejecutiva@gmail.com&subject=Orden de Trabajo ${orderNumber}`;
+  }
+
+  // ================== REGISTRO A LA API CENTRAL ==================
+  async function registerToSheets() {
+    const btn = event.target; const originalText = btn.textContent;
+    btn.textContent = '⏳ Registrando...'; btn.disabled = true;
+    showStatus('workorderStatus','Enviando datos a Base Maestra...','warning');
+
+    try {
+      const orderNumber = document.getElementById('wo_orderNumber')?.value || '';
+      const company = document.getElementById('wo_clientName')?.value || '';
+      const branch = document.getElementById('wo_branch')?.value || '';
+      const rfc = document.getElementById('rfc')?.value || profileData.rfc || '';
+      
+      const services = [], personnel = [], dates = [];
+      document.querySelectorAll('#workTableBody tr').forEach(row => {
+        const fields = row.querySelectorAll('input, select, textarea');
+        if (fields.length >= 3 && fields[0].value) {
+          services.push((fields[0].value || '').trim());
+          if(fields[1].value) personnel.push((fields[1].value || '').trim());
+          if(fields[2].value) dates.push((fields[2].value || '').trim());
+        }
+      });
+
+      const payload = {
+        action: 'registrarOT',
+        ot_folio: orderNumber,
+        tipo_orden: getSelectedSeries(),
+        nom_servicio: services.join(', '),
+        cliente_razon_social: company,
+        sucursal: branch,
+        rfc: rfc,
+        personal_asignado: [...new Set(personnel.filter(Boolean))].join(', '),
+        fecha_visita: dates[0] || '',
+        fecha_entrega_limite: '', // El Dashboard lo calculará ahora
+        link_drive_cliente: profileData.link_drive_cliente || '', // Link heredado para la Fase 3
+        observaciones: document.getElementById('wo_generalObservations')?.value || ''
+      };
+
+      const response = await fetch(SHEETS_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      });
+      
+      const result = await response.json();
+      if(result.success) {
+        saveLastOrderNumber(getSelectedSeries(), orderNumber);
+        updateOrderNumber();
+        showStatus('workorderStatus', '✅ ¡OT registrada en la Base Maestra!', 'success');
+      } else {
+        showStatus('workorderStatus', '❌ Error: ' + result.error, 'error');
+      }
+    } catch (e) {
+      showStatus('workorderStatus','❌ Error de conexión','error');
+    } finally {
+      if(btn) { btn.textContent = originalText; btn.disabled = false; }
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const fileInput = document.getElementById('profileFile');
+    const fileNameSpan = document.getElementById('fileSelectedName');
+    if (fileInput && fileNameSpan) {
+      fileInput.addEventListener('change', function() {
+        if (this.files && this.files[0]) {
+          fileNameSpan.textContent = `Archivo: ${this.files[0].name}`; fileNameSpan.style.color = '#28a745'; fileNameSpan.style.fontWeight = 'bold';
+        } else {
+          fileNameSpan.textContent = 'No se ha seleccionado ningún archivo.'; fileNameSpan.style.color = '#666'; fileNameSpan.style.fontWeight = 'normal';
+        }
+      });
+    }
+    const issueDateInput = document.getElementById('wo_issueDate');
+    if (issueDateInput) issueDateInput.value = new Date().toISOString().split('T')[0];
+    document.querySelectorAll('.service-input').forEach(setupServiceAutocomplete);
+    document.querySelectorAll('input[name="orderSeries"]').forEach(r => r.addEventListener('change', updateOrderNumber));
+    updateOrderNumber();
+    document.querySelectorAll('.nav-tab').forEach(tab => tab.addEventListener('click', syncData));
+    generateQRCode();
+  });
+</script>
+</body></html>
