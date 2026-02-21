@@ -341,7 +341,7 @@
               </div>
             </div>
             <div style="text-align: center; margin-top: 30px;">
-              <button id="btn-enviar" class="ea-btn-submit" onclick="enviarTodo()" disabled>🚀 Generar Expediente y Enviar</button>
+              <button id="btn-enviar" class="ea-btn-submit" onclick="enviarTodo()" disabled>🚀 Crear Expediente al Subir Evidencias</button>
             </div>
             <div id="main-loader" class="loader">
               <div class="spinner"></div>
@@ -653,6 +653,17 @@
     if(allTableroData && allTableroData.find(r => String(r.ot).toUpperCase() === ot.toUpperCase() && extraerCodigoNOM(String(r.nom)).toUpperCase() === nomCode.toUpperCase())) {
       alert(`⚠️ Ya existe un expediente registrado para la OT "${ot}" con el servicio "${nom}".`); return;
     }
+
+    const evidenciasCount =
+      (document.getElementById('up-ot').files.length || 0) +
+      (document.getElementById('up-campo').files.length || 0) +
+      (document.getElementById('up-croquis').files.length || 0) +
+      (document.getElementById('up-fotos').files.length || 0);
+    if (evidenciasCount === 0) {
+      alert('⚠️ Para crear el expediente, primero sube al menos un archivo de evidencia (OT, HDC, Croquis o Fotos).');
+      return;
+    }
+
     if (!confirm(`¿Confirmar creación de expediente para OT: ${ot} - ${nom}?`)) return;
     btn.disabled = true;
     document.getElementById('main-loader').style.display = 'block';
@@ -774,7 +785,7 @@
           estatus: r.estatus || 'NO INICIADO',
           linkDrive: r.linkDrive || r.link_drive || r.link_drive_cliente || '',
           tipoOrden: r.tipoOrden || r.tipo_orden || ''
-        }));
+        })).filter(r => String(r.numInforme || '').trim() !== '');
         aplicarFiltros();
       }
     } catch (e) {
