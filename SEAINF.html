@@ -234,24 +234,7 @@
         <div class="ea-form-content">
           <div class="ea-section" id="card-paso1">
             <div class="ea-section-header">
-              <span class="ea-step-badge">PASO 1</span> PERFIL DE DATOS DEL CLIENTE
-            </div>
-            <div class="ea-form-grid">
-              <div class="ea-form-group full-width">
-                <label class="ea-label">Archivo Excel del Cliente (.xlsx, .xls) <span class="ea-required">*</span></label>
-                <div class="ea-file-zone">
-                  <input type="file" id="excelFile" accept=".xlsx, .xls">
-                  <div class="ea-helper-text" style="margin-top: 8px;">Arrastra o selecciona el archivo para extraer los datos automáticamente</div>
-                </div>
-              </div>
-            </div>
-            <div id="perfil-status-box" class="status-box box-warning">
-              <span id="info-perfil-quick">⚠️ Sin cargar - Sube el Excel para desbloquear los siguientes pasos.</span>
-            </div>
-          </div>
-          <div class="ea-section step-locked" id="card-paso2">
-            <div class="ea-section-header">
-              <span class="ea-step-badge">PASO 2</span> INFORMACIÓN DEL SERVICIO
+              <span class="ea-step-badge">PASO 1</span> SELECCIONAR ORDEN DE TRABAJO
             </div>
             <div class="ea-form-grid">
               <div class="ea-form-group">
@@ -273,32 +256,35 @@
                 <input type="text" id="field-num-informe" class="ea-input" readonly placeholder="Se generará al completar OT y NOM" style="font-size: 16px; text-align: center;">
               </div>
             </div>
+            <div id="ot-autofill-box" class="status-box box-warning" style="display:none;">
+              <span id="ot-autofill-msg">Datos cargados desde la OT.</span>
+            </div>
             <div style="border-top: 1px dashed var(--border); margin: 25px 0;"></div>
             <div class="ea-form-grid">
               <div class="ea-form-group">
-                <label class="ea-label">Cliente Inicial <span class="excel-cell-indicator">Excel D5</span> <span class="ea-required">*</span></label>
+                <label class="ea-label">Cliente Inicial <span class="ea-required">*</span></label>
                 <input type="text" id="field-cliente-inicial" class="ea-input" required placeholder="Razón Social Origen">
               </div>
               <div class="ea-form-group">
-                <label class="ea-label">Cliente Final / Sucursal <span class="excel-cell-indicator">Excel D6</span> <span class="ea-required">*</span></label>
+                <label class="ea-label">Cliente Final / Sucursal <span class="ea-required">*</span></label>
                 <input type="text" id="field-cliente-final" class="ea-input" required placeholder="Sucursal o Empresa Destino">
               </div>
             </div>
             <div class="ea-form-grid">
               <div class="ea-form-group">
-                <label class="ea-label">Solicitante <span class="excel-cell-indicator">Excel D3</span></label>
+                <label class="ea-label">Solicitante</label>
                 <input type="text" id="field-solicitante" class="ea-input">
               </div>
               <div class="ea-form-group">
-                <label class="ea-label">RFC <span class="excel-cell-indicator">Excel D7</span></label>
+                <label class="ea-label">RFC</label>
                 <input type="text" id="field-rfc" class="ea-input">
               </div>
               <div class="ea-form-group">
-                <label class="ea-label">Teléfono <span class="excel-cell-indicator">Excel I7</span></label>
+                <label class="ea-label">Teléfono</label>
                 <input type="text" id="field-tel" class="ea-input">
               </div>
               <div class="ea-form-group full-width">
-                <label class="ea-label">Dirección Centro de Trabajo <span class="excel-cell-indicator">Excel D11</span></label>
+                <label class="ea-label">Dirección Centro de Trabajo</label>
                 <input type="text" id="field-dir" class="ea-input">
               </div>
             </div>
@@ -323,9 +309,9 @@
               </div>
             </div>
           </div>
-          <div class="ea-section step-locked" id="card-paso3" style="border-bottom: none;">
+          <div class="ea-section step-locked" id="card-paso2" style="border-bottom: none;">
             <div class="ea-section-header">
-              <span class="ea-step-badge">PASO 3</span> DOCUMENTACIÓN DIGITAL
+              <span class="ea-step-badge">PASO 2</span> DOCUMENTACIÓN DIGITAL
             </div>
             <div class="ea-form-grid">
               <div class="ea-form-group">
@@ -343,6 +329,15 @@
               <div class="ea-form-group">
                 <label class="ea-label">4. Fotos</label>
                 <div class="ea-file-zone"><input type="file" id="up-fotos" multiple accept=".pdf,.jpg,.jpeg,.png,.zip"></div>
+              </div>
+            </div>
+            <div class="ea-form-grid" style="margin-top: 15px;">
+              <div class="ea-form-group full-width">
+                <label class="ea-label" style="color: var(--muted);">Perfil de Datos del Cliente (.xlsx) <span style="font-weight:normal; text-transform:none; font-size:10px; color:#999;">— Opcional, para complementar datos</span></label>
+                <div class="ea-file-zone" style="border-color: #ddd; background: #fafafa;">
+                  <input type="file" id="excelFile" accept=".xlsx, .xls">
+                  <div class="ea-helper-text" style="margin-top: 8px;">Si tienes el Excel del cliente, puedes cargarlo para sobreescribir los datos de la OT</div>
+                </div>
               </div>
             </div>
             <div style="text-align: center; margin-top: 30px;">
@@ -440,8 +435,9 @@
   let perfilDataFile = null;
   let allTableroData = [];
   let filtroMetricaActivo = null;
+  let ordenesMap = {}; // Almacén de datos completos de cada OT
 
-  // 1. CARGA DE ORDENES DE TRABAJO (Usando fetch en lugar de jsonp)
+  // 1. CARGA DE ORDENES DE TRABAJO — guarda todos los campos para auto-llenar
   async function cargarOrdenesDisponibles() {
     try {
       const response = await fetch(`${SCRIPT_URL}?action=getOrdenes`);
@@ -450,11 +446,24 @@
       select.innerHTML = '<option value="">Seleccione una OT...</option>';
       if (result && result.success && result.data) {
         result.data.forEach(orden => {
+          const otKey = orden.ot || '';
+          // Normalizar y guardar todos los datos de la OT
+          ordenesMap[otKey] = {
+            ot: otKey,
+            cliente: orden.clienteInicial || orden.cliente || orden.cliente_razon_social || '',
+            sucursal: orden.clienteFinal || orden.sucursal || '',
+            rfc: orden.rfc || '',
+            personal: orden.personal_asignado || orden.personal || '',
+            fecha_visita: orden.fecha_visita || orden.fecha || '',
+            link_drive: orden.link_drive_cliente || orden.link_drive || orden.linkDrive || '',
+            telefono: orden.telefono || orden.telefono_responsable || '',
+            direccion: orden.direccion || orden.direccion_evaluacion || '',
+            solicitante: orden.solicitante || orden.nombre_solicitante || '',
+            nom: orden.nom_servicio || orden.nom || ''
+          };
           const option = document.createElement('option');
-          option.value = orden.ot;
-          option.dataset.clienteInicial = orden.clienteInicial || orden.cliente || orden.cliente_razon_social || '';
-          option.dataset.clienteFinal = orden.clienteFinal || orden.sucursal || '';
-          option.textContent = `${orden.ot} - ${option.dataset.clienteInicial}`;
+          option.value = otKey;
+          option.textContent = `${otKey} - ${ordenesMap[otKey].cliente}`;
           select.appendChild(option);
         });
       }
@@ -463,16 +472,62 @@
     }
   }
 
+  // Al seleccionar una OT: auto-llenar TODOS los campos desde los datos de la OT
   document.getElementById('field-ot').addEventListener('change', function() {
     detectarTipoOrden();
-    const selected = this.selectedOptions[0];
-    if (selected && selected.value !== "") {
-      document.getElementById('field-cliente-inicial').value = selected.dataset.clienteInicial || '';
-      if(!document.getElementById('field-cliente-final').value) {
-        document.getElementById('field-cliente-final').value = selected.dataset.clienteFinal || '';
+    const otKey = this.value;
+    const otData = ordenesMap[otKey];
+    const infoBox = document.getElementById('ot-autofill-box');
+    const infoMsg = document.getElementById('ot-autofill-msg');
+
+    if (otData && otKey) {
+      // Auto-llenar campos desde la OT
+      document.getElementById('field-cliente-inicial').value = otData.cliente || '';
+      document.getElementById('field-cliente-final').value = otData.sucursal || '';
+      document.getElementById('field-rfc').value = otData.rfc || '';
+      document.getElementById('field-tel').value = otData.telefono || '';
+      document.getElementById('field-dir').value = otData.direccion || '';
+      document.getElementById('field-solicitante').value = otData.solicitante || '';
+
+      // Auto-llenar fecha de visita si existe
+      if (otData.fecha_visita) {
+        const fechaField = document.getElementById('field-fecha');
+        // Convertir formatos dd/mm/yyyy o yyyy-mm-dd
+        let fechaISO = otData.fecha_visita;
+        if (fechaISO.includes('/')) {
+          const parts = fechaISO.split('/');
+          if (parts.length === 3) fechaISO = `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+        }
+        fechaField.value = fechaISO;
+        fechaField.dispatchEvent(new Event('change'));
       }
+
+      // Auto-seleccionar responsable si coincide con personal asignado
+      if (otData.personal) {
+        const respSelect = document.getElementById('field-responsable');
+        const personalUpper = otData.personal.toUpperCase().trim();
+        for (const opt of respSelect.options) {
+          if (opt.value && personalUpper.includes(opt.value.toUpperCase())) {
+            respSelect.value = opt.value;
+            break;
+          }
+        }
+      }
+
+      // Auto-llenar NOM si la OT tiene uno registrado
+      if (otData.nom && !document.getElementById('field-nom').value) {
+        document.getElementById('field-nom').value = otData.nom;
+        generarNumeroInforme();
+      }
+
+      infoBox.style.display = 'block';
+      infoBox.className = 'status-box box-success';
+      infoMsg.innerHTML = `✅ Datos cargados automáticamente desde <strong>${otKey}</strong>. Puedes editarlos si es necesario.`;
     } else {
+      // Limpiar si no seleccionó nada
       document.getElementById('field-cliente-inicial').value = '';
+      document.getElementById('field-cliente-final').value = '';
+      infoBox.style.display = 'none';
     }
     validarProgreso();
   });
@@ -493,17 +548,10 @@
     return m ? m[1] : nom;
   }
 
-  // 2. LÓGICA DE EXCEL
+  // 2. LÓGICA DE EXCEL (OPCIONAL — complementa/sobreescribe datos de la OT)
   document.getElementById('excelFile').addEventListener('change', function(e) {
     const file = e.target.files[0];
-    const infoBox = document.getElementById('perfil-status-box');
-    const infoText = document.getElementById('info-perfil-quick');
-    if (!file) {
-      perfilDataFile = null;
-      infoBox.className = 'status-box box-warning';
-      infoText.innerHTML = '⚠️ Sin cargar - Sube el Excel para desbloquear los siguientes pasos.';
-      validarProgreso(); return;
-    }
+    if (!file) { perfilDataFile = null; return; }
     perfilDataFile = file;
     const reader = new FileReader();
     reader.onload = function(event) {
@@ -512,14 +560,23 @@
         const wb = XLSX.read(data, { type: 'array' });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const getVal = (c) => ws[c] ? ws[c].v : '';
-        document.getElementById('field-solicitante').value = getVal('D3');
-        document.getElementById('field-cliente-inicial').value = getVal('D5');
-        document.getElementById('field-cliente-final').value = getVal('D6');
-        document.getElementById('field-rfc').value = getVal('D7');
-        document.getElementById('field-tel').value = getVal('I7');
-        document.getElementById('field-dir').value = getVal('D11');
+        // Sobreescribir campos con datos del Excel (si tienen valor)
+        const mapeo = {
+          'field-solicitante': getVal('D3'),
+          'field-cliente-inicial': getVal('D5'),
+          'field-cliente-final': getVal('D6'),
+          'field-rfc': getVal('D7'),
+          'field-tel': getVal('I7'),
+          'field-dir': getVal('D11')
+        };
+        for (const [fieldId, valor] of Object.entries(mapeo)) {
+          if (valor) document.getElementById(fieldId).value = valor;
+        }
+        const infoBox = document.getElementById('ot-autofill-box');
+        const infoMsg = document.getElementById('ot-autofill-msg');
+        infoBox.style.display = 'block';
         infoBox.className = 'status-box box-success';
-        infoText.innerHTML = `✅ <strong>${file.name}</strong> procesado correctamente. Pasos desbloqueados.`;
+        infoMsg.innerHTML = `✅ Excel <strong>${file.name}</strong> cargado. Datos complementados.`;
         validarProgreso();
       } catch (err) { alert('Error al leer el Excel. Verifica el formato.'); }
     };
@@ -568,6 +625,7 @@
 
   document.getElementById('field-nom').addEventListener('input', () => { generarNumeroInforme(); validarProgreso(); });
   document.getElementById('field-cliente-final').addEventListener('input', () => validarProgreso());
+  document.getElementById('field-responsable').addEventListener('change', () => validarProgreso());
   
   document.getElementById('field-fecha').addEventListener('change', function() {
     if (this.value) {
@@ -679,9 +737,10 @@
   function limpiarFormulario() {
     document.querySelectorAll('input:not([type="hidden"])').forEach(i => i.value = '');
     document.querySelectorAll('select').forEach(s => s.selectedIndex = 0);
-    perfilDataFile = null; validarProgreso();
-    document.getElementById('perfil-status-box').className = 'status-box box-warning';
-    document.getElementById('info-perfil-quick').innerHTML = '⚠️ Sin cargar - Sube el Excel';
+    perfilDataFile = null;
+    const infoBox = document.getElementById('ot-autofill-box');
+    if (infoBox) infoBox.style.display = 'none';
+    validarProgreso();
   }
 
   // 4. TABLERO DE INFORMES
@@ -890,19 +949,21 @@
   }
 
   function validarProgreso() {
-    const tienePerfil = perfilDataFile !== null;
     const card2 = document.getElementById('card-paso2');
-    const card3 = document.getElementById('card-paso3');
     const btn = document.getElementById('btn-enviar');
-    if (tienePerfil) card2.classList.remove('step-locked');
-    else { card2.classList.add('step-locked'); card3.classList.add('step-locked'); btn.disabled = true; return; }
+    const ot = document.getElementById('field-ot').value;
+    const nom = document.getElementById('field-nom').value;
     const cFinal = document.getElementById('field-cliente-final').value.trim();
-    const listoPaso2 = document.getElementById('field-ot').value && document.getElementById('field-nom').value && cFinal && document.getElementById('field-fecha').value;
-    if (listoPaso2) {
-      card3.classList.remove('step-locked');
+    const fecha = document.getElementById('field-fecha').value;
+    const responsable = document.getElementById('field-responsable').value;
+    // Paso 2 se desbloquea cuando OT + NOM + Cliente + Fecha + Responsable están listos
+    const listoPaso1 = ot && nom && cFinal && fecha && responsable;
+    if (listoPaso1) {
+      card2.classList.remove('step-locked');
       btn.disabled = false;
     } else {
-      card3.classList.add('step-locked'); btn.disabled = true;
+      card2.classList.add('step-locked');
+      btn.disabled = true;
     }
   }
 
