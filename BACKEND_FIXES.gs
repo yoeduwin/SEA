@@ -1,46 +1,202 @@
 // =========================================================================
-// CORRECCIONES PARA EL BACKEND (Google Apps Script)
-// Aplicar estos cambios en el editor de Apps Script
+// API CENTRAL - EJECUTIVA AMBIENTAL (SISTEMA UNIFICADO v3.0 - MULTI-SUCURSAL)
+// VERSIÓN CORREGIDA — Listo para copiar/pegar en Google Apps Script
+// =========================================================================
+// CAMBIOS vs original:
+//   1. getOrdenesSafe_()      → ahora devuelve link_drive (row[13])
+//   2. fase3_CrearExpediente() → cadena de fallback para encontrar carpeta del cliente
+//   3. Frontend SEAINF.html   → ya envía linkDrive en el payload (commit aparte)
 // =========================================================================
 
-// =========================================================================
-// FIX 1: getOrdenesSafe_ — agregar link_drive al response
-// =========================================================================
-// PROBLEMA: No devolvía link_drive, por lo que SEAINF nunca recibía el link
-//           de la carpeta del cliente al cargar las OTs disponibles.
-//
-// ANTES (línea ~186):
-//   .map(row => ({
-//     ot: row[1], clienteInicial: row[5], clienteFinal: row[6], cliente: row[5]
-//   }))
-//
-// DESPUÉS:
-function getOrdenesSafe_() {
-  const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
-  const values = sheet.getDataRange().getDisplayValues();
-  const ordenes = values.slice(1).filter(row => {
-    const estatus = String(row[12] || '').trim().toUpperCase();
-    return estatus !== 'ENTREGADO' && estatus !== 'FINALIZADO';
-  }).map(row => ({
-    ot: row[1],
-    clienteInicial: row[5],
-    clienteFinal: row[6],
-    cliente: row[5],
-    link_drive: row[13]  // ← AGREGADO: devolver el link de la carpeta
-  })).filter(orden => orden.ot && orden.ot.trim() !== '');
-  return { success: true, data: ordenes };
+const CONFIG = {
+  SPREADSHEET_ID: '1MoScea4CYg0NCjvPjHqZwV0cKhrd2nxfW8LYhz_4pDo',
+  SHEET_CLIENTES: 'CLIENTES_MAESTRO',
+  SHEET_OT: 'ORDENES_TRABAJO',
+  FOLDER_ID: '1nHd-70uUeciClDm_3_pgbmqGF7II1lfQ',
+  EMAIL_TO: [
+    'direccion.general@ejecutivambiental.com',
+    'operaciones@ejecutivambiental.com',
+    'aclientes@ejecutivambiental.com'
+  ],
+  COMPANY_NAME: 'Ejecutiva Ambiental',
+  EMAIL_RETRY_ATTEMPTS: 3,
+  EMAIL_RETRY_DELAY_MS: 2000
+};
+
+function doPost(e) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(15000);
+    const data = JSON.parse(e.postData.contents);
+
+    switch(data.action) {
+      case 'registrarCliente': return output_(fase1_RegistrarCliente(data));
+      case 'registrarOT': return output_(fase2_RegistrarOT(data));
+      case 'createExpediente': return output_(fase3_CrearExpediente(data));
+      case 'addFilesToExpediente': return output_(fase3_AddFilesToExpediente(data));
+      case 'updateEstatus': return output_(updateEstatusSafe_(data));
+      case 'updateResponsable': return output_(updateResponsableSafe_(data));
+      default: return output_({ success: false, error: 'Acción POST no reconocida.' });
+    }
+  } catch (err) {
+    return output_({ success: false, error: 'Error crítico en Servidor: ' + err.message });
+  } finally {
+    lock.releaseLock();
+  }
 }
 
+function doGet(e) {
+  if (!e || !e.parameter || !e.parameter.action) return ContentService.createTextOutput("API Ejecutiva Ambiental v3.0 - Multi-Sucursal Activa");
+  try {
+    switch(e.parameter.action) {
+      case 'buscarClienteRFC': return output_(fase2_BuscarClienteRFC(e.parameter.rfc));
+      case 'getTablero': return output_(fase4_GetTablero());
+      case 'getOrdenes': return output_(getOrdenesSafe_());
+      case 'getConsecutivo': return output_(getConsecutivoSafe_(e.parameter));
+      default: return output_({ success: false, error: 'Acción GET no reconocida.' });
+    }
+  } catch (err) {
+    return output_({ success: false, error: 'Error GET: ' + err.message });
+  }
+}
 
 // =========================================================================
-// FIX 2: fase3_CrearExpediente — usar linkDrive del payload como fallback
+// FASE 1: REGISTRO CLIENTE (ÁRBOL DE CARPETAS INTELIGENTE)
 // =========================================================================
-// PROBLEMA: Si la columna 14 de ORDENES_TRABAJO estaba vacía (porque al
-//           registrar la OT no se tenía el link), el expediente se creaba
-//           directamente en CONFIG.FOLDER_ID (raíz) en lugar de buscarlo
-//           en la carpeta del cliente.
-//
-// DESPUÉS (reemplazar la función completa):
+function fase1_RegistrarCliente(data) {
+  let logEntries = [];
+  function addLog(message) { logEntries.push(`[${new Date().toISOString()}] ${message}`); Logger.log(message); }
+  try {
+    addLog('=== INICIO PROCESO MULTI-SUCURSAL ===');
+
+    const folderRaiz = DriveApp.getFolderById(CONFIG.FOLDER_ID);
+    const rfcClean = (data.rfc || 'SIN_RFC').toUpperCase().trim();
+    const companyClean = cleanCompanyName(data.razon_social || 'Cliente');
+    const branchClean = sanitizeFileName(data.sucursal || 'Matriz');
+    const timestamp = Utilities.formatDate(new Date(), 'GMT-6', 'yyMMdd');
+
+    // 1. LÓGICA DE CARPETA PADRE (Empresa)
+    const parentFolderName = `${rfcClean} - ${companyClean}`;
+    let parentFolder;
+    const pIter = folderRaiz.getFoldersByName(parentFolderName);
+    if (pIter.hasNext()) {
+      parentFolder = pIter.next();
+      addLog(`Carpeta Padre encontrada: ${parentFolderName}`);
+    } else {
+      parentFolder = folderRaiz.createFolder(parentFolderName);
+      addLog(`Carpeta Padre creada: ${parentFolderName}`);
+    }
+
+    // 2. LÓGICA DE CARPETA HIJO (Sucursal)
+    let carpetaCliente;
+    const bIter = parentFolder.getFoldersByName(branchClean);
+    if (bIter.hasNext()) {
+      carpetaCliente = bIter.next();
+      addLog(`Carpeta Sucursal encontrada. Se actualizarán archivos en: ${branchClean}`);
+    } else {
+      carpetaCliente = parentFolder.createFolder(branchClean);
+      addLog(`Carpeta Sucursal creada: ${branchClean}`);
+    }
+
+    // 3. Guardar archivos y Excel
+    const processedFiles = guardarArchivos(data, carpetaCliente, addLog);
+    const sheetUrl = generarPerfilSheet(data, carpetaCliente, companyClean, branchClean, timestamp, addLog);
+
+    // 4. Registrar en CLIENTES_MAESTRO
+    const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+    let sheet = ss.getSheetByName(CONFIG.SHEET_CLIENTES);
+
+    sheet.appendRow([
+      Utilities.formatDate(new Date(), 'GMT-6', 'dd/MM/yyyy HH:mm:ss'),
+      data.razon_social || '', data.sucursal || '', data.rfc || '', data.nombre_solicitante || '',
+      data.telefono_responsable || '', data.correo_informe || '', data.telefono_empresa || '',
+      data.representante_legal || '', data.direccion_evaluacion || '', data.responsable || '',
+      data.giro || '', data.actividad_principal || '', data.registro_patronal || '',
+      data.capacidad_instalada || '', data.capacidad_operacion || '', data.dias_turnos_horarios || '',
+      data.nombre_dirigido || '', data.puesto_dirigido || '', data.descripcion_proceso || '',
+      data.aplica_nom020 === 'si' ? 'SÍ' : 'NO', data.requiere_pipc === 'si' ? 'SÍ' : 'NO',
+      carpetaCliente.getUrl(), sheetUrl
+    ]);
+
+    enviarNotificacionRobusta(data, processedFiles, carpetaCliente, sheetUrl, addLog);
+    guardarLogEnDrive(carpetaCliente, logEntries, data);
+
+    return { success: true, message: 'Registro/Actualización exitosa', files: processedFiles.length };
+
+  } catch (error) {
+    try { enviarEmailEmergencia(error, logEntries); } catch (e4) {}
+    return { success: false, error: error.toString() };
+  }
+}
+
+// =========================================================================
+// FASE 2: BÚSQUEDA Y REGISTRO DE OT
+// =========================================================================
+function fase2_BuscarClienteRFC(rfcBuscado) {
+  if(!rfcBuscado) return { found: false, error: 'RFC vacío' };
+  const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_CLIENTES);
+  const data = sheet.getDataRange().getValues();
+
+  let sucursalesEncontradas = [];
+  let razonSocialFija = "";
+  let setSucursalesUnicas = new Set();
+
+  for (let i = data.length - 1; i >= 1; i--) {
+    const rfcFila = String(data[i][3]).toUpperCase().trim();
+    if (rfcFila === rfcBuscado.toUpperCase().trim()) {
+      const nombreSucursal = String(data[i][2]).trim() || 'Matriz';
+      if (!setSucursalesUnicas.has(nombreSucursal)) {
+        setSucursalesUnicas.add(nombreSucursal);
+        if (!razonSocialFija) razonSocialFija = data[i][1];
+        sucursalesEncontradas.push({
+          razon_social: data[i][1],
+          sucursal: nombreSucursal,
+          rfc: data[i][3],
+          nombre_solicitante: data[i][4],
+          telefono_responsable: data[i][5],
+          correo_informe: data[i][6],
+          telefono_empresa: data[i][7],
+          representante_legal: data[i][8],
+          direccion_evaluacion: data[i][9],
+          responsable: data[i][10],
+          giro: data[i][11],
+          actividad_principal: data[i][12],
+          registro_patronal: data[i][13],
+          capacidad_instalada: data[i][14],
+          capacidad_operacion: data[i][15],
+          dias_turnos_horarios: data[i][16],
+          nombre_dirigido: data[i][17],
+          puesto_dirigido: data[i][18],
+          descripcion_proceso: data[i][19],
+          link_drive_cliente: data[i][22]
+        });
+      }
+    }
+  }
+
+  if (sucursalesEncontradas.length > 0) {
+    return { found: true, razon_social: razonSocialFija, sucursales: sucursalesEncontradas };
+  }
+  return { found: false };
+}
+
+function fase2_RegistrarOT(data) {
+  const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+  sheet.appendRow([
+    new Date(), data.ot_folio || '', data.tipo_orden || 'OT', '', data.nom_servicio || '',
+    data.cliente_razon_social || '', data.sucursal || '', data.rfc || '', data.personal_asignado || '',
+    data.fecha_visita || '', data.fecha_entrega_limite || '', '', 'NO INICIADO',
+    data.link_drive_cliente || '', data.observaciones || ''
+  ]);
+  return { success: true, message: 'OT Registrada correctamente' };
+}
+
+// =========================================================================
+// FASE 3: SISTEMA DE EXPEDIENTES — CORREGIDO
+// =========================================================================
+// FIX: Cadena de fallback para siempre encontrar la carpeta del cliente.
+//      Antes, si la columna 14 estaba vacía iba directo a CONFIG.FOLDER_ID (raíz).
+//      Ahora intenta: hoja OT → payload → buscar por RFC → raíz (último recurso).
 function fase3_CrearExpediente(payload) {
   const info = payload.data || {};
   const files = payload.files || [];
@@ -54,54 +210,46 @@ function fase3_CrearExpediente(payload) {
   for (let i = 1; i < values.length; i++) {
     if (String(values[i][1]).trim() === String(info.ot).trim()) {
       filaOT = i + 1;
-      linkCarpetaSucursal = values[i][13]; // Link de la columna 14 en la hoja
+      linkCarpetaSucursal = values[i][13];
       break;
     }
   }
 
   if (filaOT === -1) return { success: false, error: 'OT no encontrada.' };
 
-  // --- INICIO FIX: Cadena de fallback para encontrar la carpeta correcta ---
-  // Prioridad: 1) Link en hoja OT → 2) linkDrive del payload → 3) Buscar por RFC → 4) CONFIG.FOLDER_ID
+  // --- Cadena de fallback para encontrar la carpeta correcta ---
   let carpetaSucursal = null;
 
-  // Intento 1: Desde la hoja ORDENES_TRABAJO (columna 14)
+  // 1) Desde la hoja ORDENES_TRABAJO (columna 14)
   if (linkCarpetaSucursal) {
-    const folderIdMatch = linkCarpetaSucursal.match(/folders\/([a-zA-Z0-9_-]+)/);
-    if (folderIdMatch) {
-      try { carpetaSucursal = DriveApp.getFolderById(folderIdMatch[1]); } catch(e) {}
-    }
+    var m1 = String(linkCarpetaSucursal).match(/folders\/([a-zA-Z0-9_-]+)/);
+    if (m1) { try { carpetaSucursal = DriveApp.getFolderById(m1[1]); } catch(e) {} }
   }
 
-  // Intento 2: Desde el payload del frontend (linkDrive enviado por SEAINF)
+  // 2) Desde el payload del frontend (linkDrive enviado por SEAINF)
   if (!carpetaSucursal && info.linkDrive) {
-    const folderIdMatch2 = info.linkDrive.match(/folders\/([a-zA-Z0-9_-]+)/);
-    if (folderIdMatch2) {
-      try { carpetaSucursal = DriveApp.getFolderById(folderIdMatch2[1]); } catch(e) {}
-    }
+    var m2 = String(info.linkDrive).match(/folders\/([a-zA-Z0-9_-]+)/);
+    if (m2) { try { carpetaSucursal = DriveApp.getFolderById(m2[1]); } catch(e) {} }
   }
 
-  // Intento 3: Buscar en CLIENTES_MAESTRO por RFC (más reciente primero)
+  // 3) Buscar en CLIENTES_MAESTRO por RFC + sucursal (más reciente primero)
   if (!carpetaSucursal && info.rfc) {
     try {
-      const sheetClientes = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_CLIENTES);
-      const clientesData = sheetClientes.getDataRange().getValues();
-      const rfcBuscado = String(info.rfc).toUpperCase().trim();
-      const sucursalBuscada = String(info.sucursal || '').trim();
+      var sheetCli = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_CLIENTES);
+      var cliData = sheetCli.getDataRange().getValues();
+      var rfcBusc = String(info.rfc).toUpperCase().trim();
+      var sucBusc = String(info.sucursal || '').trim();
 
-      for (let i = clientesData.length - 1; i >= 1; i--) {
-        const rfcFila = String(clientesData[i][3]).toUpperCase().trim();
-        const sucursalFila = String(clientesData[i][2]).trim();
-
-        if (rfcFila === rfcBuscado && (!sucursalBuscada || sucursalFila === sucursalBuscada)) {
-          const linkCliente = clientesData[i][22]; // columna "Link Drive (Carpeta Cliente)"
-          if (linkCliente) {
-            const folderIdMatch3 = linkCliente.match(/folders\/([a-zA-Z0-9_-]+)/);
-            if (folderIdMatch3) {
-              try { carpetaSucursal = DriveApp.getFolderById(folderIdMatch3[1]); } catch(e) {}
+      for (var j = cliData.length - 1; j >= 1; j--) {
+        if (String(cliData[j][3]).toUpperCase().trim() === rfcBusc) {
+          if (!sucBusc || String(cliData[j][2]).trim() === sucBusc) {
+            var linkCli = cliData[j][22];
+            if (linkCli) {
+              var m3 = String(linkCli).match(/folders\/([a-zA-Z0-9_-]+)/);
+              if (m3) { try { carpetaSucursal = DriveApp.getFolderById(m3[1]); } catch(e) {} }
             }
+            break;
           }
-          break;
         }
       }
     } catch(e) {
@@ -109,33 +257,31 @@ function fase3_CrearExpediente(payload) {
     }
   }
 
-  // Intento 4: Fallback final a la carpeta raíz (último recurso)
+  // 4) Último recurso: carpeta raíz
   if (!carpetaSucursal) {
     carpetaSucursal = DriveApp.getFolderById(CONFIG.FOLDER_ID);
-    Logger.log('ADVERTENCIA: Expediente creado en carpeta raíz. OT: ' + info.ot);
+    Logger.log('ADVERTENCIA: Expediente creado en carpeta raíz porque no se encontró carpeta del cliente. OT: ' + info.ot);
   }
-  // --- FIN FIX ---
 
-  const consecutivoMatch = info.numInforme.match(/-(\d{4})$/);
-  const consecutivoPrefix = consecutivoMatch ? consecutivoMatch[1] : '0000';
-  const nombreCarpetaOT = `02_Expediente_${consecutivoPrefix}_${info.ot}_${info.nom}`;
+  var consecutivoMatch = info.numInforme.match(/-(\d{4})$/);
+  var consecutivoPrefix = consecutivoMatch ? consecutivoMatch[1] : '0000';
+  var nombreCarpetaOT = '02_Expediente_' + consecutivoPrefix + '_' + info.ot + '_' + info.nom;
 
-  // Se crea el expediente técnico DENTRO de la carpeta de la Sucursal
-  const carpetaOT = carpetaSucursal.createFolder(nombreCarpetaOT);
+  var carpetaOT = carpetaSucursal.createFolder(nombreCarpetaOT);
 
-  const folders = {
+  var folders = {
     ORDEN_TRABAJO: carpetaOT.createFolder('1. ORDEN_TRABAJO'),
     HOJAS_CAMPO:   carpetaOT.createFolder('2. HDC'),
     CROQUIS:       carpetaOT.createFolder('3. CROQUIS'),
     FOTOS:         carpetaOT.createFolder('4. FOTOS')
   };
 
-  files.forEach(file => {
+  files.forEach(function(file) {
     if (!file || !file.content) return;
     try {
-      const decoded = Utilities.base64Decode(file.content);
-      const blob = Utilities.newBlob(decoded, file.type, file.name);
-      const targetFolder = folders[file.category] || carpetaOT;
+      var decoded = Utilities.base64Decode(file.content);
+      var blob = Utilities.newBlob(decoded, file.type, file.name);
+      var targetFolder = folders[file.category] || carpetaOT;
       targetFolder.createFile(blob);
     } catch (err) { Logger.log('Error archivo: ' + err.message); }
   });
@@ -145,4 +291,265 @@ function fase3_CrearExpediente(payload) {
   sheet.getRange(filaOT, 14).setValue(carpetaOT.getUrl());
 
   return { success: true, url: carpetaOT.getUrl() };
+}
+
+function fase3_AddFilesToExpediente(payload) {
+  const ot = payload.ot;
+  const files = payload.files || [];
+  if (!ot) return { success: false, error: 'Falta OT' };
+  const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+  const data = sheet.getDataRange().getValues();
+  let driveLink = null;
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][1]).trim() === String(ot).trim()) { driveLink = data[i][13]; break; }
+  }
+  if (!driveLink) return { success: false, error: 'No se encontró el expediente' };
+  const folderIdMatch = driveLink.match(/folders\/([a-zA-Z0-9_-]+)/);
+  const expedienteFolder = DriveApp.getFolderById(folderIdMatch[1]);
+  const subfolderNames = { ORDEN_TRABAJO: '1. ORDEN_TRABAJO', HOJAS_CAMPO: '2. HDC', CROQUIS: '3. CROQUIS', FOTOS: '4. FOTOS' };
+  const folders = {};
+  const existingFolders = expedienteFolder.getFolders();
+  while (existingFolders.hasNext()) {
+    const f = existingFolders.next();
+    for (const [key, name] of Object.entries(subfolderNames)) { if (f.getName() === name) folders[key] = f; }
+  }
+  for (const [key, name] of Object.entries(subfolderNames)) { if (!folders[key]) folders[key] = expedienteFolder.createFolder(name); }
+  files.forEach(file => {
+    if (!file || !file.content) return;
+    try {
+      const decoded = Utilities.base64Decode(file.content);
+      const blob = Utilities.newBlob(decoded, file.type, file.name);
+      const targetFolder = folders[file.category] || expedienteFolder;
+      targetFolder.createFile(blob);
+    } catch (err) {}
+  });
+  return { success: true };
+}
+
+// =========================================================================
+// FIX 1: getOrdenesSafe_ — ahora devuelve link_drive
+// =========================================================================
+// Antes solo devolvía: ot, clienteInicial, clienteFinal, cliente
+// Sin link_drive, SEAINF no podía enviarlo en el payload de createExpediente.
+function getOrdenesSafe_() {
+  const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+  const values = sheet.getDataRange().getDisplayValues();
+  const ordenes = values.slice(1).filter(row => {
+    const estatus = String(row[12] || '').trim().toUpperCase();
+    return estatus !== 'ENTREGADO' && estatus !== 'FINALIZADO';
+  }).map(row => ({
+    ot: row[1],
+    clienteInicial: row[5],
+    clienteFinal: row[6],
+    cliente: row[5],
+    link_drive: row[13]  // ← AGREGADO
+  })).filter(orden => orden.ot && orden.ot.trim() !== '');
+  return { success: true, data: ordenes };
+}
+
+function getConsecutivoSafe_(params) {
+  const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+  const dataRange = sheet.getDataRange().getDisplayValues().slice(1);
+  const regex = /^EA-\d{4}-.+-(\d{4})$/;
+  let maxConsecutivo = 0;
+  dataRange.forEach(row => {
+    const valNum = row[3];
+    const valTipo = String(row[2] || '').trim().toUpperCase();
+    if (valTipo === (params.tipo || 'OT').toUpperCase()) {
+      const match = String(valNum || '').trim().match(regex);
+      if (match) {
+        const consecutivo = parseInt(match[1], 10);
+        if (consecutivo > maxConsecutivo) maxConsecutivo = consecutivo;
+      }
+    }
+  });
+  const siguiente = String(maxConsecutivo + 1).padStart(4, '0');
+  return { success: true, numeroInforme: `EA-${params.anio}${params.mes}-${params.nom}-${siguiente}` };
+}
+
+function updateEstatusSafe_(data) {
+  const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+  const values = sheet.getDataRange().getValues();
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][1]).trim() === String(data.ot).trim()) {
+      sheet.getRange(i + 1, 13).setValue(data.estatus.toUpperCase());
+      if(data.estatus.toUpperCase() === 'ENTREGADO' || data.estatus.toUpperCase() === 'FINALIZADO') {
+         sheet.getRange(i + 1, 12).setValue(Utilities.formatDate(new Date(), "GMT-6", "dd/MM/yyyy"));
+      }
+      return { success: true, message: 'Actualizado' };
+    }
+  }
+  return { success: false, error: 'OT no encontrada' };
+}
+
+function updateResponsableSafe_(data) {
+  const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+  const values = sheet.getDataRange().getValues();
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][1]).trim() === String(data.ot).trim()) {
+      sheet.getRange(i + 1, 9).setValue(data.responsable);
+      return { success: true };
+    }
+  }
+  return { success: false, error: 'OT no encontrada' };
+}
+
+// =========================================================================
+// FASE 4: TABLERO / DASHBOARD
+// =========================================================================
+function fase4_GetTablero() {
+  const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+  const data = sheet.getDataRange().getDisplayValues();
+  const registros = data.slice(1).map(row => ({
+    ot: row[1], numInforme: row[3], nom: row[4], cliente: row[5], sucursal: row[6],
+    personal: row[8], fecha_visita: row[9], fechaEntrega: row[10], fechaRealEntrega: row[11],
+    estatus: row[12], link_drive: row[13]
+  })).reverse();
+  return { success: true, data: registros };
+}
+
+// =========================================================================
+// UTILIDADES
+// =========================================================================
+function guardarArchivos(data, carpetaCliente, addLog) {
+  const files = [];
+  const fileFields = [
+    { key: 'planos', label: '1) Planos generales' }, { key: 'mantenimiento', label: '2) Prog. Mantenimiento' },
+    { key: 'proceso_produccion', label: '3) Proceso Producción' }, { key: 'requisitos_ingreso', label: '4) Requisitos Ingreso' },
+    { key: 'ine_atencion', label: 'A) INE Atiende' }, { key: 'ine_testigo1', label: 'B) INE Testigo 1' },
+    { key: 'ine_testigo2', label: 'C) INE Testigo 2' }, { key: 'poder_notarial', label: 'D) Poder Notarial (NOM-020)' },
+    { key: 'ine_representante', label: 'E) INE Representante (NOM-020)' }, { key: 'situacion_fiscal', label: 'F) Sit. Fiscal (NOM-020)' },
+    { key: 'licencia', label: 'G) Licencia/Cédula' }, { key: 'dc3', label: 'H) DC-3 Operador' },
+    { key: 'calibracion_valvula', label: 'I) Calibración Válvula' }, { key: 'pipc_licencia_funcionamiento', label: 'PIPC - 1) Lic. Funcionamiento' },
+    { key: 'pipc_uso_suelo', label: 'PIPC - 2) Uso de Suelo' }, { key: 'pipc_predial', label: 'PIPC - 3) Predial' },
+    { key: 'pipc_poliza_seguro', label: 'PIPC - 4) Póliza Seguro' }, { key: 'pipc_mant_extintores', label: 'PIPC - 5) Mant. Extintores' },
+    { key: 'pipc_situacion_fiscal', label: 'PIPC - 6) Sit. Fiscal' }, { key: 'pipc_ine_representante', label: 'PIPC - 7) INE Rep. Legal' },
+    { key: 'pipc_acta_constitutiva', label: 'PIPC - 8) Acta Constitutiva' }, { key: 'pipc_poder_notarial', label: 'PIPC - 9) Poder Notarial' },
+    { key: 'pipc_evidencia_simulacros', label: 'PIPC - 10) Simulacros' }, { key: 'pipc_organigrama_brigadas', label: 'PIPC - 11) Brigadas' },
+    { key: 'pipc_detectores_humo', label: 'PIPC - 12) Detectores Humo' }, { key: 'pipc_medidas_preventivas', label: 'PIPC - 13) Medidas Preventivas' },
+    { key: 'pipc_gas_natural', label: 'PIPC - 14) Gas Natural' }, { key: 'pipc_sustancias_quimicas', label: 'PIPC - 15) Sust. Químicas' },
+    { key: 'pipc_dc3_operadores', label: 'PIPC - 16) DC3 Montacargas' }
+  ];
+  fileFields.forEach(field => {
+    const fileData = data[field.key]; const fileName = data[field.key + '_filename'];
+    if (fileData && fileName && typeof fileData === 'string' && fileData.startsWith('data:')) {
+      try {
+        const parts = fileData.split(','); const mimeType = parts[0].match(/:(.*?);/)[1];
+        const blob = Utilities.newBlob(Utilities.base64Decode(parts[1]), mimeType, fileName);
+        const file = carpetaCliente.createFile(blob);
+        files.push({ name: fileName, label: field.label, url: file.getUrl(), size: data[field.key + '_size'] || 0 });
+        if (addLog) addLog(`  - Archivo guardado: ${fileName}`);
+      } catch (error) { if (addLog) addLog('⚠️ Error: ' + error.toString()); }
+    }
+  });
+  return files;
+}
+
+function generarPerfilSheet(data, carpetaCliente, cleanedCompany, cleanedBranch, timestamp, addLog) {
+  const ss = SpreadsheetApp.create(`${timestamp}_Perfil_${cleanedCompany}_${cleanedBranch}`);
+  const sheet = ss.getSheets()[0]; sheet.setName('PERFIL DE DATOS');
+  const verde = '#1e5a3e'; const valueBg = '#F0F0F0';
+  const setHeader = (range, text) => { sheet.getRange(range).merge().setValue(text).setBackground(verde).setFontColor('#FFFFFF').setFontWeight('bold').setHorizontalAlignment('center'); };
+  const fillFieldCell = (labelRange, label, valueCellA1, value, opt = {}) => {
+    sheet.getRange(labelRange).merge().setValue(label).setFontWeight('bold');
+    const r = sheet.getRange(valueCellA1); r.setValue(value || '').setBackground(valueBg).setBorder(true, true, true, true, false, false);
+    if (opt.boldValue) r.setFontWeight('bold'); if (opt.wrap) r.setWrap(true).setVerticalAlignment('top');
+  };
+  sheet.getRange('A1:L1').merge().setValue('PERFIL DE DATOS TÉCNICOS - EJECUTIVA AMBIENTAL').setBackground(verde).setFontColor('#FFFFFF').setFontWeight('bold').setHorizontalAlignment('center');
+  fillFieldCell('B3:C3', 'Nombre solicitante:', 'D3', data.nombre_solicitante, { wrap: true });
+  fillFieldCell('B5:C5', 'Razón Social:', 'D5', data.razon_social, { wrap: true });
+  sheet.getRange('B6:C6').merge().setValue('SUCURSAL:').setFontWeight('bold').setFontColor('red');
+  sheet.getRange('D6').setValue(data.sucursal || '').setBackground(valueBg).setBorder(true, true, true, true, false, false).setFontWeight('bold').setWrap(true);
+  fillFieldCell('B7:C7', 'RFC:', 'D7', data.rfc);
+  fillFieldCell('H7:H7', 'Teléfono Empresa:', 'I7', data.telefono_empresa);
+  fillFieldCell('B9:C9', 'Representante Legal:', 'D9', data.representante_legal, { wrap: true });
+  fillFieldCell('B11:C11', 'Dirección evaluación:', 'D11', data.direccion_evaluacion, { wrap: true });
+  fillFieldCell('B13:C13', 'Responsable atiende:', 'D13', data.responsable, { wrap: true });
+  fillFieldCell('H13:H13', 'Contacto Atiende:', 'I13', data.telefono_responsable);
+  fillFieldCell('B15:C15', 'Giro:', 'D15', data.giro);
+  fillFieldCell('B17:C17', 'Actividad:', 'D17', data.actividad_principal, { wrap: true });
+  fillFieldCell('B19:C19', 'Registro Patronal:', 'D19', data.registro_patronal);
+  fillFieldCell('B21:C21', 'Capacidad operación:', 'D21', data.capacidad_operacion, { wrap: true });
+  fillFieldCell('H21:H21', 'Capacidad instalada:', 'I21', data.capacidad_instalada, { wrap: true });
+  fillFieldCell('B23:C23', 'Horarios y Turnos:', 'D23', data.dias_turnos_horarios, { wrap: true });
+  fillFieldCell('B26:C26', 'A quien se dirige:', 'D26', data.nombre_dirigido, { wrap: true });
+  fillFieldCell('B28:C28', 'Puesto de quien dirige:', 'D28', data.puesto_dirigido, { wrap: true });
+  fillFieldCell('B30:C30', 'Correo envío informe:', 'D30', data.correo_informe, { wrap: true });
+  sheet.getRange('A32:L32').merge().setValue('DESCRIPCIÓN DEL PROCESO').setBackground(verde).setFontColor('#FFFFFF').setFontWeight('bold').setHorizontalAlignment('center');
+  sheet.getRange('A33:L36').merge().setValue(data.descripcion_proceso || '').setVerticalAlignment('top').setWrap(true).setBackground(valueBg).setBorder(true, true, true, true, false, false);
+  sheet.getRange('A1:L36').setFontFamily('Arial');
+  sheet.setColumnWidth(2, 170); sheet.setColumnWidth(4, 280); sheet.setColumnWidth(8, 160); sheet.setColumnWidth(9, 220);
+  let currentRow = 38; setHeader(`A${currentRow}:L${currentRow}`, 'FECHAS PREFERIDAS');
+  sheet.getRange(`B${currentRow+1}:L${currentRow+3}`).merge().setValue(data.fechas_preferidas || 'No especificadas').setBackground(valueBg).setWrap(true).setBorder(true, true, true, true, false, false);
+  if (data.aplica_nom020) { setHeader(`A${currentRow+5}:L${currentRow+5}`, 'NOM-020-STPS'); sheet.getRange(`B${currentRow+6}:L${currentRow+6}`).merge().setValue(data.aplica_nom020 === 'si' ? 'SÍ APLICA' : 'NO APLICA').setHorizontalAlignment('center').setFontWeight('bold'); }
+  const archivoSheet = DriveApp.getFileById(ss.getId()); archivoSheet.moveTo(carpetaCliente);
+  return archivoSheet.getUrl();
+}
+
+function enviarNotificacionRobusta(data, files, carpetaCliente, sheetUrl, addLog) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= CONFIG.EMAIL_RETRY_ATTEMPTS; attempt++) {
+    try {
+      enviarNotificacionEquipo(data, files, carpetaCliente, sheetUrl);
+      Utilities.sleep(1000);
+      enviarConfirmacionCliente(data, carpetaCliente);
+      return { success: true };
+    } catch (error) {
+      lastError = error;
+      if (attempt < CONFIG.EMAIL_RETRY_ATTEMPTS) Utilities.sleep(CONFIG.EMAIL_RETRY_DELAY_MS);
+    }
+  }
+  try { enviarEmailSimpleFallback(data, carpetaCliente, sheetUrl); return { success: true, usedFallback: true }; }
+  catch (fallbackError) { return { success: false, error: fallbackError.toString() }; }
+}
+
+function enviarNotificacionEquipo(data, files, carpetaCliente, sheetUrl) {
+  const timestamp = Utilities.formatDate(new Date(), 'GMT-6', 'dd/MM/yyyy HH:mm');
+  let filesListHTML = '';
+  if (files.length > 0) {
+    files.forEach(f => { filesListHTML += `<tr><td style="padding: 8px 0; border-bottom: 1px solid #eee;"><a href="${f.url}" style="color:#1e5a3e; text-decoration:none; font-weight:600;">${f.label}</a></td><td style="padding: 8px 0; border-bottom: 1px solid #eee; text-align:right; color:#777; font-size:12px;">${formatFileSize(f.size)}</td></tr>`; });
+  } else { filesListHTML = '<tr><td colspan="2" style="padding:10px; color:#999; font-style:italic;">No se adjuntaron archivos</td></tr>'; }
+  const tagNom = data.aplica_nom020 === 'si' ? '<span style="background:#fff3cd; color:#856404; padding:4px 8px; border-radius:4px; font-weight:bold; font-size:11px;">SI APLICA</span>' : '<span style="background:#e8f5e9; color:#2e7d32; padding:4px 8px; border-radius:4px; font-weight:bold; font-size:11px;">NO APLICA</span>';
+  const tagPipc = data.requiere_pipc === 'si' ? '<span style="background:#fff3cd; color:#856404; padding:4px 8px; border-radius:4px; font-weight:bold; font-size:11px;">SI REQUIERE</span>' : '<span style="background:#e8f5e9; color:#2e7d32; padding:4px 8px; border-radius:4px; font-weight:bold; font-size:11px;">NO REQUIERE</span>';
+  const htmlBody = `<!DOCTYPE html><html><body style="margin:0; padding:0; background-color:#f4f6f8; font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;"><table width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color:#f4f6f8; padding:20px;"><tr><td align="center"><table width="600" border="0" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 4px 15px rgba(0,0,0,0.05);"><tr><td style="background-color:#1e5a3e; padding:30px; text-align:center;"><h1 style="color:#ffffff; margin:0; font-size:24px; font-weight:700;">Nuevo Perfil de Datos</h1><p style="color:#a8e6cf; margin:5px 0 0 0; font-size:14px;">${data.razon_social || 'Cliente Nuevo'}</p><p style="color:#a8e6cf; margin:3px 0 0 0; font-size:12px;">Sucursal: ${data.sucursal || 'N/A'}</p></td></tr><tr><td style="padding:30px;"><p style="text-align:right; font-size:11px; color:#999; margin-top:0;">Recibido: ${timestamp}</p><h3 style="color:#1e5a3e; border-bottom:2px solid #1e5a3e; padding-bottom:8px; margin-top:0;">Información de Contacto</h3><table width="100%" border="0" cellspacing="0" cellpadding="5" style="font-size:14px; color:#333; margin-bottom:20px;"><tr><td width="30%" style="font-weight:bold; color:#555;">Solicitante:</td><td>${data.nombre_solicitante || '-'}</td></tr><tr><td style="font-weight:bold; color:#555;">Sucursal:</td><td><strong>${data.sucursal || '-'}</strong></td></tr><tr><td style="font-weight:bold; color:#555;">Teléfono:</td><td><a href="tel:${data.telefono_empresa}" style="text-decoration:none; color:#333;">${data.telefono_empresa || '-'}</a></td></tr><tr><td style="font-weight:bold; color:#555;">Correo:</td><td><a href="mailto:${data.correo_informe}" style="color:#1e5a3e; font-weight:bold;">${data.correo_informe || '-'}</a></td></tr><tr><td style="font-weight:bold; color:#555;">Giro:</td><td>${data.giro || '-'}</td></tr></table><h3 style="color:#1e5a3e; border-bottom:2px solid #1e5a3e; padding-bottom:8px;">Servicios Solicitados</h3><table width="100%" border="0" cellspacing="0" cellpadding="5" style="font-size:14px; color:#333; margin-bottom:20px;"><tr><td width="50%"><strong>NOM-020-STPS:</strong> ${tagNom}</td><td width="50%"><strong>Prot. Civil (PIPC):</strong> ${tagPipc}</td></tr></table><div style="background-color:#fff8e1; border-left:4px solid #ffc107; padding:15px; margin-bottom:25px; border-radius:4px;"><strong style="color:#f57f17; font-size:12px; text-transform:uppercase;">FECHAS PREFERIDAS PARA EVALUACIÓN:</strong><p style="margin:8px 0 0 0; font-size:14px; color:#333; line-height:1.6;">${data.fechas_preferidas || 'No especificadas'}</p></div><h3 style="color:#1e5a3e; border-bottom:2px solid #1e5a3e; padding-bottom:8px;">Documentación Adjunta (${files.length})</h3><table width="100%" border="0" cellspacing="0" cellpadding="0" style="font-size:13px; color:#333;">${filesListHTML}</table><table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-top:30px;"><tr><td align="center"><a href="${carpetaCliente.getUrl()}" style="background-color:#1e5a3e; color:#ffffff; padding:12px 25px; text-decoration:none; border-radius:5px; font-weight:bold; font-size:14px; margin-right:10px; display:inline-block;">Ver Carpeta Drive</a><a href="${sheetUrl}" style="background-color:#2196f3; color:#ffffff; padding:12px 25px; text-decoration:none; border-radius:5px; font-weight:bold; font-size:14px; display:inline-block;">Ver Perfil Excel</a></td></tr></table></td></tr><tr><td style="background-color:#f8f9fa; padding:15px; text-align:center; border-top:1px solid #eee; font-size:11px; color:#888;">Sistema de Registro Automático v7.1 - ${CONFIG.COMPANY_NAME}<br>Este es un mensaje automático, no responder.</td></tr></table></td></tr></table></body></html>`;
+  GmailApp.sendEmail(CONFIG.EMAIL_TO.join(','), `Nuevo Registro - ${data.razon_social} - ${data.sucursal}`, 'Su cliente de correo no soporta HTML.', { htmlBody: htmlBody, name: CONFIG.COMPANY_NAME });
+}
+
+function enviarConfirmacionCliente(data, carpetaCliente) {
+  const emailCliente = data.correo_informe;
+  if (!emailCliente || emailCliente.trim() === '') return;
+  const htmlCliente = `<!DOCTYPE html><html><body style="margin:0; padding:0; background-color:#f4f6f8; font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;"><table width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color:#f4f6f8; padding:20px;"><tr><td align="center"><table width="600" border="0" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 4px 15px rgba(0,0,0,0.05);"><tr><td style="background-color:#1e5a3e; padding:30px; text-align:center;"><h1 style="color:#ffffff; margin:0; font-size:24px; font-weight:700;">¡Información Recibida!</h1><p style="color:#a8e6cf; margin:8px 0 0 0; font-size:14px;">Ejecutiva Ambiental</p></td></tr><tr><td style="padding:30px;"><p style="font-size:16px; color:#333; line-height:1.6; margin-top:0;">Estimado(a) <strong>${data.nombre_solicitante || 'Cliente'}</strong>,</p><p style="font-size:15px; color:#333; line-height:1.8;">Hemos recibido correctamente su <strong>Perfil de Datos</strong> para:</p><div style="background-color:#e8f5e9; border-left:4px solid #4caf50; padding:15px; margin:20px 0; border-radius:4px;"><p style="margin:0; font-size:14px; color:#2e7d32; line-height:1.6;"><strong>Empresa:</strong> ${data.razon_social}<br><strong>Sucursal:</strong> ${data.sucursal || 'N/A'}<br><strong>RFC:</strong> ${data.rfc || 'N/A'}</p></div><p style="font-size:15px; color:#333; line-height:1.8;">Nuestro equipo revisará la información y se comunicará en las próximas <strong>24 horas</strong>.</p><div style="background-color:#fff3cd; border-left:4px solid #ffc107; padding:15px; margin:25px 0; border-radius:4px;"><p style="margin:0; font-size:13px; color:#856404; line-height:1.6;"><strong>¿Dudas?</strong><br>Comuníquese: <strong>222 941 7295</strong><br><strong>aclientes@ejecutivambiental.com</strong></p></div><p style="font-size:14px; color:#666; margin-bottom:0;">Atentamente,<br><strong style="color:#1e5a3e;">Equipo de Ejecutiva Ambiental</strong></p></td></tr></table></td></tr></table></body></html>`;
+  GmailApp.sendEmail(emailCliente, '✓ Información Recibida - Ejecutiva Ambiental', 'Su cliente de correo no soporta HTML.', { htmlBody: htmlCliente, name: CONFIG.COMPANY_NAME });
+}
+
+function enviarEmailSimpleFallback(data, carpetaCliente, sheetUrl) {
+  const subject = `NUEVO REGISTRO: ${data.razon_social} - ${data.sucursal}`;
+  const body = `NUEVO PERFIL DE DATOS RECIBIDO\nCliente: ${data.razon_social}\nSucursal: ${data.sucursal}\nRFC: ${data.rfc}\nCarpeta Drive: ${carpetaCliente.getUrl()}`;
+  GmailApp.sendEmail(CONFIG.EMAIL_TO.join(','), subject, body);
+}
+
+function enviarEmailEmergencia(error, logEntries) {
+  GmailApp.sendEmail(CONFIG.EMAIL_TO[0], 'ERROR CRÍTICO - Sistema v2', `Error: ${error.toString()}\n\nLOGS:\n${logEntries.join('\n')}`);
+}
+
+function formatFileSize(bytes) {
+  if (!bytes || bytes === 0) return '0 B';
+  const k = 1024; const sizes = ['B', 'KB', 'MB', 'GB']; const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function cleanCompanyName(name) { return sanitizeFileName((name || 'Cliente').replace(/ S\.A\. DE C\.V\.| SA DE CV| S\.A\.| S\.C\./gi, '').trim()); }
+function sanitizeFileName(name) { return String(name || 'Sin_nombre').replace(/[^a-z0-9áéíóúñü ]/gi, '_').substring(0, 50); }
+
+function guardarLogEnDrive(carpetaCliente, logEntries, data) {
+  try { const blob = Utilities.newBlob(logEntries.join('\n'), 'text/plain', `LOG_${Utilities.formatDate(new Date(), 'GMT-6', 'yyyyMMdd_HHmmss')}.txt`); carpetaCliente.createFile(blob); } catch (e) {}
+}
+
+function output_(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
+
+function autorizarPermisos() {
+  var tempFolder = DriveApp.createFolder("Test_Permisos_EA");
+  tempFolder.setTrashed(true);
+  SpreadsheetApp.getActiveSpreadsheet();
+  Logger.log("Permisos completos de escritura concedidos");
 }
