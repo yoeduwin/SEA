@@ -673,6 +673,7 @@
     });
 
     try {
+      const otData = ordenesMap[ot] || {};
       const basePayload = {
         action: 'createExpediente',
         data: {
@@ -688,7 +689,8 @@
           telefono: document.getElementById('field-tel').value.trim(),
           direccion: document.getElementById('field-dir').value.trim(),
           responsable: document.getElementById('field-responsable').value,
-          estatus: 'NO INICIADO'
+          estatus: 'NO INICIADO',
+          linkDrive: otData.link_drive || ''
         },
         files: []
       };
