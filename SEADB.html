@@ -358,9 +358,31 @@
                             const d2 = new Date(dVisita); d2.setDate(d2.getDate() + 25); fFisico = formatearFechaSLA(d2);
                         }
 
+                        // Calcular estatus SLA basado en fechas (informe: visita + 15 días)
+                        const isEntregado = estatusRaw === 'ENTREGADO' || estatusRaw === 'FINALIZADO';
+                        let estatusAuto = '';
+                        if (isEntregado) {
+                            estatusAuto = '✅ Entregado';
+                        } else if (dVisita) {
+                            const fechaLimite = new Date(dVisita);
+                            fechaLimite.setDate(fechaLimite.getDate() + 15);
+                            const hoy = new Date();
+                            hoy.setHours(0, 0, 0, 0);
+                            const diffDias = Math.ceil((fechaLimite - hoy) / (1000 * 60 * 60 * 24));
+                            if (diffDias < 0) {
+                                estatusAuto = `🔴 Alerta [${Math.abs(diffDias)} días]`;
+                            } else if (diffDias <= 1) {
+                                estatusAuto = `🟠 En límite [${diffDias} días]`;
+                            } else {
+                                estatusAuto = `🟢 En tiempo [${diffDias} días]`;
+                            }
+                        } else {
+                            estatusAuto = '🟡 Pendiente';
+                        }
+
                         return {
                             ot: row.ot || '',
-                            referencia: '',
+                            referencia: row.numInforme || '',
                             clienteInicial: clienteRaw,
                             clienteFinal: row.sucursal || '',
                             nom: nomRaw,
@@ -369,8 +391,8 @@
                             fechaVisita: fechaVisitaRaw,
                             fechaDigital: fDigital,
                             fechaFisico: fFisico,
-                            estatusAuto: estatusRaw,
-                            entregadoManual: estatusRaw === 'ENTREGADO' ? 'ENTREGADO' : '',
+                            estatusAuto: estatusAuto,
+                            entregadoManual: isEntregado ? 'ENTREGADO' : '',
                             fechaRealEntrega: row.fechaRealEntrega || row.fecha_real_entrega || '',
                             linkOT: linkDriveRaw,
                             rawRow: row
@@ -474,11 +496,12 @@
         }
 
         function getStatusCategory(row) {
-            const estatus = row.estatusAuto;
-            if (estatus.includes('Entregado') || estatus.includes('✅') || estatus === 'ENTREGADO' || estatus === 'FINALIZADO') return 'ENTREGADO';
-            if (estatus.includes('Alerta') || estatus.includes('🔴')) return 'ALERTA';
-            if (estatus.includes('límite') || estatus.includes('🟠')) return 'LIMITE';
-            if (estatus.includes('tiempo') || estatus.includes('🟢') || estatus === 'EN PROCESO') return 'TIEMPO';
+            const estatus = row.estatusAuto || '';
+            if (estatus.includes('✅') || estatus.includes('Entregado')) return 'ENTREGADO';
+            if (estatus.includes('🔴') || estatus.includes('Alerta')) return 'ALERTA';
+            if (estatus.includes('🟠') || estatus.includes('límite')) return 'LIMITE';
+            if (estatus.includes('🟢') || estatus.includes('tiempo')) return 'TIEMPO';
+            if (estatus.includes('🟡') || estatus.includes('Pendiente')) return 'PENDIENTE';
             return 'PENDIENTE';
         }
 
