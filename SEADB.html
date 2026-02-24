@@ -190,7 +190,7 @@
                 <div class="kpi-card"><div class="kpi-label">Total OTs</div><div class="kpi-value" id="kpi-total">0</div><div class="kpi-subtitle">Órdenes de Trabajo</div></div>
                 <div class="kpi-card"><div class="kpi-label">✅ Entregadas</div><div class="kpi-value" id="kpi-entregadas" style="color: #27ae60;">0</div><div class="kpi-subtitle"><span id="kpi-entregadas-pct">0%</span> del total</div></div>
                 <div class="kpi-card"><div class="kpi-label">🟢 En Tiempo</div><div class="kpi-value" id="kpi-tiempo" style="color: #27ae60;">0</div><div class="kpi-subtitle">Sin retraso</div></div>
-                <div class="kpi-card"><div class="kpi-label">🟠 En Límite</div><div class="kpi-value" id="kpi-limite" style="color: #e67e22;">0</div><div class="kpi-subtitle">Menos de 1 día</div></div>
+                <div class="kpi-card"><div class="kpi-label">🟠 En Límite</div><div class="kpi-value" id="kpi-limite" style="color: #e67e22;">0</div><div class="kpi-subtitle">0 a 7 días</div></div>
                 <div class="kpi-card"><div class="kpi-label">🔴 Vencidas</div><div class="kpi-value" id="kpi-vencidas" style="color: #e74c3c;">0</div><div class="kpi-subtitle">Fuera de tiempo</div></div>
                 <div class="kpi-card"><div class="kpi-label">⏱️ Tiempo Promedio</div><div class="kpi-value" id="kpi-promedio" style="color: #3498db;">0</div><div class="kpi-subtitle">Días de entrega</div></div>
             </div>
@@ -224,7 +224,7 @@
                             <tr>
                                 <th onclick="sortTable(0)">OT</th><th onclick="sortTable(1)">Referencia</th><th onclick="sortTable(2)">Cliente Inicial</th>
                                 <th onclick="sortTable(3)">Cliente Final</th><th onclick="sortTable(4)">NOM</th><th onclick="sortTable(5)">Personal</th>
-                                <th onclick="sortTable(6)">F. Visita</th><th onclick="sortTable(7)">F. Digital (+15d)</th><th onclick="sortTable(8)">F. Físico (+25d)</th>
+                                <th onclick="sortTable(6)">F. Visita</th><th onclick="sortTable(7)">F. Digital (+20d)</th><th onclick="sortTable(8)">F. Físico (+25d)</th>
                                 <th onclick="sortTable(9)">Días</th><th onclick="sortTable(10)">Estatus</th><th>Acciones</th>
                             </tr>
                         </thead>
@@ -354,24 +354,24 @@
                         const dVisita = parseFecha(fechaVisitaRaw);
 
                         if (dVisita) {
-                            const d1 = new Date(dVisita); d1.setDate(d1.getDate() + 15); fDigital = formatearFechaSLA(d1);
+                            const d1 = new Date(dVisita); d1.setDate(d1.getDate() + 20); fDigital = formatearFechaSLA(d1);
                             const d2 = new Date(dVisita); d2.setDate(d2.getDate() + 25); fFisico = formatearFechaSLA(d2);
                         }
 
-                        // Calcular estatus SLA basado en fechas (informe: visita + 15 días)
+                        // Calcular estatus SLA basado en fechas (informe: visita + 20 días)
                         const isEntregado = estatusRaw === 'ENTREGADO' || estatusRaw === 'FINALIZADO';
                         let estatusAuto = '';
                         if (isEntregado) {
                             estatusAuto = '✅ Entregado';
                         } else if (dVisita) {
                             const fechaLimite = new Date(dVisita);
-                            fechaLimite.setDate(fechaLimite.getDate() + 15);
+                            fechaLimite.setDate(fechaLimite.getDate() + 20);
                             const hoy = new Date();
                             hoy.setHours(0, 0, 0, 0);
                             const diffDias = Math.ceil((fechaLimite - hoy) / (1000 * 60 * 60 * 24));
                             if (diffDias < 0) {
                                 estatusAuto = `🔴 Alerta [${Math.abs(diffDias)} días]`;
-                            } else if (diffDias <= 1) {
+                            } else if (diffDias <= 7) {
                                 estatusAuto = `🟠 En límite [${diffDias} días]`;
                             } else {
                                 estatusAuto = `🟢 En tiempo [${diffDias} días]`;
