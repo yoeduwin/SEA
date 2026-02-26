@@ -90,12 +90,12 @@
   <div id="dbSearchModal" class="modal-overlay">
     <div class="modal-content">
       <h3>🔍 Buscar Cliente en BD Maestra</h3>
-      <p style="font-size:11px; color:#666;">Ingresa el RFC del cliente para extraer sus sucursales registradas.</p>
+      <p style="font-size:11px; color:#666;">Escribe el nombre de la empresa para buscar sus sucursales registradas.</p>
       <div class="search-box">
-        <input type="text" id="dbSearchRFC" placeholder="EJ. ABC123456XX0" maxlength="13">
+        <input type="text" id="dbSearchNombre" placeholder="Ej. Grupo Industrial, Alimentos..." autocomplete="off">
         <button onclick="executeDbSearch()" id="btnSearchSubmit">Buscar</button>
       </div>
-      <div id="dbSearchResult" style="margin-top:15px; font-size:11px;"></div>
+      <div id="dbSearchResult" style="margin-top:15px; font-size:11px; max-height:350px; overflow-y:auto;"></div>
       <button class="close-modal" onclick="closeDbSearchModal()">Cerrar</button>
     </div>
   </div>
@@ -270,7 +270,7 @@
         <button class="add-row-btn" onclick="addWorkRow()">+ Agregar Fila</button>
         <div class="form-group full-width" style="margin-top:15px;">
           <label>Observaciones Generales</label>
-          <textarea id="wo_generalObservations" style="min-height:80px;" placeholder="📋 RECORDATORIO: Portar EPP..."></textarea>
+          <textarea id="wo_generalObservations" style="min-height:80px;" placeholder="📋 RECORDATORIO: Portar EPP (botas de seguridad, casco de seguridad, lentes de seguridad, protección auditiva, guantes de seguridad, chaleco)"></textarea>
         </div>
       </div>
     </div>
@@ -316,39 +316,40 @@
   // ================== BÚSQUEDA BD MULTI-SUCURSAL ==================
   function openDbSearchModal() {
     document.getElementById('dbSearchModal').style.display = 'flex';
-    document.getElementById('dbSearchRFC').value = '';
+    document.getElementById('dbSearchNombre').value = '';
     document.getElementById('dbSearchResult').innerHTML = '';
   }
   function closeDbSearchModal() { document.getElementById('dbSearchModal').style.display = 'none'; }
 
   async function executeDbSearch() {
-    const rfc = document.getElementById('dbSearchRFC').value.trim();
+    const nombre = document.getElementById('dbSearchNombre').value.trim();
     const resultDiv = document.getElementById('dbSearchResult');
     const btn = document.getElementById('btnSearchSubmit');
-    if(!rfc || rfc.length < 12) { resultDiv.innerHTML = '<span style="color:#dc3545;">RFC inválido.</span>'; return; }
-    
-    btn.disabled = true; btn.textContent = 'Buscando...'; resultDiv.innerHTML = 'Buscando sucursales...';
-    
+    if(!nombre || nombre.length < 3) { resultDiv.innerHTML = '<span style="color:#dc3545;">Ingresa al menos 3 caracteres del nombre de la empresa.</span>'; return; }
+
+    btn.disabled = true; btn.textContent = 'Buscando...'; resultDiv.innerHTML = 'Buscando clientes...';
+
     try {
-      const response = await fetch(`${SHEETS_SCRIPT_URL}?action=buscarClienteRFC&rfc=${encodeURIComponent(rfc)}`);
+      const response = await fetch(`${SHEETS_SCRIPT_URL}?action=buscarClienteNombre&nombre=${encodeURIComponent(nombre)}`);
       const data = await response.json();
-      
-      if(data.found && data.sucursales && data.sucursales.length > 0) {
-        window._returningClientBranches = data.sucursales;
-        let optionsHtml = '<option value="">-- Seleccione una sucursal --</option>';
-        data.sucursales.forEach((suc, idx) => {
-          optionsHtml += `<option value="${idx}">🏢 ${suc.sucursal || 'Matriz'}</option>`;
+
+      if(data.found && data.resultados && data.resultados.length > 0) {
+        window._returningClientBranches = data.resultados;
+        let optionsHtml = '<option value="">-- Seleccione empresa + sucursal --</option>';
+        data.resultados.forEach((item, idx) => {
+          const label = item.sucursal ? `${item.razon_social} - ${item.sucursal}` : `${item.razon_social} (Matriz)`;
+          optionsHtml += `<option value="${idx}">🏢 ${label}</option>`;
         });
         resultDiv.innerHTML = `
-          <strong>Cliente:</strong> <span style="font-size:13px;">${data.razon_social}</span><br><br>
-          <label style="font-size:11px; font-weight:bold; color:#1e5a3e;">Seleccione la sucursal para la OT:</label>
+          <strong>Se encontraron ${data.resultados.length} resultado(s):</strong><br><br>
+          <label style="font-size:11px; font-weight:bold; color:#1e5a3e;">Seleccione empresa + sucursal para la OT:</label>
           <select id="branchSelectModal" style="width:100%; padding:8px; margin-top:5px; margin-bottom:15px; border:1px solid #ccc; border-radius:4px;">
             ${optionsHtml}
           </select>
           <button type="button" onclick="applyClientData()" style="background:#1e5a3e; color:#fff; border:none; padding:10px 25px; border-radius:5px; font-size:13px; font-weight:600; cursor:pointer; width:100%;">Cargar Datos</button>
         `;
       } else {
-        resultDiv.innerHTML = '<span style="color:#856404; background:#fff3cd; padding:5px; border-radius:3px;">No se encontró este RFC. Puedes cargar el Excel.</span>';
+        resultDiv.innerHTML = '<span style="color:#856404; background:#fff3cd; padding:5px; border-radius:3px;">No se encontraron clientes con ese nombre. Puedes cargar el Excel.</span>';
       }
     } catch(err) {
       resultDiv.innerHTML = `<span style="color:#dc3545;">Error de conexión.</span>`;
@@ -359,23 +360,41 @@
 
   function applyClientData() {
     const select = document.getElementById('branchSelectModal');
-    if (!select || select.value === "") { alert("Seleccione una sucursal."); return; }
-    
+    if (!select || select.value === "") { alert("Seleccione empresa + sucursal."); return; }
+
     const data = window._returningClientBranches[select.value];
-    
-    // Mapeo adaptado a las llaves que devuelve la Fase 2 del Backend
-    document.getElementById('companyName').value = data.razon_social || '';
-    document.getElementById('branch').value = data.sucursal || '';
-    document.getElementById('rfc').value = data.rfc || '';
-    document.getElementById('evaluationAddress').value = data.direccion_evaluacion || '';
-    document.getElementById('contactPerson').value = data.responsable || '';
-    document.getElementById('contactPhone').value = data.telefono_responsable || '';
-    document.getElementById('reportEmail').value = data.correo_informe || '';
-    
-    profileData.link_drive_cliente = data.link_drive_cliente || ''; 
+
+    // Mapeo completo de campos del perfil
+    const fieldMap = {
+      'companyName': data.razon_social,
+      'branch': data.sucursal,
+      'rfc': data.rfc,
+      'requestorName': data.nombre_solicitante,
+      'requestorPhone': data.telefono_empresa,
+      'legalRep': data.representante_legal,
+      'evaluationAddress': data.direccion_evaluacion,
+      'contactPerson': data.responsable,
+      'contactPhone': data.telefono_responsable,
+      'reportEmail': data.correo_informe,
+      'businessType': data.giro,
+      'mainActivity': data.actividad_principal,
+      'patronalRegistry': data.registro_patronal,
+      'operationCapacity': data.capacidad_operacion,
+      'installedCapacity': data.capacidad_instalada,
+      'workSchedule': data.dias_turnos_horarios,
+      'reportRecipientName': data.nombre_dirigido,
+      'reportRecipientPosition': data.puesto_dirigido,
+      'processDescription': data.descripcion_proceso
+    };
+    Object.keys(fieldMap).forEach(id => {
+      const el = document.getElementById(id);
+      if (el && fieldMap[id]) el.value = fieldMap[id];
+    });
+
+    profileData.link_drive_cliente = data.link_drive_cliente || '';
     syncData();
     closeDbSearchModal();
-    showStatus('profileStatus','Datos de sucursal cargados','success');
+    showStatus('profileStatus','Datos de cliente cargados desde BD','success');
   }
 
   // ================== LÓGICA EXCEL Y UI ==================
@@ -403,10 +422,15 @@
   }
 
   function syncData() {
-    ['companyName','branch','evaluationAddress','contactPerson','contactPhone','reportEmail','rfc'].forEach(id => {
+    ['requestorName','requestorPhone','companyName','rfc','branch','legalRep',
+     'evaluationAddress','contactPerson','contactPhone','businessType','mainActivity',
+     'patronalRegistry','operationCapacity','installedCapacity','workSchedule',
+     'reportRecipientName','reportRecipientPosition','reportEmail','processDescription'].forEach(id => {
       const el = document.getElementById(id); if (el) profileData[id] = el.value;
     });
-    const map = { 'companyName': 'wo_clientName','branch': 'wo_branch','evaluationAddress': 'wo_serviceAddress','contactPerson': 'wo_contactName','contactPhone': 'wo_phone','reportEmail': 'wo_email' };
+    const map = { 'companyName':'wo_clientName','branch':'wo_branch','evaluationAddress':'wo_serviceAddress',
+      'contactPerson':'wo_contactName','contactPhone':'wo_phone','reportEmail':'wo_email',
+      'reportRecipientName':'wo_reportTo','reportRecipientPosition':'wo_reportPosition' };
     Object.keys(map).forEach(k => { const f = document.getElementById(map[k]); if (f) f.value = profileData[k] || ''; });
     showSyncIndicator();
   }
@@ -477,9 +501,59 @@
     setTimeout(() => { controls.forEach(e => e.style.display = ''); document.getElementById('profileTab').style.display = ''; switchTab('workorder'); }, 800);
   }
   function sendWorkOrder() {
-    const email = document.getElementById('wo_email')?.value; const orderNumber = document.getElementById('wo_orderNumber')?.value || 'Nueva';
+    const email = document.getElementById('wo_email')?.value;
+    const orderNumber = document.getElementById('wo_orderNumber')?.value || 'Nueva';
     if (!email) { showStatus('workorderStatus','No hay email de cliente disponible','warning'); return; }
-    window.location.href = `mailto:${email}?cc=eduwin.ejecutiva@gmail.com&subject=Orden de Trabajo ${orderNumber}`;
+
+    const cc = 'eduwin.ejecutiva@gmail.com';
+    const company = profileData.companyName || '';
+    const branch = profileData.branch || 'No especificada';
+    const giro = profileData.businessType || 'No especificado';
+    const patronal = profileData.patronalRegistry || 'No especificado';
+    const installed = profileData.installedCapacity || 'No especificada';
+    const operation = profileData.operationCapacity || 'No especificada';
+    const address = profileData.evaluationAddress || '';
+    const maps = address ? `https://maps.google.com/maps?q=${encodeURIComponent(address.trim())}` : 'Dirección no disponible';
+
+    const subject = `Orden de Trabajo ${orderNumber} - ${company} - Ejecutiva Ambiental`;
+
+    // Construir detalle de servicios desde la tabla
+    let serviciosDetalle = '';
+    document.querySelectorAll('#workTableBody tr').forEach(row => {
+      const fields = row.querySelectorAll('input, select, textarea');
+      if (fields.length >= 5 && fields[0].value) {
+        serviciosDetalle += `\n  - ${fields[0].value}`;
+        if (fields[2].value) serviciosDetalle += ` | Fecha: ${fields[2].value}`;
+        if (fields[3].value) serviciosDetalle += ` | ${fields[3].value}`;
+      }
+    });
+
+    const body = `Estimado,
+
+Adjunto encontrará la Orden de Trabajo ${orderNumber} para los servicios programados.
+
+🏢 Razón Social: ${company}
+  • Sucursal: ${branch}
+  • Giro/Actividad: ${giro}
+  • Registro Patronal: ${patronal}
+
+⚙️ Capacidad Instalada: ${installed}
+⚙️ Capacidad de Operación: ${operation}
+
+📋 Servicios programados:${serviciosDetalle || '\n  (Ver orden de trabajo adjunta)'}
+
+📍 Dirección: ${address}
+🔗 Google Maps: ${maps}
+
+📌 RECORDATORIO IMPORTANTE:
+Portar EPP (botas de seguridad, casco de seguridad, lentes de seguridad, protección auditiva, guantes de seguridad, chaleco).
+
+Saludos cordiales,
+Ejecutiva Ambiental
+Tel: 222-941-7295`;
+
+    window.location.href = `mailto:${email}?cc=${cc}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    showStatus('workorderStatus', `Email preparado con copia a ${cc}`, 'success');
   }
 
   // ================== REGISTRO A LA API CENTRAL ==================

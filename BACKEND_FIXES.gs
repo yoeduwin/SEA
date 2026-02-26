@@ -50,6 +50,7 @@ function doGet(e) {
   try {
     switch(e.parameter.action) {
       case 'buscarClienteRFC': return output_(fase2_BuscarClienteRFC(e.parameter.rfc));
+      case 'buscarClienteNombre': return output_(fase2_BuscarClienteNombre(e.parameter.nombre));
       case 'getTablero': return output_(fase4_GetTablero());
       case 'getOrdenes': return output_(getOrdenesSafe_());
       case 'getConsecutivo': return output_(getConsecutivoSafe_(e.parameter));
@@ -176,6 +177,54 @@ function fase2_BuscarClienteRFC(rfcBuscado) {
 
   if (sucursalesEncontradas.length > 0) {
     return { found: true, razon_social: razonSocialFija, sucursales: sucursalesEncontradas };
+  }
+  return { found: false };
+}
+
+function fase2_BuscarClienteNombre(nombreBuscado) {
+  if(!nombreBuscado || nombreBuscado.length < 3) return { found: false, error: 'Nombre demasiado corto (mínimo 3 caracteres)' };
+  const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_CLIENTES);
+  const data = sheet.getDataRange().getValues();
+
+  var resultados = [];
+  var setUnicos = new Set();
+  var termino = nombreBuscado.toUpperCase().trim();
+
+  for (var i = data.length - 1; i >= 1; i--) {
+    var razonSocial = String(data[i][1]).toUpperCase().trim();
+    if (razonSocial.indexOf(termino) !== -1) {
+      var nombreSucursal = String(data[i][2]).trim() || 'Matriz';
+      var clave = razonSocial + '||' + nombreSucursal;
+      if (!setUnicos.has(clave)) {
+        setUnicos.add(clave);
+        resultados.push({
+          razon_social: data[i][1],
+          sucursal: nombreSucursal,
+          rfc: data[i][3],
+          nombre_solicitante: data[i][4],
+          telefono_responsable: data[i][5],
+          correo_informe: data[i][6],
+          telefono_empresa: data[i][7],
+          representante_legal: data[i][8],
+          direccion_evaluacion: data[i][9],
+          responsable: data[i][10],
+          giro: data[i][11],
+          actividad_principal: data[i][12],
+          registro_patronal: data[i][13],
+          capacidad_instalada: data[i][14],
+          capacidad_operacion: data[i][15],
+          dias_turnos_horarios: data[i][16],
+          nombre_dirigido: data[i][17],
+          puesto_dirigido: data[i][18],
+          descripcion_proceso: data[i][19],
+          link_drive_cliente: data[i][22]
+        });
+      }
+    }
+  }
+
+  if (resultados.length > 0) {
+    return { found: true, resultados: resultados };
   }
   return { found: false };
 }
