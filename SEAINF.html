@@ -311,7 +311,7 @@
           </div>
           <div class="ea-section step-locked" id="card-paso2" style="border-bottom: none;">
             <div class="ea-section-header">
-              <span class="ea-step-badge">PASO 2</span> DOCUMENTACIÓN DIGITAL
+              <span class="ea-step-badge">PASO 2</span> DOCUMENTACIÓN DIGITAL (6 CARPETAS)
             </div>
             <div class="ea-form-grid">
               <div class="ea-form-group">
@@ -329,6 +329,14 @@
               <div class="ea-form-group">
                 <label class="ea-label">4. Fotos</label>
                 <div class="ea-file-zone"><input type="file" id="up-fotos" multiple accept=".pdf,.jpg,.jpeg,.png,.zip"></div>
+              </div>
+              <div class="ea-form-group">
+                <label class="ea-label">5. Informes y memorias</label>
+                <div class="ea-file-zone"><input type="file" id="up-informes" multiple accept=".pdf,.doc,.docx,.xls,.xlsx"></div>
+              </div>
+              <div class="ea-form-group">
+                <label class="ea-label">6. Informe Preliminar</label>
+                <div class="ea-file-zone"><input type="file" id="up-preliminar" multiple accept=".pdf,.doc,.docx"></div>
               </div>
             </div>
             <div class="ea-form-grid" style="margin-top: 15px;">
@@ -429,15 +437,13 @@
   </div>
 
 <script>
-  // ✅ NUEVA URL DE LA API CENTRALIZADA
   const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby8t7Py-cilePxLiGa-Lq7Df73XaRlmkRYV_kXbTs79HFydaJyub8muA0PBLRkPevUuXg/exec';
   const MAX_BATCH_SIZE = 15 * 1024 * 1024;
   let perfilDataFile = null;
   let allTableroData = [];
   let filtroMetricaActivo = null;
-  let ordenesMap = {}; // Almacén de datos completos de cada OT
+  let ordenesMap = {}; 
 
-  // 1. CARGA DE ORDENES DE TRABAJO — guarda todos los campos para auto-llenar
   async function cargarOrdenesDisponibles() {
     try {
       const response = await fetch(`${SCRIPT_URL}?action=getOrdenes`);
@@ -447,7 +453,6 @@
       if (result && result.success && result.data) {
         result.data.forEach(orden => {
           const otKey = orden.ot || '';
-          // Normalizar y guardar todos los datos de la OT
           ordenesMap[otKey] = {
             ot: otKey,
             cliente: orden.clienteInicial || orden.cliente || orden.cliente_razon_social || '',
@@ -472,7 +477,6 @@
     }
   }
 
-  // Al seleccionar una OT: auto-llenar TODOS los campos desde los datos de la OT
   document.getElementById('field-ot').addEventListener('change', function() {
     detectarTipoOrden();
     const otKey = this.value;
@@ -481,7 +485,6 @@
     const infoMsg = document.getElementById('ot-autofill-msg');
 
     if (otData && otKey) {
-      // Auto-llenar campos desde la OT
       document.getElementById('field-cliente-inicial').value = otData.cliente || '';
       document.getElementById('field-cliente-final').value = otData.sucursal || '';
       document.getElementById('field-rfc').value = otData.rfc || '';
@@ -489,10 +492,8 @@
       document.getElementById('field-dir').value = otData.direccion || '';
       document.getElementById('field-solicitante').value = otData.solicitante || '';
 
-      // Auto-llenar fecha de visita si existe
       if (otData.fecha_visita) {
         const fechaField = document.getElementById('field-fecha');
-        // Convertir formatos dd/mm/yyyy o yyyy-mm-dd
         let fechaISO = otData.fecha_visita;
         if (fechaISO.includes('/')) {
           const parts = fechaISO.split('/');
@@ -502,7 +503,6 @@
         fechaField.dispatchEvent(new Event('change'));
       }
 
-      // Auto-seleccionar responsable si coincide con personal asignado
       if (otData.personal) {
         const respSelect = document.getElementById('field-responsable');
         const personalUpper = otData.personal.toUpperCase().trim();
@@ -514,7 +514,6 @@
         }
       }
 
-      // Auto-llenar NOM si la OT tiene uno registrado
       if (otData.nom && !document.getElementById('field-nom').value) {
         document.getElementById('field-nom').value = otData.nom;
         generarNumeroInforme();
@@ -524,7 +523,6 @@
       infoBox.className = 'status-box box-success';
       infoMsg.innerHTML = `✅ Datos cargados automáticamente desde <strong>${otKey}</strong>. Puedes editarlos si es necesario.`;
     } else {
-      // Limpiar si no seleccionó nada
       document.getElementById('field-cliente-inicial').value = '';
       document.getElementById('field-cliente-final').value = '';
       infoBox.style.display = 'none';
@@ -548,7 +546,6 @@
     return m ? m[1] : nom;
   }
 
-  // 2. LÓGICA DE EXCEL (OPCIONAL — complementa/sobreescribe datos de la OT)
   document.getElementById('excelFile').addEventListener('change', function(e) {
     const file = e.target.files[0];
     if (!file) { perfilDataFile = null; return; }
@@ -560,7 +557,6 @@
         const wb = XLSX.read(data, { type: 'array' });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const getVal = (c) => ws[c] ? ws[c].v : '';
-        // Sobreescribir campos con datos del Excel (si tienen valor)
         const mapeo = {
           'field-solicitante': getVal('D3'),
           'field-cliente-inicial': getVal('D5'),
@@ -603,11 +599,12 @@
     const nomCode = extraerCodigoNOM(nom);
     field.value = 'Generando formato...';
     
-    const match = ot.match(/OT[B]?(\d{2})-(\d{4})/);
+    // EXPRESIÓN REGULAR ACTUALIZADA PARA EL NUEVO FORMATO OTYYMM-NNN
+    const match = ot.match(/OT[B]?(\d{2})(\d{2})-(\d{3})/);
     let anio, mes;
     if (match) {
       anio = match[1];
-      mes = match[2].substring(0, 2);
+      mes = match[2];
     } else {
       const now = new Date();
       anio = String(now.getFullYear()).slice(-2);
@@ -643,7 +640,6 @@
     if (tabId === 'tablero') cargarTablero();
   }
 
-  // 3. ENVÍO AL DRIVE / SHEETS
   async function enviarTodo() {
     const btn = document.getElementById('btn-enviar');
     const ot = document.getElementById('field-ot').value.trim();
@@ -660,11 +656,14 @@
     let totalBytes = 0; const allFiles = [];
     const otPdf = document.getElementById('up-ot').files[0];
     
+    // RECOLECCIÓN DE ARCHIVOS ACTUALIZADA PARA LAS 6 CARPETAS
     if (otPdf) { allFiles.push({ file: otPdf, category: 'ORDEN_TRABAJO', size: otPdf.size }); totalBytes += otPdf.size; }
     if (perfilDataFile) { allFiles.push({ file: perfilDataFile, category: 'PERFIL_DATOS', size: perfilDataFile.size }); totalBytes += perfilDataFile.size; }
     for (const f of document.getElementById('up-campo').files) { allFiles.push({ file: f, category: 'HOJAS_CAMPO', size: f.size }); totalBytes += f.size; }
     for (const f of document.getElementById('up-croquis').files) { allFiles.push({ file: f, category: 'CROQUIS', size: f.size }); totalBytes += f.size; }
     for (const f of document.getElementById('up-fotos').files) { allFiles.push({ file: f, category: 'FOTOS', size: f.size }); totalBytes += f.size; }
+    for (const f of document.getElementById('up-informes').files) { allFiles.push({ file: f, category: 'INFORMES_MEMORIA', size: f.size }); totalBytes += f.size; }
+    for (const f of document.getElementById('up-preliminar').files) { allFiles.push({ file: f, category: 'INF_PRELIMINAR', size: f.size }); totalBytes += f.size; }
     
     const fileToB64 = (file, cat) => new Promise((resolve, reject) => {
       const rd = new FileReader(); rd.onerror = () => reject(new Error('Lectura fallida'));
@@ -745,7 +744,6 @@
     validarProgreso();
   }
 
-  // 4. TABLERO DE INFORMES
   function calcularDiasVencimiento(fechaEntrega) {
     if (!fechaEntrega) return null;
     const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
@@ -758,7 +756,6 @@
       const response = await fetch(`${SCRIPT_URL}?action=getTablero`);
       const result = await response.json();
       if (result && result.success) {
-        // Normalizar nombres de campo: el backend puede devolver snake_case o camelCase
         allTableroData = (result.data || []).map(r => ({
           ...r,
           numInforme: r.numInforme || r.num_informe || '',
@@ -958,7 +955,6 @@
     const cFinal = document.getElementById('field-cliente-final').value.trim();
     const fecha = document.getElementById('field-fecha').value;
     const responsable = document.getElementById('field-responsable').value;
-    // Paso 2 se desbloquea cuando OT + NOM + Cliente + Fecha + Responsable están listos
     const listoPaso1 = ot && nom && cFinal && fecha && responsable;
     if (listoPaso1) {
       card2.classList.remove('step-locked');
@@ -978,14 +974,12 @@
 </script>
 
 <script>
-  // Parche de compatibilidad para reducir conflictos de merge en zonas centrales del archivo
   (() => {
     const hasValue = (id) => {
       const el = document.getElementById(id);
       return el && el.value && el.value.trim();
     };
 
-    // NOM más tolerante (acepta variantes con o sin sufijos)
     window.extraerCodigoNOM = function(nom) {
       const clean = String(nom || '').trim().toUpperCase();
       const m = clean.match(/^NOM-(\d{3}(?:-\d+)?)(?:-[A-Z]+)?(?:-\d{4})?/);
@@ -994,14 +988,17 @@
 
     const originalEnviarTodo = window.enviarTodo;
     window.enviarTodo = async function() {
+      // ACTUALIZADO PARA CONTAR ARCHIVOS DE LAS 6 CARPETAS
       const evidenciasCount =
         (document.getElementById('up-ot')?.files.length || 0) +
         (document.getElementById('up-campo')?.files.length || 0) +
         (document.getElementById('up-croquis')?.files.length || 0) +
-        (document.getElementById('up-fotos')?.files.length || 0);
+        (document.getElementById('up-fotos')?.files.length || 0) +
+        (document.getElementById('up-informes')?.files.length || 0) +
+        (document.getElementById('up-preliminar')?.files.length || 0);
 
       if (evidenciasCount === 0) {
-        alert('⚠️ Para crear el expediente, primero sube al menos un archivo de evidencia (OT, HDC, Croquis o Fotos).');
+        alert('⚠️ Para crear el expediente, primero sube al menos un archivo de evidencia.');
         return;
       }
 
@@ -1056,7 +1053,7 @@
 
     document.addEventListener('DOMContentLoaded', () => {
       const btn = document.getElementById('btn-enviar');
-      if (btn) btn.textContent = '🚀 Crear Expediente al Subir Evidencias';
+      if (btn) btn.textContent = '🚀 Crear Expediente (6 Carpetas)';
       if (typeof window.validarProgreso === 'function') window.validarProgreso();
     });
   })();
