@@ -599,17 +599,26 @@
     const nomCode = extraerCodigoNOM(nom);
     field.value = 'Generando formato...';
     
-    // EXPRESIÓN REGULAR ACTUALIZADA PARA EL NUEVO FORMATO OTYYMM-NNN
-    const match = ot.match(/OT[B]?(\d{2})(\d{2})-(\d{3})/);
+    // === LÓGICA DE TOLERANCIA PARA OTs NUEVAS Y ANTIGUAS ===
     let anio, mes;
-    if (match) {
-      anio = match[1];
-      mes = match[2];
+    // 1. Busca el formato NUEVO: OT2603-001 (Captura 26 y 03)
+    const matchNuevo = ot.match(/OT[B]?(\d{2})(\d{2})-\d+/);
+    // 2. Busca el formato ANTIGUO: OT25-0106-001 (Captura 25 y 01)
+    const matchAntiguo = ot.match(/OT[B]?(\d{2})-(\d{2})\d{2}-\d+/);
+
+    if (matchNuevo) {
+      anio = matchNuevo[1];
+      mes = matchNuevo[2];
+    } else if (matchAntiguo) {
+      anio = matchAntiguo[1];
+      mes = matchAntiguo[2];
     } else {
+      // Fallback a la fecha actual por si el formato es irreconocible
       const now = new Date();
       anio = String(now.getFullYear()).slice(-2);
       mes = String(now.getMonth() + 1).padStart(2, '0');
     }
+    // ========================================================
     
     try {
       const response = await fetch(`${SCRIPT_URL}?action=getConsecutivo&anio=${anio}&mes=${mes}&nom=${encodeURIComponent(nomCode)}&tipo=${tipoOrden}`);
@@ -656,12 +665,12 @@
     let totalBytes = 0; const allFiles = [];
     const otPdf = document.getElementById('up-ot').files[0];
     
-    // RECOLECCIÓN DE ARCHIVOS ACTUALIZADA PARA LAS 6 CARPETAS
     if (otPdf) { allFiles.push({ file: otPdf, category: 'ORDEN_TRABAJO', size: otPdf.size }); totalBytes += otPdf.size; }
     if (perfilDataFile) { allFiles.push({ file: perfilDataFile, category: 'PERFIL_DATOS', size: perfilDataFile.size }); totalBytes += perfilDataFile.size; }
     for (const f of document.getElementById('up-campo').files) { allFiles.push({ file: f, category: 'HOJAS_CAMPO', size: f.size }); totalBytes += f.size; }
     for (const f of document.getElementById('up-croquis').files) { allFiles.push({ file: f, category: 'CROQUIS', size: f.size }); totalBytes += f.size; }
     for (const f of document.getElementById('up-fotos').files) { allFiles.push({ file: f, category: 'FOTOS', size: f.size }); totalBytes += f.size; }
+    // AGREGADAS CARPETAS 5 Y 6 PARA EL PAYLOAD DEL BACKEND
     for (const f of document.getElementById('up-informes').files) { allFiles.push({ file: f, category: 'INFORMES_MEMORIA', size: f.size }); totalBytes += f.size; }
     for (const f of document.getElementById('up-preliminar').files) { allFiles.push({ file: f, category: 'INF_PRELIMINAR', size: f.size }); totalBytes += f.size; }
     
@@ -988,7 +997,6 @@
 
     const originalEnviarTodo = window.enviarTodo;
     window.enviarTodo = async function() {
-      // ACTUALIZADO PARA CONTAR ARCHIVOS DE LAS 6 CARPETAS
       const evidenciasCount =
         (document.getElementById('up-ot')?.files.length || 0) +
         (document.getElementById('up-campo')?.files.length || 0) +
