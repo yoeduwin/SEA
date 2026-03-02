@@ -250,12 +250,14 @@
                 <datalist id="nom-list"></datalist>
               </div>
             </div>
+            
             <div class="ea-form-grid">
               <div class="ea-form-group full-width">
-                <label class="ea-label" style="color: var(--primary);">N° DE INFORME (GENERADO AUTOMÁTICAMENTE)</label>
-                <input type="text" id="field-num-informe" class="ea-input" readonly placeholder="Se generará al completar OT y NOM" style="font-size: 16px; text-align: center;">
+                <label class="ea-label" style="color: var(--primary);">N° DE INFORME (AUTO-GENERADO / EDITABLE)</label>
+                <input type="text" id="field-num-informe" class="ea-input" placeholder="Se generará al completar OT y NOM (Puedes editarlo si es necesario)" style="font-size: 16px; text-align: center; border: 2px solid #1e5a3e; background: #fff; font-weight: bold; color: #1e5a3e;">
               </div>
             </div>
+            
             <div id="ot-autofill-box" class="status-box box-warning" style="display:none;">
               <span id="ot-autofill-msg">Datos cargados desde la OT.</span>
             </div>
@@ -599,11 +601,8 @@
     const nomCode = extraerCodigoNOM(nom);
     field.value = 'Generando formato...';
     
-    // === LÓGICA DE TOLERANCIA PARA OTs NUEVAS Y ANTIGUAS ===
     let anio, mes;
-    // 1. Busca el formato NUEVO: OT2603-001 (Captura 26 y 03)
     const matchNuevo = ot.match(/OT[B]?(\d{2})(\d{2})-\d+/);
-    // 2. Busca el formato ANTIGUO: OT25-0106-001 (Captura 25 y 01)
     const matchAntiguo = ot.match(/OT[B]?(\d{2})-(\d{2})\d{2}-\d+/);
 
     if (matchNuevo) {
@@ -613,12 +612,10 @@
       anio = matchAntiguo[1];
       mes = matchAntiguo[2];
     } else {
-      // Fallback a la fecha actual por si el formato es irreconocible
       const now = new Date();
       anio = String(now.getFullYear()).slice(-2);
       mes = String(now.getMonth() + 1).padStart(2, '0');
     }
-    // ========================================================
     
     try {
       const response = await fetch(`${SCRIPT_URL}?action=getConsecutivo&anio=${anio}&mes=${mes}&nom=${encodeURIComponent(nomCode)}&tipo=${tipoOrden}`);
@@ -649,18 +646,18 @@
     if (tabId === 'tablero') cargarTablero();
   }
 
-async function enviarTodo() {
+  async function enviarTodo() {
     const btn = document.getElementById('btn-enviar');
     const ot = document.getElementById('field-ot').value.trim();
     const nom = document.getElementById('field-nom').value.trim();
     const nomCode = extraerCodigoNOM(nom);
     
-    // === NUEVA VALIDACIÓN INTELIGENTE ===
+    // === VALIDACIÓN INTELIGENTE DE DUPLICIDAD ===
     if(allTableroData) {
       const expedienteExistente = allTableroData.find(r => 
         String(r.ot).toUpperCase() === ot.toUpperCase() && 
         extraerCodigoNOM(String(r.nom)).toUpperCase() === nomCode.toUpperCase() &&
-        String(r.numInforme).trim() !== '' // <--- LA CLAVE: Solo bloquea si YA TIENE Informe
+        String(r.numInforme).trim() !== ''
       );
 
       if (expedienteExistente) {
@@ -668,7 +665,7 @@ async function enviarTodo() {
         return;
       }
     }
-    // ====================================
+    // ============================================
 
     if (!confirm(`¿Confirmar creación de expediente para OT: ${ot} - ${nom}?`)) return;
     
@@ -683,7 +680,6 @@ async function enviarTodo() {
     for (const f of document.getElementById('up-campo').files) { allFiles.push({ file: f, category: 'HOJAS_CAMPO', size: f.size }); totalBytes += f.size; }
     for (const f of document.getElementById('up-croquis').files) { allFiles.push({ file: f, category: 'CROQUIS', size: f.size }); totalBytes += f.size; }
     for (const f of document.getElementById('up-fotos').files) { allFiles.push({ file: f, category: 'FOTOS', size: f.size }); totalBytes += f.size; }
-    // AGREGADAS CARPETAS 5 Y 6 PARA EL PAYLOAD DEL BACKEND
     for (const f of document.getElementById('up-informes').files) { allFiles.push({ file: f, category: 'INFORMES_MEMORIA', size: f.size }); totalBytes += f.size; }
     for (const f of document.getElementById('up-preliminar').files) { allFiles.push({ file: f, category: 'INF_PRELIMINAR', size: f.size }); totalBytes += f.size; }
     
@@ -1024,12 +1020,15 @@ async function enviarTodo() {
       }
 
       let numInforme = (document.getElementById('field-num-informe')?.value || '').trim();
-      if (!numInforme || numInforme.includes('Automático')) {
+      if (!numInforme || numInforme.includes('Automático') || numInforme.includes('Generado')) {
         if (typeof window.generarNumeroInforme === 'function') await window.generarNumeroInforme();
         numInforme = (document.getElementById('field-num-informe')?.value || '').trim();
       }
-      if (!/^EA-\d{4}-.+-\d{4}$/.test(numInforme)) {
-        alert('⚠️ No se pudo generar un número de informe válido. Verifica OT y NOM.');
+      
+      // === VALIDACIÓN DE FORMATO MODIFICADA ===
+      // Se permite flexibilidad en medio (NOM o sufijos), pero exige "EA-" al inicio y "-NNNN" al final.
+      if (!/^EA-.*-\d{4}$/.test(numInforme)) {
+        alert('⚠️ El número de informe modificado no tiene un formato válido.\nDebe comenzar con "EA-" y terminar con el consecutivo de 4 dígitos (Ej: EA-2603-NOM-0001).');
         return;
       }
 
