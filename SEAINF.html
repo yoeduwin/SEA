@@ -649,16 +649,29 @@
     if (tabId === 'tablero') cargarTablero();
   }
 
-  async function enviarTodo() {
+async function enviarTodo() {
     const btn = document.getElementById('btn-enviar');
     const ot = document.getElementById('field-ot').value.trim();
     const nom = document.getElementById('field-nom').value.trim();
     const nomCode = extraerCodigoNOM(nom);
     
-    if(allTableroData && allTableroData.find(r => String(r.ot).toUpperCase() === ot.toUpperCase() && extraerCodigoNOM(String(r.nom)).toUpperCase() === nomCode.toUpperCase())) {
-      alert(`⚠️ Ya existe un expediente registrado para la OT "${ot}" con el servicio "${nom}".`); return;
+    // === NUEVA VALIDACIÓN INTELIGENTE ===
+    if(allTableroData) {
+      const expedienteExistente = allTableroData.find(r => 
+        String(r.ot).toUpperCase() === ot.toUpperCase() && 
+        extraerCodigoNOM(String(r.nom)).toUpperCase() === nomCode.toUpperCase() &&
+        String(r.numInforme).trim() !== '' // <--- LA CLAVE: Solo bloquea si YA TIENE Informe
+      );
+
+      if (expedienteExistente) {
+        alert(`⚠️ El expediente ya existe.\n\nLa OT "${ot}" ya tiene asignado el informe: ${expedienteExistente.numInforme}.\n\nPuedes buscarlo en la pestaña de "Tablero de Informes".`); 
+        return;
+      }
     }
+    // ====================================
+
     if (!confirm(`¿Confirmar creación de expediente para OT: ${ot} - ${nom}?`)) return;
+    
     btn.disabled = true;
     document.getElementById('main-loader').style.display = 'block';
     document.getElementById('main-status').style.display = 'none';
