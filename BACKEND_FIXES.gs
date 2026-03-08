@@ -119,7 +119,7 @@ function fase1_RegistrarCliente(data) {
       carpetaCliente.getUrl(), sheetUrl
     ]);
 
-    enviarNotificacionRobusta(data, processedFiles, carpetaCliente, sheetUrl, addLog);
+    // Email desactivado: no se envía correo al registrar cliente
     guardarLogEnDrive(carpetaCliente, logEntries, data);
 
     return { success: true, message: 'Registro/Actualización exitosa', files: processedFiles.length };
@@ -388,10 +388,16 @@ function getOrdenesSafe_() {
     return estatus !== 'ENTREGADO' && estatus !== 'FINALIZADO';
   }).map(row => ({
     ot: row[1],
+    tipo_orden: row[2],
+    nom_servicio: row[4],
     clienteInicial: row[5],
     clienteFinal: row[6],
     cliente: row[5],
-    link_drive: row[13]  // ← AGREGADO
+    sucursal: row[6],
+    rfc: row[7],
+    personal: row[8],
+    fecha_visita: row[9],
+    link_drive: row[13]
   })).filter(orden => orden.ot && orden.ot.trim() !== '');
   return { success: true, data: ordenes };
 }
