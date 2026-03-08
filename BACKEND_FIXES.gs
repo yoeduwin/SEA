@@ -139,10 +139,12 @@ function fase1_RegistrarCliente(data) {
       sheet.appendRow(rowData);
       addLog('Nuevo registro agregado en BD.');
     }
-    // 5. Enviar correo de notificación al equipo y confirmación al cliente
-    const emailResult = enviarNotificacionRobusta(data, processedFiles, carpetaCliente, sheetUrl, addLog);
-    if (emailResult && !emailResult.success) {
-      addLog('WARNING: Email no enviado: ' + (emailResult.error || 'error desconocido'));
+    // 5. Enviar correo de notificación (omitir si _skipEmail está activo, p.ej. en tests)
+    if (!data._skipEmail) {
+      const emailResult = enviarNotificacionRobusta(data, processedFiles, carpetaCliente, sheetUrl, addLog);
+      if (emailResult && !emailResult.success) {
+        addLog('WARNING: Email no enviado: ' + (emailResult.error || 'error desconocido'));
+      }
     }
     guardarLogEnDrive(carpetaCliente, logEntries, data);
     return { success: true, message: 'Registro/Actualización exitosa', files: processedFiles.length };
@@ -570,5 +572,15 @@ function autorizarPermisos() {
   var tempFolder = DriveApp.createFolder("Test_Permisos_EA");
   tempFolder.setTrashed(true);
   SpreadsheetApp.getActiveSpreadsheet();
-  Logger.log("Permisos completos de escritura concedidos");
+  Logger.log("Permisos Drive + Sheets concedidos");
+}
+// Ejecutar UNA VEZ desde el editor GAS para autorizar el scope de Gmail.
+// Aparecerá la pantalla de permisos; aceptar y redesplegar la webapp.
+function autorizarGmail() {
+  GmailApp.sendEmail(
+    Session.getActiveUser().getEmail(),
+    'Test autorización Gmail — Ejecutiva Ambiental',
+    'Si recibes este correo, el scope de Gmail está autorizado correctamente.'
+  );
+  Logger.log('Gmail autorizado. Redesplega la webapp.');
 }

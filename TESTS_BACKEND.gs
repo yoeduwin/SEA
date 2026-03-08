@@ -127,7 +127,8 @@ function runTest_E01() {
     // Campos opcionales vacíos (no se suben archivos en el test)
     nombre_dirigido: '', puesto_dirigido: '', actividad_principal: '',
     descripcion_proceso: '', fechas_preferidas: '', responsable: '',
-    telefono_responsable: ''
+    telefono_responsable: '',
+    _skipEmail: true   // evita enviar correos reales durante el test
   };
 
   var result = fase1_RegistrarCliente(payload);
