@@ -123,7 +123,9 @@ function fase1_RegistrarCliente(data) {
     ];
     const allData = sheet.getDataRange().getValues();
     let rowIndex = -1;
-    for (let i = 1; i < allData.length; i++) {
+    // Búsqueda backward → actualiza la fila más reciente (igual que el test),
+    // evitando desalineación cuando hay filas residuales de ejecuciones previas.
+    for (let i = allData.length - 1; i >= 1; i--) {
       if (String(allData[i][3]).toUpperCase().trim() === rfcClean &&
           String(allData[i][2]).trim() === branchClean) {
         rowIndex = i + 1;

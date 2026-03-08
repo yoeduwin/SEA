@@ -94,6 +94,19 @@ function runTest_E01() {
   Logger.log('');
   Logger.log('── E01: SEAPD → registrarCliente ─────────────');
 
+  // Limpiar filas residuales de ejecuciones anteriores para evitar
+  // que el backend y el test encuentren filas distintas (forward vs backward).
+  try {
+    var sheetPre = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_CLIENTES);
+    var rowsPre  = sheetPre.getDataRange().getValues();
+    for (var pi = rowsPre.length - 1; pi >= 1; pi--) {
+      if (String(rowsPre[pi][3]).toUpperCase().trim() === TEST_RFC) {
+        sheetPre.deleteRow(pi + 1);
+        Logger.log('  [pre-cleanup] Fila residual eliminada (fila ' + (pi + 1) + ')');
+      }
+    }
+  } catch(e) { Logger.log('  [pre-cleanup] ' + e.message); }
+
   var payload = {
     action:               'registrarCliente',
     nombre_solicitante:   'Prueba Automatizada',
