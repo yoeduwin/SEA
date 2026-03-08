@@ -307,8 +307,14 @@ function runTest_E03() {
   _check_('E03-12: folder ID extraíble del url del expediente', !!m);
   var carpetaExp    = DriveApp.getFolderById(m[1]);
   var carpetaPadre  = carpetaExp.getParents().next();
+  // Derivar el ID esperado: primero _ctx_ (si E01 corrió antes), luego link_drive de la OT
+  var expectedClientFolderId = _ctx_.clienteFolderId;
+  if (!expectedClientFolderId && (ordenTest.link_drive || '')) {
+    var mLinkCli = String(ordenTest.link_drive).match(/folders\/([a-zA-Z0-9_-]+)/);
+    if (mLinkCli) expectedClientFolderId = mLinkCli[1];
+  }
   _check_('E03-13: expediente creado dentro de carpeta del cliente (no en raíz)',
-    carpetaPadre.getId() === _ctx_.clienteFolderId);
+    !!expectedClientFolderId && carpetaPadre.getId() === expectedClientFolderId);
 
   // Verificar subcarpetas del expediente
   var subFolders = [];
