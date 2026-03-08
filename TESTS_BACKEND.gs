@@ -428,11 +428,49 @@ function _cleanup_() {
 }
 
 // =========================================================================
-// HELPERS PARA TESTS UNITARIOS (sin SpreadsheetApp)
+// PRUEBA DE CORREO — ejecutar manualmente para verificar plantillas
+// =========================================================================
+// Selecciona esta función en el editor GAS y presiona ▶ Ejecutar.
+// Crea una carpeta temporal en Drive, envía el correo de equipo +
+// confirmación al cliente (correo_informe) y luego borra la carpeta.
+function runTest_Email() {
+  Logger.log('── Prueba de correo ─────────────────────────');
+  var dataPrueba = {
+    nombre_solicitante:   'Prueba Automatizada',
+    razon_social:         'EMPRESA TEST E2E SA DE CV',
+    sucursal:             'Sucursal Test Email',
+    rfc:                  'XTEST000000TST',
+    telefono_empresa:     '2220000000',
+    representante_legal:  'Rep Legal Test',
+    correo_informe:       Session.getActiveUser().getEmail(), // llega a tu propia cuenta
+    giro:                 'Pruebas Automatizadas',
+    aplica_nom020:        'no',
+    requiere_pipc:        'no',
+    fechas_preferidas:    'Cualquier día hábil'
+  };
+
+  // Carpeta temporal solo para obtener una URL real
+  var carpetaTemp = DriveApp.getFolderById(CONFIG.FOLDER_ID)
+    .createFolder('TEMP_TEST_EMAIL_' + new Date().getTime());
+  var sheetUrlFake = carpetaTemp.getUrl(); // reutilizamos la misma URL como placeholder
+
+  try {
+    var result = enviarNotificacionRobusta(dataPrueba, [], carpetaTemp, sheetUrlFake, Logger.log.bind(Logger));
+    if (result.success) {
+      Logger.log('[OK] Correo enviado — revisa tu bandeja: ' + dataPrueba.correo_informe);
+    } else {
+      Logger.log('[FAIL] ' + result.error);
+    }
+  } finally {
+    carpetaTemp.setTrashed(true);
+    Logger.log('Carpeta temporal eliminada.');
+  }
+}
+
+// =========================================================================
+// UNIT TESTS
 // =========================================================================
 
-// Ejecuta los tests de lógica pura (no necesitan conexión a Sheets/Drive)
-function runUnitTests() {
   _results_ = [];
   Logger.log('');
   Logger.log('── UNIT TESTS (lógica pura) ──────────────────');
