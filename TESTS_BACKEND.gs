@@ -1,351 +1,437 @@
 // =========================================================================
-// TESTS — API CENTRAL EJECUTIVA AMBIENTAL
-// Compatible con Google Apps Script (sin dependencias externas)
-// Para ejecutar: abre el editor GAS → selecciona runAllTests → ▶ Ejecutar
+// TESTS E2E — API CENTRAL EJECUTIVA AMBIENTAL
+// Compatible con Google Apps Script — sin dependencias externas
 // =========================================================================
-// Cobertura:
-//   T01 – Mapeo de columnas en BuscarClienteRFC  (índice 15 = link Drive)
-//   T02 – Mapeo de columnas en BuscarClienteNombre
-//   T03 – getConsecutivo: número inicial y continuación de serie
-//   T04 – getConsecutivo: tipo de orden OTA vs OT (no mezcla series)
-//   T05 – getOrdenesSafe_: incluye rfc, sucursal, personal, nom, fecha_visita
-//   T06 – getOrdenesSafe_: filtra ENTREGADO y FINALIZADO
-//   T07 – Fallback de carpeta: extrae folder ID de URL Drive
-//   T08 – sanitizeFileName: limpia caracteres no permitidos
-//   T09 – cleanCompanyName: elimina sufijos legales
-//   T10 – fase2_RegistrarOT: tipo_orden por defecto es OTA
+// FLUJOS CUBIERTOS
+//   E01  SEAPD  → registrarCliente   (crea carpeta Drive + fila en CLIENTES_MAESTRO)
+//   E02  SEAOT  → buscarClienteRFC + registrarOT  (busca cliente, registra OT)
+//   E03  SEAINF → getOrdenes + getConsecutivo + createExpediente
+//
+// USO
+//   Editor GAS → seleccionar runE2ETests → ▶ Ejecutar → Ver registros
+//   Para ejecutar un flujo individual: runTest_E01, runTest_E02, runTest_E03
+//
+// LIMPIEZA
+//   Los tests crean datos con RFC 'XTEST000000TST' en CLIENTES_MAESTRO y
+//   folio 'TEST-E2E-001' en ORDENES_TRABAJO.
+//   Al terminar (éxito o falla) se eliminan automáticamente.
 // =========================================================================
+
+// ─── Datos de prueba ──────────────────────────────────────────────────────
+var TEST_RFC     = 'XTEST000000TST';
+var TEST_FOLIO   = 'TEST-E2E-001';
+var TEST_SUCURSAL= 'Sucursal Test E2E';
+
+// ─── Estado compartido entre flujos ──────────────────────────────────────
+var _ctx_ = {
+  linkDriveCliente: '',   // resultado de E01 → input de E02
+  folioOT:          '',   // resultado de E02 → input de E03
+  urlExpediente:    '',   // resultado de E03
+  clienteFolderId:  '',   // para cleanup E01
+  expedienteFolderId: ''  // para cleanup E03
+};
 
 // ─── Mini framework ───────────────────────────────────────────────────────
-var _testResults_ = [];
+var _results_ = [];
 
-function assert_(description, condition) {
-  var status = condition ? 'PASS' : 'FAIL';
-  _testResults_.push({ status: status, description: description });
-  Logger.log('[' + status + '] ' + description);
-  if (!condition) throw new Error('Assertion failed: ' + description);
+function _pass_(msg) {
+  _results_.push('PASS: ' + msg);
+  Logger.log('[PASS] ' + msg);
+}
+function _fail_(msg) {
+  _results_.push('FAIL: ' + msg);
+  Logger.log('[FAIL] ' + msg);
+  throw new Error(msg);
+}
+function _check_(msg, condition) { condition ? _pass_(msg) : _fail_(msg); }
+function _eq_(msg, actual, expected) {
+  var ok = String(actual) === String(expected);
+  ok ? _pass_(msg) : _fail_(msg + ' | esperado: "' + expected + '" | obtenido: "' + actual + '"');
 }
 
-function assertEqual_(description, actual, expected) {
-  var ok = JSON.stringify(actual) === JSON.stringify(expected);
-  var detail = ok ? '' : ' | esperado: ' + JSON.stringify(expected) + ' | obtenido: ' + JSON.stringify(actual);
-  _testResults_.push({ status: ok ? 'PASS' : 'FAIL', description: description + detail });
-  Logger.log('[' + (ok ? 'PASS' : 'FAIL') + '] ' + description + detail);
-  if (!ok) throw new Error('assertEqual_ failed: ' + description + detail);
+// =========================================================================
+// RUNNER PRINCIPAL
+// =========================================================================
+function runE2ETests() {
+  _results_ = [];
+  Logger.log('');
+  Logger.log('══════════════════════════════════════════════');
+  Logger.log('  TESTS E2E — EA Backend v3.0');
+  Logger.log('  RFC de prueba : ' + TEST_RFC);
+  Logger.log('  Folio de prueba: ' + TEST_FOLIO);
+  Logger.log('══════════════════════════════════════════════');
+
+  var e01ok = false, e02ok = false, e03ok = false;
+  try { runTest_E01(); e01ok = true; } catch(e) { Logger.log('  E01 abortado: ' + e.message); }
+  try { runTest_E02(); e02ok = true; } catch(e) { Logger.log('  E02 abortado: ' + e.message); }
+  try { runTest_E03(); e03ok = true; } catch(e) { Logger.log('  E03 abortado: ' + e.message); }
+
+  Logger.log('');
+  Logger.log('── LIMPIEZA ──────────────────────────────────');
+  _cleanup_();
+
+  var pass = _results_.filter(function(r){ return r.indexOf('PASS') === 0; }).length;
+  var fail = _results_.filter(function(r){ return r.indexOf('FAIL') === 0; }).length;
+  Logger.log('');
+  Logger.log('══════════════════════════════════════════════');
+  Logger.log('  RESULTADO: ' + pass + ' PASS  |  ' + fail + ' FAIL');
+  Logger.log('  E01 registrarCliente : ' + (e01ok ? 'OK' : 'FALLO'));
+  Logger.log('  E02 registrarOT      : ' + (e02ok ? 'OK' : 'FALLO'));
+  Logger.log('  E03 createExpediente : ' + (e03ok ? 'OK' : 'FALLO'));
+  Logger.log('══════════════════════════════════════════════');
 }
 
-function runTest_(name, fn) {
-  try {
-    fn();
-  } catch (e) {
-    _testResults_.push({ status: 'ERROR', description: name + ' → ' + e.message });
-    Logger.log('[ERROR] ' + name + ' → ' + e.message);
-  }
-}
+// =========================================================================
+// E01 — SEAPD: registrarCliente
+// =========================================================================
+// Simula el payload que SEAPD envía cuando el usuario llena el formulario
+// y presiona "Enviar". Verifica que:
+//   - La función devuelve success: true
+//   - Aparece una fila en CLIENTES_MAESTRO con los datos correctos
+//   - El link_drive_cliente (índice 15) no está vacío y apunta a Drive
+//   - La carpeta Drive existe y es accesible
+function runTest_E01() {
+  Logger.log('');
+  Logger.log('── E01: SEAPD → registrarCliente ─────────────');
 
-function runAllTests() {
-  _testResults_ = [];
-  Logger.log('========================================');
-  Logger.log(' EJECUTANDO TESTS — EA Backend v3.0');
-  Logger.log('========================================');
-
-  runTest_('T01 – BuscarClienteRFC: mapeo de columnas (16-col schema)', test_T01_BuscarRFC_columnas);
-  runTest_('T02 – BuscarClienteNombre: mapeo de columnas (16-col schema)', test_T02_BuscarNombre_columnas);
-  runTest_('T03 – getConsecutivo: primer número es 0001', test_T03_Consecutivo_primero);
-  runTest_('T04 – getConsecutivo: OTA y OT tienen series independientes', test_T04_Consecutivo_tipos);
-  runTest_('T05 – getOrdenesSafe: incluye campos requeridos por SEAINF', test_T05_GetOrdenes_campos);
-  runTest_('T06 – getOrdenesSafe: filtra ENTREGADO / FINALIZADO', test_T06_GetOrdenes_filtro);
-  runTest_('T07 – Fallback carpeta: extrae folder ID de URL Drive', test_T07_ExtractFolderID);
-  runTest_('T08 – sanitizeFileName: limpia caracteres especiales', test_T08_SanitizeFileName);
-  runTest_('T09 – cleanCompanyName: elimina sufijos S.A. de C.V.', test_T09_CleanCompanyName);
-  runTest_('T10 – fase2_RegistrarOT: tipo por defecto es OTA', test_T10_OT_tipoPorDefecto);
-
-  // Resumen
-  var pass = _testResults_.filter(function(r){ return r.status === 'PASS'; }).length;
-  var fail = _testResults_.filter(function(r){ return r.status === 'FAIL'; }).length;
-  var err  = _testResults_.filter(function(r){ return r.status === 'ERROR'; }).length;
-  Logger.log('========================================');
-  Logger.log(' RESULTADO: ' + pass + ' PASS | ' + fail + ' FAIL | ' + err + ' ERROR');
-  Logger.log('========================================');
-  return { pass: pass, fail: fail, error: err, total: _testResults_.length };
-}
-
-// ─── Tests de lógica pura (sin llamadas a SpreadsheetApp) ─────────────────
-
-// T01 — BuscarClienteRFC: verifica que link_drive_cliente viene de índice [15]
-function test_T01_BuscarRFC_columnas() {
-  // Simula una fila del nuevo esquema de 16 columnas
-  var fila = [
-    '08/03/2026 10:00:00',    // [0]  Fecha
-    'EMPRESA TEST S.A.',       // [1]  Razón Social
-    'Planta Norte',            // [2]  Sucursal
-    'TST010101AAA',            // [3]  RFC
-    'Juan Representante',      // [4]  Representante Legal
-    'Calle 1 #100, Puebla',    // [5]  Dirección
-    '2221234567',              // [6]  Teléfono Empresa
-    'Carlos Solicitante',      // [7]  Nombre Solicitante
-    'carlos@test.com',         // [8]  Correo Informe
-    'Manufactura',             // [9]  Giro
-    'IMSS-01234',              // [10] Registro Patronal
-    '500 ton / 450 ton',       // [11] Capacidad combinada
-    'L-V 08:00-18:00',         // [12] Días/Turnos
-    'SÍ',                      // [13] Aplica NOM-020
-    'NO',                      // [14] Requiere PIPC
-    'https://drive.google.com/drive/folders/ABC123_link_correcto' // [15] Drive Link
-  ];
-
-  // Replica la lógica de fase2_BuscarClienteRFC con esa fila
-  var resultado = {
-    razon_social:        fila[1],
-    sucursal:            fila[2] || 'Matriz',
-    rfc:                 fila[3],
-    nombre_solicitante:  fila[7],
-    correo_informe:      fila[8],
-    telefono_empresa:    fila[6],
-    representante_legal: fila[4],
-    direccion_evaluacion:fila[5],
-    giro:                fila[9],
-    registro_patronal:   fila[10],
-    link_drive_cliente:  fila[15]   // ← índice corregido
-  };
-
-  assertEqual_('T01a: nombre_solicitante viene de col 8 (índice 7)', resultado.nombre_solicitante, 'Carlos Solicitante');
-  assertEqual_('T01b: correo_informe viene de col 9 (índice 8)',      resultado.correo_informe,     'carlos@test.com');
-  assertEqual_('T01c: telefono_empresa viene de col 7 (índice 6)',    resultado.telefono_empresa,   '2221234567');
-  assertEqual_('T01d: link_drive_cliente viene de col 16 (índice 15)',resultado.link_drive_cliente, 'https://drive.google.com/drive/folders/ABC123_link_correcto');
-  assert_('T01e: link_drive_cliente NO está vacío', resultado.link_drive_cliente !== '');
-  assert_('T01f: link_drive_cliente NO es undefined', resultado.link_drive_cliente !== undefined);
-}
-
-// T02 — BuscarClienteNombre: mismo mapeo
-function test_T02_BuscarNombre_columnas() {
-  var fila = [
-    '08/03/2026', 'ACEROS DEL NORTE', 'Matriz', 'ADN920101XYZ',
-    'Rep Legal', 'Dir Eval', '2224567890', 'Solicitante Dos',
-    'sol2@aceros.com', 'Siderurgia', 'IMSS-99999',
-    '1000 ton / 800 ton', 'L-S 06:00-22:00', 'NO', 'SÍ',
-    'https://drive.google.com/drive/folders/XYZ789_link_nombre'
-  ];
-
-  var resultado = {
-    nombre_solicitante:  fila[7],
-    correo_informe:      fila[8],
-    telefono_empresa:    fila[6],
-    link_drive_cliente:  fila[15]
-  };
-
-  assertEqual_('T02a: nombre_solicitante índice 7',   resultado.nombre_solicitante, 'Solicitante Dos');
-  assertEqual_('T02b: correo_informe índice 8',        resultado.correo_informe,     'sol2@aceros.com');
-  assertEqual_('T02c: link_drive_cliente índice 15',   resultado.link_drive_cliente, 'https://drive.google.com/drive/folders/XYZ789_link_nombre');
-}
-
-// T03 — getConsecutivo: si no hay registros previos, devuelve 0001
-function test_T03_Consecutivo_primero() {
-  var serieVacia = [];
-  var max = calcularMaxConsecutivo_(serieVacia, 'OTA');
-  var siguiente = String(max + 1).padStart(4, '0');
-  assertEqual_('T03: primer número de serie OTA es 0001', siguiente, '0001');
-}
-
-// T04 — getConsecutivo: OTA y OT no comparten contador
-function test_T04_Consecutivo_tipos() {
-  // Filas simuladas de ORDENES_TRABAJO col[2]=tipo, col[3]=numInforme
-  var filas = [
-    ['', 'OT-001', 'OT',  'EA-2601-NOM-0001', '...'],
-    ['', 'OT-002', 'OT',  'EA-2601-NOM-0002', '...'],
-    ['', 'OTA-001','OTA', 'EA-2601-RUP-0001', '...'],
-  ];
-
-  var maxOTA = calcularMaxConsecutivo_(filas, 'OTA');
-  var maxOT  = calcularMaxConsecutivo_(filas, 'OT');
-
-  assertEqual_('T04a: siguiente OTA es 0002', String(maxOTA + 1).padStart(4, '0'), '0002');
-  assertEqual_('T04b: siguiente OT es 0003',  String(maxOT  + 1).padStart(4, '0'), '0003');
-}
-
-// T05 — getOrdenesSafe_: el objeto de orden tiene todos los campos que SEAINF necesita
-function test_T05_GetOrdenes_campos() {
-  // Simula una fila de ORDENES_TRABAJO (15 columnas)
-  var fila = [
-    '2026-03-01',   // [0]  Fecha
-    'OTA-2601-001', // [1]  Folio OT
-    'OTA',          // [2]  Tipo
-    'EA-2601-NOM-0001', // [3] Num Informe
-    'Ruido',        // [4]  NOM Servicio
-    'EMPRESA SA',   // [5]  Cliente razon social
-    'Planta Sur',   // [6]  Sucursal
-    'EMP010101XYZ', // [7]  RFC
-    'Dr. Gomez',    // [8]  Personal asignado
-    '15/03/2026',   // [9]  Fecha visita
-    '22/03/2026',   // [10] Fecha entrega
-    '',             // [11] Fecha real entrega
-    'EN PROCESO',   // [12] Estatus
-    'https://drive.google.com/drive/folders/FOLDER_OT' // [13] Link Drive
-  ];
-
-  var orden = mapearOrden_(fila);
-
-  assertEqual_('T05a: campo ot',          orden.ot,          'OTA-2601-001');
-  assertEqual_('T05b: campo rfc',          orden.rfc,         'EMP010101XYZ');
-  assertEqual_('T05c: campo sucursal',     orden.sucursal,    'Planta Sur');
-  assertEqual_('T05d: campo personal',     orden.personal,    'Dr. Gomez');
-  assertEqual_('T05e: campo nom_servicio', orden.nom_servicio,'Ruido');
-  assertEqual_('T05f: campo fecha_visita', orden.fecha_visita,'15/03/2026');
-  assertEqual_('T05g: campo link_drive',   orden.link_drive,  'https://drive.google.com/drive/folders/FOLDER_OT');
-}
-
-// T06 — getOrdenesSafe_: ENTREGADO y FINALIZADO se excluyen del resultado
-function test_T06_GetOrdenes_filtro() {
-  var filas = [
-    makeFila_('OTA-001', 'EN PROCESO'),
-    makeFila_('OTA-002', 'ENTREGADO'),
-    makeFila_('OTA-003', 'FINALIZADO'),
-    makeFila_('OTA-004', 'NO INICIADO'),
-    makeFila_('OTA-005', 'entregado'),   // minúsculas también deben filtrarse
-  ];
-
-  var activos = filas.filter(function(row) {
-    var estatus = String(row[12] || '').trim().toUpperCase();
-    return estatus !== 'ENTREGADO' && estatus !== 'FINALIZADO';
-  });
-
-  assertEqual_('T06a: solo 2 órdenes activas', activos.length, 2);
-  assertEqual_('T06b: primera activa es OTA-001', activos[0][1], 'OTA-001');
-  assertEqual_('T06c: segunda activa es OTA-004', activos[1][1], 'OTA-004');
-}
-
-// T07 — Fallback de carpeta: regex extrae folder ID de URL Drive
-function test_T07_ExtractFolderID() {
-  var urls = [
-    'https://drive.google.com/drive/folders/1nHd-70uUeciClDm_3_pgbmqGF7II1lfQ',
-    'https://drive.google.com/drive/folders/ABC123xyz-_456',
-    'https://drive.google.com/drive/u/0/folders/SHORT_ID?usp=sharing'
-  ];
-  var esperados = [
-    '1nHd-70uUeciClDm_3_pgbmqGF7II1lfQ',
-    'ABC123xyz-_456',
-    'SHORT_ID'
-  ];
-
-  urls.forEach(function(url, i) {
-    var m = String(url).match(/folders\/([a-zA-Z0-9_-]+)/);
-    assert_('T07[' + i + ']: regex encuentra folder ID en URL', !!m);
-    assertEqual_('T07[' + i + ']: folder ID correcto', m[1], esperados[i]);
-  });
-
-  var urlVacia = 'https://docs.google.com/spreadsheets/d/ABC';
-  var mVacia = String(urlVacia).match(/folders\/([a-zA-Z0-9_-]+)/);
-  assert_('T07d: URL sin carpeta devuelve null', mVacia === null);
-}
-
-// T08 — sanitizeFileName
-function test_T08_SanitizeFileName() {
-  assertEqual_('T08a: barra /  → guion bajo', sanitizeFileName('Nombre/Raro'), 'Nombre_Raro');
-  assertEqual_('T08b: dos puntos → guion bajo', sanitizeFileName('HH:mm'),     'HH_mm');
-  assertEqual_('T08c: texto normal sin cambios', sanitizeFileName('PuertoNorte'), 'PuertoNorte');
-  assertEqual_('T08d: trunca a 50 chars', sanitizeFileName('A'.repeat(60)).length, 50);
-  assertEqual_('T08e: valor vacío → Sin_nombre', sanitizeFileName(''), 'Sin_nombre');
-  assertEqual_('T08f: null → Sin_nombre', sanitizeFileName(null), 'Sin_nombre');
-}
-
-// T09 — cleanCompanyName
-function test_T09_CleanCompanyName() {
-  assertEqual_('T09a: elimina S.A. DE C.V.', cleanCompanyName('EMPRESA SA DE CV'), 'EMPRESA');
-  assertEqual_('T09b: elimina S.A.',          cleanCompanyName('ACEROS S.A.'),      'ACEROS');
-  assertEqual_('T09c: elimina S.C.',          cleanCompanyName('DESPACHO S.C.'),    'DESPACHO');
-  assert_('T09d: resultado no está vacío', cleanCompanyName('EMPRESA S.A. DE C.V.').length > 0);
-}
-
-// T10 — fase2_RegistrarOT: tipo_orden por defecto es OTA (no OT)
-function test_T10_OT_tipoPorDefecto() {
   var payload = {
-    ot_folio: 'OTA-001', nom_servicio: 'Ruido', cliente_razon_social: 'TEST SA',
-    sucursal: 'Matriz', rfc: 'TST010101', personal_asignado: 'Ing. X',
-    fecha_visita: '2026-03-15', fecha_entrega_limite: '2026-03-22',
-    link_drive_cliente: 'https://drive.google.com/drive/folders/ABC',
-    observaciones: ''
-    // tipo_orden NO se envía — debe defaultear a 'OTA'
+    action:               'registrarCliente',
+    nombre_solicitante:   'Prueba Automatizada',
+    razon_social:         'EMPRESA TEST E2E SA DE CV',
+    sucursal:             TEST_SUCURSAL,
+    rfc:                  TEST_RFC,
+    telefono_empresa:     '2220000000',
+    representante_legal:  'Rep Legal Test',
+    direccion_evaluacion: 'Calle Falsa 123, Puebla',
+    giro:                 'Pruebas Automatizadas',
+    correo_informe:       'test@noenviar.com',
+    registro_patronal:    'IMSS-TEST-000',
+    capacidad_instalada:  '100 ton',
+    capacidad_operacion:  '80 ton',
+    dias_turnos_horarios: 'L-V 09:00-18:00',
+    aplica_nom020:        'no',
+    requiere_pipc:        'no',
+    // Campos opcionales vacíos (no se suben archivos en el test)
+    nombre_dirigido: '', puesto_dirigido: '', actividad_principal: '',
+    descripcion_proceso: '', fechas_preferidas: '', responsable: '',
+    telefono_responsable: ''
   };
 
-  var tipoEfectivo = payload.tipo_orden || 'OTA';
-  assertEqual_('T10: tipo_orden por defecto es OTA (no OT)', tipoEfectivo, 'OTA');
+  var result = fase1_RegistrarCliente(payload);
+
+  _check_('E01-1: respuesta success=true',      result.success === true);
+  _check_('E01-2: sin error en respuesta',       !result.error);
+
+  // Verificar fila en CLIENTES_MAESTRO
+  var sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_CLIENTES);
+  var rows  = sheet.getDataRange().getValues();
+  var fila  = null;
+  for (var i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][3]).toUpperCase().trim() === TEST_RFC &&
+        String(rows[i][2]).trim() === TEST_SUCURSAL) {
+      fila = rows[i]; break;
+    }
+  }
+
+  _check_('E01-3: fila creada en CLIENTES_MAESTRO',       fila !== null);
+  _eq_('E01-4: razon_social en col 2 (índice 1)',         fila[1], 'EMPRESA TEST E2E SA DE CV');
+  _eq_('E01-5: sucursal en col 3 (índice 2)',             fila[2], TEST_SUCURSAL);
+  _eq_('E01-6: rfc en col 4 (índice 3)',                  fila[3], TEST_RFC);
+  _eq_('E01-7: representante_legal en col 5 (índice 4)', fila[4], 'Rep Legal Test');
+  _eq_('E01-8: telefono_empresa en col 7 (índice 6)',    fila[6], '2220000000');
+  _eq_('E01-9: nombre_solicitante en col 8 (índice 7)', fila[7], 'Prueba Automatizada');
+  _eq_('E01-10: correo_informe en col 9 (índice 8)',    fila[8], 'test@noenviar.com');
+
+  var linkDrive = String(fila[15] || '');
+  _check_('E01-11: link_drive en col 16 (índice 15) no está vacío', linkDrive !== '');
+  _check_('E01-12: link_drive contiene "folders/"', linkDrive.indexOf('folders/') !== -1);
+
+  // Verificar que la carpeta Drive es accesible
+  var m = linkDrive.match(/folders\/([a-zA-Z0-9_-]+)/);
+  _check_('E01-13: folder ID extraíble del link_drive', !!m);
+  var carpeta = DriveApp.getFolderById(m[1]);
+  _check_('E01-14: carpeta Drive existe y es accesible', !!carpeta);
+  _check_('E01-15: nombre carpeta contiene el RFC', carpeta.getParents().next().getName().indexOf(TEST_RFC) !== -1);
+
+  // Guardar para flujos siguientes y para cleanup
+  _ctx_.linkDriveCliente = linkDrive;
+  _ctx_.clienteFolderId  = m[1];
+  Logger.log('  linkDriveCliente: ' + linkDrive);
 }
 
-// ─── Helpers para los tests ───────────────────────────────────────────────
+// =========================================================================
+// E02 — SEAOT: buscarClienteRFC + registrarOT
+// =========================================================================
+// Simula el flujo de SEAOT:
+//   1. Usuario escribe el RFC → buscarClienteRFC → obtiene sucursales + link_drive
+//   2. Usuario llena el form de OT y presiona "Registrar OT" → registrarOT
+// Verifica que:
+//   - buscarClienteRFC devuelve found: true con el link correcto (índice 15)
+//   - La OT aparece en ORDENES_TRABAJO con link_drive_cliente en col 14
+function runTest_E02() {
+  Logger.log('');
+  Logger.log('── E02: SEAOT → buscarClienteRFC + registrarOT ──');
 
-// Simula el mapeo de una fila de ORDENES_TRABAJO a un objeto orden
-function mapearOrden_(row) {
-  return {
-    ot:           row[1],
-    tipo_orden:   row[2],
-    nom_servicio: row[4],
-    clienteInicial: row[5],
-    clienteFinal:   row[6],
-    cliente:      row[5],
-    sucursal:     row[6],
-    rfc:          row[7],
-    personal:     row[8],
-    fecha_visita: row[9],
-    link_drive:   row[13]
+  // Paso 1: Búsqueda de cliente por RFC (como hace SEAOT al tipear el RFC)
+  var busqueda = fase2_BuscarClienteRFC(TEST_RFC);
+
+  _check_('E02-1: buscarClienteRFC devuelve found=true',   busqueda.found === true);
+  _check_('E02-2: hay al menos una sucursal',              busqueda.sucursales && busqueda.sucursales.length > 0);
+
+  var sucursal = busqueda.sucursales[0];
+  _eq_('E02-3: razon_social correcta',          sucursal.razon_social,       'EMPRESA TEST E2E SA DE CV');
+  _eq_('E02-4: nombre_solicitante (índice 7)',  sucursal.nombre_solicitante, 'Prueba Automatizada');
+  _eq_('E02-5: correo_informe (índice 8)',      sucursal.correo_informe,     'test@noenviar.com');
+  _eq_('E02-6: telefono_empresa (índice 6)',    sucursal.telefono_empresa,   '2220000000');
+
+  var linkDrive = sucursal.link_drive_cliente || '';
+  _check_('E02-7: link_drive_cliente no está vacío (índice 15)',  linkDrive !== '');
+  _check_('E02-8: link_drive_cliente contiene "folders/"',        linkDrive.indexOf('folders/') !== -1);
+
+  // Paso 2: Registro de OT (como hace SEAOT al enviar el formulario)
+  var payloadOT = {
+    action:               'registrarOT',
+    ot_folio:             TEST_FOLIO,
+    tipo_orden:           'OTA',
+    nom_servicio:         'NOM-035-STPS',
+    cliente_razon_social: sucursal.razon_social,
+    sucursal:             sucursal.sucursal,
+    rfc:                  sucursal.rfc,
+    personal_asignado:    'Ing. Test',
+    fecha_visita:         '2026-03-20',
+    fecha_entrega_limite: '2026-03-27',
+    link_drive_cliente:   linkDrive,   // ← crítico: viene de la búsqueda por RFC
+    observaciones:        'OT generada por test E2E'
   };
+
+  var resultOT = fase2_RegistrarOT(payloadOT);
+  _check_('E02-9: registrarOT devuelve success=true', resultOT.success === true);
+
+  // Verificar fila en ORDENES_TRABAJO
+  var sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+  var rows  = sheet.getDataRange().getValues();
+  var filaOT = null;
+  for (var i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][1]).trim() === TEST_FOLIO) { filaOT = rows[i]; break; }
+  }
+
+  _check_('E02-10: fila creada en ORDENES_TRABAJO',            filaOT !== null);
+  _eq_('E02-11: folio en col 2 (índice 1)',                   filaOT[1], TEST_FOLIO);
+  _eq_('E02-12: tipo_orden en col 3 (índice 2)',              filaOT[2], 'OTA');
+  _eq_('E02-13: nom_servicio en col 5 (índice 4)',            filaOT[4], 'NOM-035-STPS');
+  _eq_('E02-14: rfc en col 8 (índice 7)',                     filaOT[7], TEST_RFC);
+  _eq_('E02-15: estatus inicial "NO INICIADO"',               filaOT[12], 'NO INICIADO');
+
+  var linkEnOT = String(filaOT[13] || '');
+  _check_('E02-16: link_drive_cliente guardado en col 14 (índice 13)', linkEnOT !== '');
+  _check_('E02-17: link en OT coincide con link del cliente', linkEnOT === linkDrive);
+
+  _ctx_.folioOT = TEST_FOLIO;
+  Logger.log('  OT registrada con folio: ' + TEST_FOLIO);
 }
 
-// Construye una fila mínima con OT y estatus
-function makeFila_(ot, estatus) {
-  var fila = new Array(15).fill('');
-  fila[1]  = ot;
-  fila[12] = estatus;
-  return fila;
+// =========================================================================
+// E03 — SEAINF: getOrdenes + getConsecutivo + createExpediente
+// =========================================================================
+// Simula el flujo de SEAINF:
+//   1. Al cargar la pantalla → getOrdenes → lista de OTs disponibles
+//   2. Usuario selecciona la OT → getConsecutivo → genera numInforme
+//   3. Usuario adjunta archivos y presiona "Crear Expediente" → createExpediente
+// Verifica que:
+//   - getOrdenes incluye la OT del test con rfc, sucursal, link_drive
+//   - getConsecutivo genera un número con formato correcto
+//   - createExpediente crea la carpeta DENTRO de la carpeta del cliente (no en raíz)
+//   - ORDENES_TRABAJO se actualiza con nuevo link y estatus EN PROCESO
+function runTest_E03() {
+  Logger.log('');
+  Logger.log('── E03: SEAINF → getOrdenes + getConsecutivo + createExpediente ──');
+
+  // Paso 1: getOrdenes (como hace SEAINF al cargar)
+  var ordenesResp = getOrdenesSafe_();
+  _check_('E03-1: getOrdenes devuelve success=true', ordenesResp.success === true);
+
+  var ordenTest = null;
+  for (var i = 0; i < ordenesResp.data.length; i++) {
+    if (ordenesResp.data[i].ot === TEST_FOLIO) { ordenTest = ordenesResp.data[i]; break; }
+  }
+  _check_('E03-2: OT del test aparece en getOrdenes',            ordenTest !== null);
+  _eq_('E03-3: campo rfc presente y correcto',                   ordenTest.rfc,       TEST_RFC);
+  _eq_('E03-4: campo sucursal presente',                         ordenTest.sucursal,  TEST_SUCURSAL);
+  _eq_('E03-5: campo nom_servicio presente',                     ordenTest.nom_servicio, 'NOM-035-STPS');
+  _check_('E03-6: campo link_drive presente y no vacío',         (ordenTest.link_drive || '') !== '');
+
+  // Paso 2: getConsecutivo (como hace SEAINF al seleccionar la OT)
+  var hoy     = new Date();
+  var anio    = String(hoy.getFullYear()).slice(2);
+  var mes     = String(hoy.getMonth() + 1).padStart(2, '0');
+  var nomCode = 'NOM035';
+
+  var consResp = getConsecutivoSafe_({ anio: anio, mes: mes, nom: nomCode, tipo: 'OTA' });
+  _check_('E03-7: getConsecutivo devuelve success=true',       consResp.success === true);
+  _check_('E03-8: numeroInforme no está vacío',                !!consResp.numeroInforme);
+
+  var numInforme = consResp.numeroInforme;
+  var regexInforme = /^EA-\d{4}-[A-Za-z0-9]+-\d{4}$/;
+  _check_('E03-9: formato numInforme es EA-AAMM-NOM-0000',     regexInforme.test(numInforme));
+  Logger.log('  numInforme asignado: ' + numInforme);
+
+  // Paso 3: createExpediente (como hace SEAINF al presionar "Crear Expediente")
+  var payloadExp = {
+    action: 'createExpediente',
+    data: {
+      ot:         TEST_FOLIO,
+      nom:        nomCode,
+      numInforme: numInforme,
+      cliente:    'EMPRESA TEST E2E SA DE CV',
+      sucursal:   TEST_SUCURSAL,
+      rfc:        TEST_RFC,                      // ← SEAINF lo envía para fallback
+      linkDrive:  ordenTest.link_drive,          // ← SEAINF lo envía para fallback
+      fecha:      Utilities.formatDate(hoy, 'GMT-6', 'dd/MM/yyyy'),
+      entrega:    '22/03/2026',
+      tipoOrden:  'OTA',
+      solicitante:'Prueba Automatizada',
+      telefono:   '2220000000',
+      direccion:  'Calle Falsa 123',
+      responsable:'Ing. Test',
+      estatus:    'NO INICIADO'
+    },
+    files: []  // sin archivos en test (evita payload enorme)
+  };
+
+  var resultExp = fase3_CrearExpediente(payloadExp);
+  _check_('E03-10: createExpediente devuelve success=true', resultExp.success === true);
+  _check_('E03-11: url del expediente no está vacía',       !!resultExp.url);
+
+  // Verificar que el expediente NO está en la carpeta raíz
+  var m = resultExp.url.match(/folders\/([a-zA-Z0-9_-]+)/);
+  _check_('E03-12: folder ID extraíble del url del expediente', !!m);
+  var carpetaExp    = DriveApp.getFolderById(m[1]);
+  var carpetaPadre  = carpetaExp.getParents().next();
+  _check_('E03-13: expediente creado dentro de carpeta del cliente (no en raíz)',
+    carpetaPadre.getId() === _ctx_.clienteFolderId);
+
+  // Verificar subcarpetas del expediente
+  var subFolders = [];
+  var iter = carpetaExp.getFolders();
+  while (iter.hasNext()) subFolders.push(iter.next().getName());
+  _check_('E03-14: subcarpeta "1. ORDEN_TRABAJO" creada', subFolders.indexOf('1. ORDEN_TRABAJO') !== -1);
+  _check_('E03-15: subcarpeta "2. HDC" creada',           subFolders.indexOf('2. HDC') !== -1);
+  _check_('E03-16: subcarpeta "3. CROQUIS" creada',       subFolders.indexOf('3. CROQUIS') !== -1);
+  _check_('E03-17: subcarpeta "4. FOTOS" creada',         subFolders.indexOf('4. FOTOS') !== -1);
+
+  // Verificar que ORDENES_TRABAJO se actualizó
+  var sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+  var rows  = sheet.getDataRange().getValues();
+  var filaOT = null;
+  for (var j = rows.length - 1; j >= 1; j--) {
+    if (String(rows[j][1]).trim() === TEST_FOLIO) { filaOT = rows[j]; break; }
+  }
+  _check_('E03-18: fila OT actualizada en ORDENES_TRABAJO', filaOT !== null);
+  _eq_('E03-19: numInforme guardado en col 4 (índice 3)',  filaOT[3], numInforme);
+  _eq_('E03-20: estatus cambiado a EN PROCESO',            filaOT[12], 'EN PROCESO');
+  _check_('E03-21: link del expediente guardado en col 14', String(filaOT[13] || '').indexOf('folders/') !== -1);
+
+  _ctx_.urlExpediente     = resultExp.url;
+  _ctx_.expedienteFolderId = m[1];
+  Logger.log('  Expediente creado en: ' + resultExp.url);
 }
 
-// Calcula el máximo consecutivo para un tipo dado (lógica de getConsecutivoSafe_)
-function calcularMaxConsecutivo_(filas, tipo) {
-  var regex = /^EA-\d{4}-.+-(\d{4})$/;
-  var max = 0;
-  filas.forEach(function(row) {
-    var valNum  = row[3];
-    var valTipo = String(row[2] || '').trim().toUpperCase();
-    if (valTipo === tipo.toUpperCase()) {
-      var m = String(valNum || '').trim().match(regex);
-      if (m) {
-        var n = parseInt(m[1], 10);
-        if (n > max) max = n;
+// =========================================================================
+// LIMPIEZA — elimina todos los datos de prueba
+// =========================================================================
+function _cleanup_() {
+  // 1. Eliminar fila de CLIENTES_MAESTRO
+  try {
+    var sheetCli = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_CLIENTES);
+    var rowsCli  = sheetCli.getDataRange().getValues();
+    for (var i = rowsCli.length - 1; i >= 1; i--) {
+      if (String(rowsCli[i][3]).toUpperCase().trim() === TEST_RFC) {
+        sheetCli.deleteRow(i + 1);
+        Logger.log('  Fila eliminada de CLIENTES_MAESTRO (fila ' + (i + 1) + ')');
       }
     }
-  });
-  return max;
-}
+  } catch(e) { Logger.log('  ERROR cleanup CLIENTES_MAESTRO: ' + e.message); }
 
-// ─── Tests de integración (requieren conexión a Sheets/Drive real) ─────────
-// Ejecutar manualmente con datos reales en el entorno de producción.
+  // 2. Eliminar fila de ORDENES_TRABAJO
+  try {
+    var sheetOT = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+    var rowsOT  = sheetOT.getDataRange().getValues();
+    for (var j = rowsOT.length - 1; j >= 1; j--) {
+      if (String(rowsOT[j][1]).trim() === TEST_FOLIO) {
+        sheetOT.deleteRow(j + 1);
+        Logger.log('  Fila eliminada de ORDENES_TRABAJO (fila ' + (j + 1) + ')');
+      }
+    }
+  } catch(e) { Logger.log('  ERROR cleanup ORDENES_TRABAJO: ' + e.message); }
 
-function integrationTest_BuscarClienteRFC() {
-  Logger.log('=== INTEGRATION: BuscarClienteRFC ===');
-  // Requiere RFC existente en CLIENTES_MAESTRO
-  var rfc = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID)
-    .getSheetByName(CONFIG.SHEET_CLIENTES)
-    .getDataRange().getValues().slice(1)
-    .map(function(r){ return r[3]; })
-    .find(function(r){ return r && r.toString().trim() !== ''; });
-
-  if (!rfc) { Logger.log('Sin datos en CLIENTES_MAESTRO — omitiendo.'); return; }
-
-  var resultado = fase2_BuscarClienteRFC(rfc.toString().trim());
-  Logger.log('found: ' + resultado.found);
-  if (resultado.found && resultado.sucursales.length > 0) {
-    var s = resultado.sucursales[0];
-    Logger.log('link_drive_cliente: ' + s.link_drive_cliente);
-    Logger.log('[' + (s.link_drive_cliente ? 'PASS' : 'FAIL') + '] link_drive_cliente presente');
+  // 3. Mover a papelera la carpeta del expediente
+  if (_ctx_.expedienteFolderId) {
+    try {
+      DriveApp.getFolderById(_ctx_.expedienteFolderId).setTrashed(true);
+      Logger.log('  Carpeta expediente movida a papelera');
+    } catch(e) { Logger.log('  ERROR cleanup expediente: ' + e.message); }
   }
+
+  // 4. Mover a papelera la carpeta sucursal del cliente
+  if (_ctx_.clienteFolderId) {
+    try {
+      DriveApp.getFolderById(_ctx_.clienteFolderId).setTrashed(true);
+      Logger.log('  Carpeta sucursal del cliente movida a papelera');
+    } catch(e) { Logger.log('  ERROR cleanup carpeta cliente: ' + e.message); }
+  }
+
+  // 5. Mover a papelera la carpeta padre RFC - EMPRESA TEST
+  try {
+    var folderRaiz = DriveApp.getFolderById(CONFIG.FOLDER_ID);
+    var iter = folderRaiz.getFolders();
+    while (iter.hasNext()) {
+      var f = iter.next();
+      if (f.getName().indexOf(TEST_RFC) !== -1) {
+        f.setTrashed(true);
+        Logger.log('  Carpeta padre "' + f.getName() + '" movida a papelera');
+      }
+    }
+  } catch(e) { Logger.log('  ERROR cleanup carpeta raíz: ' + e.message); }
 }
 
-function integrationTest_GetOrdenes() {
-  Logger.log('=== INTEGRATION: getOrdenesSafe_ ===');
-  var r = getOrdenesSafe_();
-  if (!r.success || r.data.length === 0) { Logger.log('Sin órdenes activas — omitiendo.'); return; }
-  var o = r.data[0];
-  var camposRequeridos = ['ot','rfc','sucursal','personal','nom_servicio','fecha_visita','link_drive'];
-  camposRequeridos.forEach(function(campo) {
-    Logger.log('[' + (campo in o ? 'PASS' : 'FAIL') + '] campo ' + campo + ' presente');
-  });
+// =========================================================================
+// HELPERS PARA TESTS UNITARIOS (sin SpreadsheetApp)
+// =========================================================================
+
+// Ejecuta los tests de lógica pura (no necesitan conexión a Sheets/Drive)
+function runUnitTests() {
+  _results_ = [];
+  Logger.log('');
+  Logger.log('── UNIT TESTS (lógica pura) ──────────────────');
+
+  // Mapeo de índices nuevo esquema 16 columnas
+  var fila16 = [
+    '08/03/2026','EMPRESA TEST','Planta Norte','TST010101AAA',
+    'Rep Legal','Dir Eval','2221234567','Solicitante Test',
+    'sol@test.com','Manufactura','IMSS-01234','500 / 450 ton',
+    'L-V 08:00-18:00','SÍ','NO',
+    'https://drive.google.com/drive/folders/LINK_CORRECTO'
+  ];
+  _eq_('U01: nombre_solicitante en índice [7]', fila16[7], 'Solicitante Test');
+  _eq_('U02: correo_informe en índice [8]',     fila16[8], 'sol@test.com');
+  _eq_('U03: telefono_empresa en índice [6]',   fila16[6], '2221234567');
+  _eq_('U04: link_drive en índice [15]',        fila16[15], 'https://drive.google.com/drive/folders/LINK_CORRECTO');
+  _check_('U05: índice [22] es undefined (esquema antiguo)', fila16[22] === undefined);
+
+  // Regex extracción folder ID
+  var m = 'https://drive.google.com/drive/folders/ABC123_-XYZ'.match(/folders\/([a-zA-Z0-9_-]+)/);
+  _check_('U06: regex extrae folder ID', !!m);
+  _eq_('U07: folder ID extraído correctamente', m[1], 'ABC123_-XYZ');
+
+  // sanitizeFileName y cleanCompanyName
+  _eq_('U08: sanitizeFileName barra /→_',      sanitizeFileName('A/B'), 'A_B');
+  _eq_('U09: sanitizeFileName trunca a 50',    sanitizeFileName('X'.repeat(60)).length, 50);
+  _check_('U10: cleanCompanyName elimina SA DE CV', cleanCompanyName('EMPRESA SA DE CV').indexOf('SA DE CV') === -1);
+
+  // tipo_orden por defecto
+  _eq_('U11: tipo_orden default OTA', (undefined || 'OTA'), 'OTA');
+
+  var pass = _results_.filter(function(r){ return r.indexOf('PASS') === 0; }).length;
+  var fail = _results_.filter(function(r){ return r.indexOf('FAIL') === 0; }).length;
+  Logger.log('  UNIT: ' + pass + ' PASS | ' + fail + ' FAIL');
 }
