@@ -194,8 +194,19 @@
     .chip-gray { background: #f0f3f4; color: #7f8c8d; border: 1px solid #dfe6e9;}
     .filter-bar { display: flex; gap: 1rem; padding: 15px; background: #f8f9fa; border-bottom: 1px solid var(--border); }
     .filter-bar input, .filter-bar select { flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
-    .loader { display: none; text-align: center; padding: 20px; }
-    .spinner { border: 4px solid #f3f3f3; border-top: 4px solid var(--primary); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto; }
+    .loader { display: none; text-align: center; padding: 30px 20px; }
+    .spinner { border: 4px solid #f3f3f3; border-top: 4px solid var(--primary); border-radius: 50%; width: 48px; height: 48px; animation: spin 1s linear infinite; margin: 0 auto 16px; }
+    .progress-bar-wrap { background: #e9ecef; border-radius: 8px; overflow: hidden; height: 12px; margin: 12px auto; max-width: 320px; }
+    .progress-bar-fill { height: 100%; background: linear-gradient(90deg, var(--primary), #27ae60); border-radius: 8px; width: 0%; transition: width 0.4s ease; }
+    .loader-timer { font-size: 13px; color: #6c757d; margin-top: 6px; }
+    .success-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 9999; align-items: center; justify-content: center; animation: fadeIn 0.3s ease; }
+    .success-overlay.show { display: flex; }
+    .success-card { background: #fff; border-radius: 16px; padding: 48px 40px; text-align: center; max-width: 420px; width: 90%; box-shadow: 0 12px 48px rgba(0,0,0,0.25); }
+    .success-card .check-icon { font-size: 64px; margin-bottom: 16px; }
+    .success-card h2 { color: #1e5a3e; font-size: 24px; margin: 0 0 10px; }
+    .success-card p { color: #555; font-size: 15px; margin: 0 0 24px; }
+    .success-card a { color: #1e5a3e; font-weight: bold; word-break: break-all; font-size: 13px; }
+    .success-card .btn-cerrar { display: inline-block; margin-top: 20px; background: #1e5a3e; color: #fff; border: none; border-radius: 8px; padding: 10px 28px; font-size: 15px; cursor: pointer; }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     @media (max-width: 768px) {
@@ -355,9 +366,23 @@
             </div>
             <div id="main-loader" class="loader">
               <div class="spinner"></div>
-              <p style="margin-top:15px; color:var(--primary); font-weight:bold;" id="loader-message">Procesando y subiendo archivos...</p>
+              <p style="color:var(--primary); font-weight:bold; margin:0;" id="loader-message">Creando carpeta y subiendo archivos...</p>
+              <div class="progress-bar-wrap"><div class="progress-bar-fill" id="progress-bar"></div></div>
+              <div class="loader-timer" id="loader-timer">Tiempo transcurrido: 0s</div>
             </div>
             <div id="main-status" class="status-box" style="display:none; margin-top:20px; text-align:center;"></div>
+
+            <!-- Pantalla de éxito tipo overlay -->
+            <div class="success-overlay" id="success-overlay">
+              <div class="success-card">
+                <div class="check-icon">✅</div>
+                <h2>¡CARPETA CREADA!</h2>
+                <p id="success-message">El expediente fue creado exitosamente en Google Drive.</p>
+                <a id="success-link" href="#" target="_blank" style="display:none;">Abrir carpeta en Drive</a>
+                <br>
+                <button class="btn-cerrar" onclick="cerrarSuccessOverlay()">Aceptar</button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -672,6 +697,17 @@
     btn.disabled = true;
     document.getElementById('main-loader').style.display = 'block';
     document.getElementById('main-status').style.display = 'none';
+    document.getElementById('progress-bar').style.width = '0%';
+    document.getElementById('loader-timer').textContent = 'Tiempo transcurrido: 0s';
+
+    // Temporizador y barra de progreso
+    let elapsed = 0;
+    const timerInterval = setInterval(() => {
+      elapsed++;
+      document.getElementById('loader-timer').textContent = `Tiempo transcurrido: ${elapsed}s`;
+      const pct = Math.min(90, elapsed * 3);
+      document.getElementById('progress-bar').style.width = pct + '%';
+    }, 1000);
     let totalBytes = 0; const allFiles = [];
     const otPdf = document.getElementById('up-ot').files[0];
     
@@ -740,17 +776,37 @@
         const result = await resp.json();
         if (!result.success) throw new Error(result.error || 'Error al crear expediente');
       }
+      clearInterval(timerInterval);
+      document.getElementById('progress-bar').style.width = '100%';
       setTimeout(() => {
         document.getElementById('main-loader').style.display = 'none';
-        const status = document.getElementById('main-status');
-        status.style.display = 'block'; status.className = 'status-box box-success';
-        status.innerHTML = `✅ Expediente procesado exitosamente. Revisa el Tablero.`;
+        mostrarSuccessOverlay();
         cargarTablero(); limpiarFormulario();
-      }, 3000);
+        btn.disabled = false;
+      }, 800);
     } catch (err) {
+      clearInterval(timerInterval);
       document.getElementById('main-loader').style.display = 'none';
       alert(`❌ Error: ${err.message}`); btn.disabled = false;
     }
+  }
+
+  function mostrarSuccessOverlay(driveUrl) {
+    const overlay = document.getElementById('success-overlay');
+    const msg = document.getElementById('success-message');
+    const link = document.getElementById('success-link');
+    msg.textContent = 'El expediente fue creado y la carpeta está lista en Google Drive.';
+    if (driveUrl) {
+      link.href = driveUrl;
+      link.style.display = 'inline';
+    } else {
+      link.style.display = 'none';
+    }
+    overlay.classList.add('show');
+  }
+
+  function cerrarSuccessOverlay() {
+    document.getElementById('success-overlay').classList.remove('show');
   }
 
   function limpiarFormulario() {
