@@ -139,7 +139,11 @@ function fase1_RegistrarCliente(data) {
       sheet.appendRow(rowData);
       addLog('Nuevo registro agregado en BD.');
     }
-    // 5. Email desactivado: no se envía correo al registrar cliente
+    // 5. Enviar correo de notificación al equipo y confirmación al cliente
+    const emailResult = enviarNotificacionRobusta(data, processedFiles, carpetaCliente, sheetUrl, addLog);
+    if (emailResult && !emailResult.success) {
+      addLog('WARNING: Email no enviado: ' + (emailResult.error || 'error desconocido'));
+    }
     guardarLogEnDrive(carpetaCliente, logEntries, data);
     return { success: true, message: 'Registro/Actualización exitosa', files: processedFiles.length };
   } catch (error) {
@@ -245,7 +249,9 @@ function fase3_CrearExpediente(payload) {
   const values = sheet.getDataRange().getValues();
   let filaOT = -1;
   let linkCarpetaSucursal = '';
-  for (let i = 1; i < values.length; i++) {
+  // Búsqueda backward → actualiza la fila más reciente, igual que el test,
+  // evitando desalineación cuando hay filas residuales de TEST_FOLIO.
+  for (let i = values.length - 1; i >= 1; i--) {
     if (String(values[i][1]).trim() === String(info.ot).trim()) {
       filaOT = i + 1;
       linkCarpetaSucursal = values[i][13];

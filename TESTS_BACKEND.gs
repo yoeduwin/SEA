@@ -185,6 +185,19 @@ function runTest_E02() {
   Logger.log('');
   Logger.log('── E02: SEAOT → buscarClienteRFC + registrarOT ──');
 
+  // Limpiar filas residuales en ORDENES_TRABAJO para evitar desalineación
+  // entre la búsqueda forward del backend y la backward del test.
+  try {
+    var sheetOTPre = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+    var rowsOTPre  = sheetOTPre.getDataRange().getValues();
+    for (var oi = rowsOTPre.length - 1; oi >= 1; oi--) {
+      if (String(rowsOTPre[oi][1]).trim() === TEST_FOLIO) {
+        sheetOTPre.deleteRow(oi + 1);
+        Logger.log('  [pre-cleanup] Fila OT residual eliminada (fila ' + (oi + 1) + ')');
+      }
+    }
+  } catch(e) { Logger.log('  [pre-cleanup OT] ' + e.message); }
+
   // Paso 1: Búsqueda de cliente por RFC (como hace SEAOT al tipear el RFC)
   var busqueda = fase2_BuscarClienteRFC(TEST_RFC);
 
