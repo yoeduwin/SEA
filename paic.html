@@ -529,19 +529,12 @@
           </div>
 
           <div id="documentacionLegalSection" class="conditional-section">
-            <div class="conditional-header">📋 Documentacion requerida para inspeccion NOM-020-STPS</div>
-            <div class="form-grid">
-              <div class="form-group full-width">
-                <label>Nombre de quien atendera la evaluacion<span class="required">*</span></label>
-                <input type="text" name="testigo1" data-conditional-required="nom020">
-                <span class="helper-text">Persona responsable presente durante la inspeccion (Testigo 1)</span>
-              </div>
-            </div>
+            <div class="conditional-header">⚠️ DOCUMENTACIÓN OBLIGATORIA PARA NOM-020-STPS</div>
             <div class="form-grid">
               <div class="form-group full-width file-upload-group" data-upload-group="ine_atencion">
-                <label>A) INE de la persona que atendera la evaluacion<span class="required">*</span></label>
+                <label>A) INE de quien nos atenderá<span class="required">*</span></label>
                 <input type="file" name="ine_atencion" accept=".pdf,.jpg,.jpeg,.png" data-file-input="ine_atencion" data-conditional-required="nom020">
-                <span class="helper-text">Ambos lados en un mismo PDF o imagen. Formatos: PDF, JPG, PNG &mdash; Max 10MB</span>
+                <span class="helper-text">Copia por ambos lados</span>
                 <div class="file-preview" data-preview="ine_atencion">
                   <div class="file-preview-content">
                     <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
@@ -551,16 +544,31 @@
               </div>
             </div>
             <div class="form-grid">
-              <div class="form-group full-width">
-                <label>Nombre del Testigo 2<span class="required">*</span></label>
-                <input type="text" name="testigo2" data-conditional-required="nom020">
+              <div class="form-group">
+                <label>B) Nombre y puesto Testigo 1<span class="required">*</span></label>
+                <input type="text" name="testigo1" data-conditional-required="nom020">
+              </div>
+              <div class="form-group file-upload-group" data-upload-group="ine_testigo1">
+                <label>INE Testigo 1<span class="required">*</span></label>
+                <input type="file" name="ine_testigo1" accept=".pdf,.jpg,.jpeg,.png" data-file-input="ine_testigo1" data-conditional-required="nom020">
+                <span class="helper-text">Ambos lados</span>
+                <div class="file-preview" data-preview="ine_testigo1">
+                  <div class="file-preview-content">
+                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                    <button type="button" class="file-remove" data-clear="ine_testigo1">Eliminar</button>
+                  </div>
+                </div>
               </div>
             </div>
             <div class="form-grid">
-              <div class="form-group full-width file-upload-group" data-upload-group="ine_testigo2">
-                <label>B) INE del Testigo 2<span class="required">*</span></label>
+              <div class="form-group">
+                <label>C) Nombre y puesto Testigo 2<span class="required">*</span></label>
+                <input type="text" name="testigo2" data-conditional-required="nom020">
+              </div>
+              <div class="form-group file-upload-group" data-upload-group="ine_testigo2">
+                <label>INE Testigo 2<span class="required">*</span></label>
                 <input type="file" name="ine_testigo2" accept=".pdf,.jpg,.jpeg,.png" data-file-input="ine_testigo2" data-conditional-required="nom020">
-                <span class="helper-text">Ambos lados. Formatos: PDF, JPG, PNG &mdash; Max 10MB</span>
+                <span class="helper-text">Ambos lados</span>
                 <div class="file-preview" data-preview="ine_testigo2">
                   <div class="file-preview-content">
                     <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
@@ -571,9 +579,8 @@
             </div>
             <div class="form-grid">
               <div class="form-group full-width file-upload-group" data-upload-group="poder_notarial">
-                <label>C) Poder Notarial<span class="required">*</span></label>
+                <label>D) Poder notarial<span class="required">*</span></label>
                 <input type="file" name="poder_notarial" accept=".pdf" data-file-input="poder_notarial" data-conditional-required="nom020">
-                <span class="helper-text">Formato PDF &mdash; Max 10MB</span>
                 <div class="file-preview" data-preview="poder_notarial">
                   <div class="file-preview-content">
                     <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
@@ -584,9 +591,9 @@
             </div>
             <div class="form-grid">
               <div class="form-group full-width file-upload-group" data-upload-group="ine_representante">
-                <label>D) INE del representante legal (ambos lados)<span class="required">*</span></label>
+                <label>E) INE del representante legal<span class="required">*</span></label>
                 <input type="file" name="ine_representante" accept=".pdf,.jpg,.jpeg,.png" data-file-input="ine_representante" data-conditional-required="nom020">
-                <span class="helper-text">Formatos: PDF, JPG, PNG &mdash; Max 10MB</span>
+                <span class="helper-text">Copia por ambos lados</span>
                 <div class="file-preview" data-preview="ine_representante">
                   <div class="file-preview-content">
                     <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
@@ -597,9 +604,8 @@
             </div>
             <div class="form-grid">
               <div class="form-group full-width file-upload-group" data-upload-group="situacion_fiscal">
-                <label>E) Constancia de Situacion Fiscal (actualizada)<span class="required">*</span></label>
+                <label>F) Constancia de situación fiscal<span class="required">*</span></label>
                 <input type="file" name="situacion_fiscal" accept=".pdf" data-file-input="situacion_fiscal" data-conditional-required="nom020">
-                <span class="helper-text">Formato PDF &mdash; Max 10MB</span>
                 <div class="file-preview" data-preview="situacion_fiscal">
                   <div class="file-preview-content">
                     <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
@@ -610,9 +616,8 @@
             </div>
             <div class="form-grid">
               <div class="form-group full-width file-upload-group" data-upload-group="licencia">
-                <label>F) Licencia de uso de suelo / Licencia de funcionamiento / Cedula IMSS<span class="required">*</span></label>
+                <label>G) Licencia de uso de suelo / Licencia de funcionamiento / Cédula IMSS<span class="required">*</span></label>
                 <input type="file" name="licencia" accept=".pdf" data-file-input="licencia" data-conditional-required="nom020">
-                <span class="helper-text">Formato PDF &mdash; Max 10MB</span>
                 <div class="file-preview" data-preview="licencia">
                   <div class="file-preview-content">
                     <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
@@ -623,9 +628,9 @@
             </div>
             <div class="form-grid">
               <div class="form-group full-width file-upload-group" data-upload-group="dc3">
-                <label>G) DC-3 de personal operador<span class="required">*</span></label>
+                <label>H) DC-3 de personal operador<span class="required">*</span></label>
                 <input type="file" name="dc3" accept=".pdf" data-file-input="dc3" data-conditional-required="nom020">
-                <span class="helper-text">Recipientes a presion o fogonero (calderas). Formato PDF &mdash; Max 10MB</span>
+                <span class="helper-text">Recipientes a presión o fogonero (calderas)</span>
                 <div class="file-preview" data-preview="dc3">
                   <div class="file-preview-content">
                     <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
@@ -636,7 +641,7 @@
             </div>
             <div class="form-grid">
               <div class="form-group full-width file-upload-group" data-upload-group="calibracion_valvula">
-                <label>H) Dictamen de Calibracion de la valvula <span class="required" id="asterisco_calib">*</span></label>
+                <label>I) Dictamen de Calibración de la válvula <span class="required" id="asterisco_calib">*</span></label>
                 <div style="background:#fff8e1; border:1px solid #ffe082; padding:10px; border-radius:4px; margin-bottom:10px; display:flex; align-items:flex-start; gap:8px;">
                   <input type="checkbox" id="check_sin_calibracion" name="sin_calibracion" style="margin-top:3px; cursor:pointer;">
                   <label for="check_sin_calibracion" style="cursor:pointer; font-size:11px; color:#f57f17; text-transform:none; margin:0; line-height:1.4;">
