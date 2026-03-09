@@ -156,21 +156,6 @@
     </div>
   </div>
 
-  <div id="returningModal" class="modal-overlay">
-    <div class="rfc-search-modal" style="background:white; border-radius:10px; max-width:500px; width:90%; padding:30px; box-shadow:0 10px 40px rgba(0,0,0,0.3);">
-      <h2 style="color:#1e5a3e; margin:0 0 5px 0; font-size:20px;">Buscar cliente por RFC</h2>
-      <p style="color:#666; font-size:13px; margin:0 0 15px 0;">Ingrese el RFC del <strong>cliente final</strong> para recuperar sus datos y agilizar el registro.</p>
-      <div class="modal-search-box">
-        <input type="text" id="rfcSearch" placeholder="RFC del cliente (ej. ABC123456XX0)" maxlength="13" autocomplete="off">
-        <button type="button" class="btn-search" id="btnSearchRFC" onclick="searchClientByRFC()">Buscar</button>
-      </div>
-      <div id="rfcSearchResult" class="rfc-search-result"></div>
-      <div style="text-align:center; margin-top:20px;">
-        <button type="button" onclick="closeReturningModal()" style="background:#6c757d; color:white; border:none; padding:10px 30px; border-radius:5px; font-size:13px; cursor:pointer;">Cerrar</button>
-      </div>
-    </div>
-  </div>
-
   <div id="confirmationModal" class="modal-overlay">
     <div class="modal-content">
       <div class="modal-header"><h2>⚠️ Verificar Información Antes de Enviar</h2></div>
@@ -190,8 +175,7 @@
       <div class="document-info">
         <h2>PAIC</h2>
         <p>Portal de Asesores, Intermediarios y Consultor&iacute;as</p>
-        <span class="paic-badge">1 registro = 1 estudio</span><br>
-        <button type="button" class="btn-returning" onclick="openReturningModal()" style="margin-top:8px;">Buscar cliente por RFC</button>
+        <span class="paic-badge">1 registro = 1 estudio</span>
       </div>
     </div>
     <div class="form-content">
@@ -345,32 +329,6 @@
                 <div class="file-preview-content">
                   <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
                   <button type="button" class="file-remove" data-clear="planos">Eliminar</button>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="form-grid">
-            <div class="form-group full-width file-upload-group" data-upload-group="mantenimiento">
-              <label>2) Programa de mantenimiento</label>
-              <input type="file" name="mantenimiento" accept=".pdf,.doc,.docx,.xls,.xlsx" data-file-input="mantenimiento">
-              <span class="helper-text">Luminarias, maquinaria, sistema de tierras (según aplique) - Formatos: PDF, JPG, PNG (Máx. 10MB)</span>
-              <div class="file-preview" data-preview="mantenimiento">
-                <div class="file-preview-content">
-                  <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
-                  <button type="button" class="file-remove" data-clear="mantenimiento">Eliminar</button>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="form-grid">
-            <div class="form-group full-width file-upload-group" data-upload-group="proceso_produccion">
-              <label>3) Proceso de producción / Hojas de Seguridad</label>
-              <input type="file" name="proceso_produccion" accept=".pdf,.doc,.docx" data-file-input="proceso_produccion">
-              <span class="helper-text">Descripción del proceso u hojas de seguridad (NOM-010) - Formatos: PDF, DOC, ZIP (Máx. 10MB)</span>
-              <div class="file-preview" data-preview="proceso_produccion">
-                <div class="file-preview-content">
-                  <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
-                  <button type="button" class="file-remove" data-clear="proceso_produccion">Eliminar</button>
                 </div>
               </div>
             </div>
