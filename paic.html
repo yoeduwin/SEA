@@ -1,326 +1,346 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!DOCTYPE html><html lang="es"><head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PAIC - Portal de Asesores, Intermediarios y Consultorias</title>
+  <link rel="icon" href="data:," />
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; background: #f0f4f0; min-height: 100vh; }
-    .main-container { max-width: 900px; margin: 0 auto; background: #fff; box-shadow: 0 0 30px rgba(0,0,0,0.1); min-height: 100vh; }
-    .header { background: linear-gradient(135deg, #1e5a3e 0%, #2d7a4f 100%); color: white; padding: 30px; text-align: center; }
-    .header img { max-height: 70px; margin-bottom: 15px; }
-    .header h1 { font-size: 22px; font-weight: 700; margin-bottom: 5px; }
-    .header .subtitle { font-size: 13px; opacity: 0.9; margin-bottom: 3px; }
-    .header .portal-badge { background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); border-radius: 20px; display: inline-block; padding: 4px 14px; font-size: 11px; margin-top: 8px; letter-spacing: 1px; text-transform: uppercase; }
-    .form-content { padding: 30px; }
-    .returning-banner { background: #e8f5e9; border-left: 4px solid #4caf50; padding: 12px 16px; margin-bottom: 20px; border-radius: 0 5px 5px 0; display: none; align-items: center; gap: 12px; }
-    .returning-banner.active { display: flex; }
-    .banner-icon { font-size: 20px; }
-    .banner-text { flex: 1; font-size: 12px; color: #2e7d32; }
-    .btn-clear-prefill { background: none; border: 1px solid #4caf50; color: #2e7d32; padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; white-space: nowrap; }
-    .returning-section { background: #f8f9fa; border: 2px dashed #1e5a3e; border-radius: 8px; padding: 20px; margin-bottom: 25px; text-align: center; }
-    .returning-section p { font-size: 12px; color: #555; margin-bottom: 12px; }
-    .returning-section .rule-badge { background: #fff3cd; border: 1px solid #ffe082; border-radius: 20px; display: inline-block; padding: 5px 15px; font-size: 11px; color: #856404; font-weight: 600; margin-bottom: 12px; }
-    .btn-returning { background: #1e5a3e; color: white; border: none; padding: 10px 22px; border-radius: 5px; font-size: 13px; font-weight: 600; cursor: pointer; }
-    .btn-returning:hover { background: #2d7a4f; }
-    .section { margin-bottom: 30px; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden; }
-    .section-header { background: #1e5a3e; color: white; padding: 12px 20px; font-size: 13px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
-    .section > .form-grid, .section > div > .form-grid { padding: 20px; }
-    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; padding: 20px; }
-    .form-group { display: flex; flex-direction: column; gap: 5px; }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family: Arial, sans-serif; background:#f5f5f5; padding:20px; font-size:12px; }
+    .main-container { max-width:1200px; margin:0 auto; background:#fff; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,.1); overflow:hidden; }
+    .header { background: linear-gradient(135deg, #1e5a3e, #2d7a4f); color:#fff; padding:25px 30px; display:flex; justify-content:space-between; align-items:center; }
+    .logo-section { display:flex; align-items:center; gap:15px; }
+    .logo { width:50px; height:50px; background:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#1e5a3e; font-weight:bold; font-size:20px; }
+    .company-info h1 { margin:0; font-size:18px; font-weight:bold; }
+    .company-info p { margin:3px 0 0 0; font-size:10px; opacity:.95; max-width:500px; }
+    .document-info h2 { margin:0; font-size:22px; font-weight:bold; text-align:right; }
+    .document-info p { margin:3px 0 0 0; font-size:11px; opacity:.9; text-align:right; }
+    .form-content { padding:30px 40px; }
+    .section { border-bottom:1px solid #e0e0e0; margin-bottom:30px; padding-bottom:25px; }
+    .section:last-child { border-bottom:none; }
+    .section-header { background:#1e5a3e; color:#fff; padding:10px 20px; margin:0 -40px 25px -40px; font-weight:bold; font-size:12px; text-transform:uppercase; letter-spacing:.5px; }
+    .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:20px; }
+    .form-group { display:flex; flex-direction:column; }
     .form-group.full-width { grid-column: 1 / -1; }
-    .form-group label { font-size: 11px; font-weight: 700; color: #333; text-transform: uppercase; letter-spacing: 0.3px; }
-    .form-group input, .form-group select, .form-group textarea { padding: 9px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; font-family: inherit; transition: border-color 0.2s; }
-    .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: #1e5a3e; }
-    .form-group textarea { resize: vertical; min-height: 80px; }
-    .required { color: #dc3545; margin-left: 2px; }
-    .helper-text { font-size: 10px; color: #666; font-style: italic; }
-    .radio-group { display: flex; gap: 20px; flex-wrap: wrap; }
-    .radio-option { display: flex; align-items: center; gap: 6px; }
-    .radio-option input[type="radio"] { cursor: pointer; }
-    .radio-option label { font-size: 12px; font-weight: normal; text-transform: none; cursor: pointer; }
-    .conditional-section { display: none; padding: 20px; border-left: 4px solid #1e5a3e; background: #f9fffe; margin: 0 20px 20px 20px; border-radius: 0 5px 5px 0; }
-    .conditional-section.active { display: block; }
-    .conditional-header { background: #e8f5e9; color: #1e5a3e; padding: 8px 14px; border-radius: 4px; font-size: 12px; font-weight: 700; margin-bottom: 15px; }
-    .file-upload-group { border: 2px dashed #ccc; border-radius: 6px; padding: 14px; transition: border-color 0.2s; }
-    .file-upload-group:hover { border-color: #1e5a3e; }
-    .file-upload-group.has-file { border-color: #4caf50; background: #f0fff4; }
-    .file-upload-group label { font-size: 11px; font-weight: 700; color: #333; text-transform: uppercase; margin-bottom: 8px; display: block; }
-    .file-upload-group input[type="file"] { font-size: 12px; width: 100%; }
-    .file-preview { display: none; margin-top: 8px; }
-    .file-preview.active { display: block; }
-    .file-preview-content { display: flex; align-items: center; justify-content: space-between; background: #e8f5e9; padding: 8px 12px; border-radius: 4px; }
-    .file-info { display: flex; align-items: center; gap: 8px; }
-    .file-icon { font-size: 18px; }
-    .file-name { font-size: 12px; font-weight: 600; color: #1e5a3e; }
-    .file-size { font-size: 10px; color: #666; }
-    .file-remove { background: #dc3545; color: white; border: none; padding: 4px 10px; border-radius: 3px; font-size: 11px; cursor: pointer; }
-    .file-on-record { display: none; background: #e3f2fd; border: 1px solid #90caf9; padding: 8px 12px; border-radius: 4px; margin-bottom: 8px; align-items: center; justify-content: space-between; gap: 10px; }
-    .file-on-record.active { display: flex; }
-    .on-record-text { font-size: 11px; color: #1565c0; font-style: italic; }
-    .btn-upload-new { background: #1565c0; color: white; border: none; padding: 4px 10px; border-radius: 3px; font-size: 11px; cursor: pointer; }
-    .submit-section { padding: 30px; text-align: center; border-top: 1px solid #e0e0e0; }
-    .btn-submit { background: linear-gradient(135deg, #1e5a3e, #2d7a4f); color: white; border: none; padding: 14px 40px; border-radius: 6px; font-size: 15px; font-weight: 700; cursor: pointer; letter-spacing: 0.5px; transition: opacity 0.2s; }
-    .btn-submit:hover { opacity: 0.9; }
-    .btn-submit:disabled { opacity: 0.6; cursor: not-allowed; }
-    .loading { display: none; margin-top: 20px; }
-    .loading-spinner { border: 4px solid #f3f3f3; border-top: 4px solid #1e5a3e; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 10px; }
-    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    .loading-text { font-size: 13px; color: #666; }
-    .message { padding: 16px 20px; border-radius: 6px; margin-top: 20px; font-size: 13px; display: none; }
-    .success-message { background: #e8f5e9; border: 1px solid #4caf50; color: #2e7d32; }
-    .error-message { background: #fdecea; border: 1px solid #f44336; color: #c62828; }
-    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center; padding: 20px; }
-    .modal-box { background: white; border-radius: 10px; padding: 30px; max-width: 520px; width: 100%; max-height: 90vh; overflow-y: auto; position: relative; }
-    .modal-box h2 { color: #1e5a3e; font-size: 18px; margin-bottom: 15px; }
-    .modal-close { position: absolute; top: 15px; right: 15px; background: none; border: none; font-size: 22px; cursor: pointer; color: #666; }
-    .modal-logo { text-align: center; margin-bottom: 15px; }
-    .modal-logo img { max-height: 50px; }
-    .modal-contact { display: flex; gap: 12px; margin-top: 15px; flex-wrap: wrap; }
-    .btn-modal-contact { flex: 1; padding: 10px; border-radius: 5px; font-size: 12px; font-weight: 600; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 6px; }
-    .btn-phone { background: #1e5a3e; color: white; border: none; cursor: pointer; }
-    .btn-whatsapp { background: #25D366; color: white; text-decoration: none; }
-    .btn-continue { display: block; width: 100%; margin-top: 15px; padding: 12px; background: #1e5a3e; color: white; border: none; border-radius: 5px; font-size: 14px; font-weight: 600; cursor: pointer; }
-    .rfc-search-box { display: flex; gap: 8px; margin: 12px 0; }
-    .rfc-search-box input { flex: 1; padding: 9px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
-    .btn-search-rfc { background: #1e5a3e; color: white; border: none; padding: 9px 18px; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer; }
-    .rfc-search-result { padding: 12px; border-radius: 5px; font-size: 12px; margin-top: 8px; display: none; }
-    .rfc-search-result.found { background: #e8f5e9; border: 1px solid #4caf50; color: #2e7d32; }
-    .rfc-search-result.not-found { background: #fdecea; border: 1px solid #ef9a9a; color: #c62828; }
-    .rfc-search-result.error { background: #fff3cd; border: 1px solid #ffc107; color: #856404; }
-    .confirmation-section { margin-bottom: 18px; padding-bottom: 15px; border-bottom: 1px solid #e0e0e0; }
-    .confirmation-section h3 { color: #1e5a3e; font-size: 13px; margin-bottom: 10px; }
-    .confirmation-item { display: flex; gap: 8px; margin-bottom: 6px; font-size: 12px; }
-    .confirmation-label { font-weight: 700; color: #555; min-width: 140px; }
-    .confirmation-value { color: #333; }
-    .file-list { list-style: none; padding: 0; }
-    .file-list li { font-size: 11px; color: #555; padding: 4px 0; border-bottom: 1px solid #f0f0f0; }
-    .warning-box { background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px 16px; border-radius: 0 5px 5px 0; font-size: 12px; color: #856404; margin-bottom: 15px; }
-    .modal-buttons { display: flex; gap: 10px; }
-    .btn-modal { flex: 1; padding: 11px; border-radius: 5px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; }
-    .btn-confirm { background: #1e5a3e; color: white; }
-    .btn-cancel { background: #f5f5f5; color: #333; border: 1px solid #ccc; }
-    .floating-buttons { position: fixed; bottom: 25px; right: 25px; display: flex; flex-direction: column; gap: 12px; z-index: 900; }
-    .floating-btn { width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; text-decoration: none; font-size: 22px; box-shadow: 0 3px 12px rgba(0,0,0,0.2); transition: transform 0.2s; position: relative; }
-    .floating-btn:hover { transform: translateY(-4px); }
-    .floating-btn.phone { background: #1e5a3e; }
-    .floating-btn.whatsapp { background: #25D366; }
-    .floating-btn-tooltip { position: absolute; right: 60px; background: rgba(0,0,0,0.8); color: white; padding: 5px 10px; border-radius: 4px; font-size: 11px; white-space: nowrap; display: none; }
-    .floating-btn:hover .floating-btn-tooltip { display: block; }
-    .study-reminder { background: #fff8e1; border-left: 4px solid #ffc107; padding: 12px 16px; border-radius: 0 5px 5px 0; margin-bottom: 18px; font-size: 11px; color: #856404; }
-    .study-reminder strong { display: block; margin-bottom: 3px; }
-    .section-badge { display: inline-block; background: #1e5a3e; color: white; font-size: 10px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; vertical-align: middle; }
-    @media (max-width: 768px) {
-      .form-grid { grid-template-columns: 1fr; }
-      .modal-buttons { flex-direction: column; }
-      .modal-contact { flex-direction: column; }
-      .header h1 { font-size: 17px; }
-      .floating-btn-tooltip { display: none !important; }
-      .floating-buttons { bottom: 15px; right: 15px; }
+    label { font-weight:bold; color:#333; margin-bottom:6px; font-size:11px; text-transform:uppercase; }
+    label .required { color:#dc3545; margin-left:3px; }
+    label .optional { color:#6c757d; font-weight:normal; text-transform:none; margin-left:5px; font-size:10px; }
+    input[type="text"], input[type="email"], input[type="tel"], input[type="number"],
+    textarea, select, input[type="file"] {
+      border:1px solid #ccc; padding:8px 10px; font-size:11px; border-radius:3px;
+      background:#f9f9f9; font-family:inherit; transition:all .2s;
     }
+    input:focus, textarea:focus, select:focus { outline:none; border-color:#1e5a3e; background:#fff; box-shadow:0 0 0 2px rgba(30,90,62,.1); }
+    textarea { resize:vertical; min-height:80px; font-family: Arial, sans-serif; }
+    input[type="file"] { padding:6px 8px; cursor:pointer; font-size:10px; }
+    .helper-text { font-size:10px; color:#666; margin-top:4px; font-style:italic; }
+    .file-preview { margin-top:8px; padding:8px 12px; background:#e8f5e9; border-left:3px solid #4caf50; border-radius:3px; font-size:11px; display:none; }
+    .file-preview.active { display:block; }
+    .file-preview-content { display:flex; align-items:center; justify-content:space-between; }
+    .file-info { display:flex; align-items:center; gap:8px; }
+    .file-icon { font-size:16px; }
+    .file-name { font-weight:600; color:#2e7d32; }
+    .file-size { color:#666; font-size:10px; }
+    .file-remove { background:#dc3545; color:white; border:none; padding:4px 10px; border-radius:3px; cursor:pointer; font-size:10px; transition:background .2s; }
+    .file-remove:hover { background:#c82333; }
+    .radio-group { display:flex; gap:20px; margin-top:10px; }
+    .radio-option { display:flex; align-items:center; gap:8px; cursor:pointer; }
+    .radio-option input[type="radio"] { width:18px; height:18px; cursor:pointer; }
+    .radio-option label { margin:0; cursor:pointer; text-transform:none; font-weight:normal; }
+    .conditional-section { display:none; margin-top:20px; padding:20px; background:#fff3cd; border-left:4px solid #ffc107; border-radius:5px; }
+    .conditional-section.active { display:block; }
+    .conditional-header { font-weight:bold; color:#856404; margin-bottom:15px; font-size:12px; }
+    .submit-section { margin-top:40px; padding-top:30px; border-top:2px solid #e0e0e0; text-align:center; }
+    .btn-submit { background: linear-gradient(135deg, #1e5a3e, #2d7a4f); color:white; padding:15px 50px; font-size:14px; font-weight:600; border:none; border-radius:5px; cursor:pointer; transition: all .3s ease; box-shadow:0 4px 15px rgba(30,90,62,.3); text-transform:uppercase; letter-spacing:.5px; }
+    .btn-submit:hover { transform: translateY(-2px); box-shadow:0 6px 20px rgba(30,90,62,.4); }
+    .btn-submit:disabled { opacity:.6; cursor:not-allowed; transform:none; }
+    .message { padding:15px 20px; border-radius:5px; margin-top:20px; display:none; text-align:left; font-weight:500; font-size:13px; line-height:1.8; }
+    .success-message { background:#d4edda; color:#155724; border:1px solid #c3e6cb; }
+    .error-message { background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; }
+    .loading { display:none; text-align:center; margin-top:20px; }
+    .loading-spinner { border:3px solid #f3f3f3; border-top:3px solid #1e5a3e; border-radius:50%; width:40px; height:40px; animation: spin 1s linear infinite; margin:0 auto; }
+    @keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
+    .loading-text { margin-top:15px; color:#1e5a3e; font-weight:500; }
+    .floating-buttons { position:fixed; bottom:30px; right:30px; display:flex; flex-direction:column; gap:15px; z-index:1000; }
+    .floating-btn { width:60px; height:60px; border-radius:50%; display:flex; align-items:center; justify-content:center; text-decoration:none; font-size:28px; box-shadow:0 4px 15px rgba(0,0,0,.3); transition:all .3s ease; cursor:pointer; }
+    .floating-btn:hover { transform: translateY(-5px); box-shadow:0 6px 20px rgba(0,0,0,.4); }
+    .floating-btn.phone { background: linear-gradient(135deg, #1e5a3e, #2d7a4f); color:white; }
+    .floating-btn.whatsapp { background:#25D366; color:white; }
+    .floating-btn-tooltip { position:absolute; right:75px; background:rgba(0,0,0,.8); color:white; padding:8px 15px; border-radius:5px; white-space:nowrap; font-size:13px; opacity:0; pointer-events:none; transition:opacity .3s; }
+    .floating-btn:hover .floating-btn-tooltip { opacity:1; }
+    .modal-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,.8); z-index:9999; justify-content:center; align-items:center; overflow-y:auto; padding:20px; }
+    .modal-overlay.active { display:flex; }
+    .modal-content { background:white; border-radius:10px; max-width:800px; width:100%; max-height:90vh; overflow-y:auto; box-shadow:0 10px 40px rgba(0,0,0,.3); }
+    .modal-header { background: linear-gradient(135deg, #1e5a3e, #2d7a4f); color:white; padding:20px 30px; border-radius:10px 10px 0 0; }
+    .modal-header h2 { margin:0; font-size:20px; }
+    .modal-body { padding:30px; }
+    .confirmation-section { margin-bottom:25px; padding-bottom:20px; border-bottom:1px solid #e0e0e0; }
+    .confirmation-section:last-child { border-bottom:none; }
+    .confirmation-section h3 { color:#1e5a3e; font-size:14px; margin-bottom:15px; display:flex; align-items:center; gap:10px; }
+    .confirmation-item { display:flex; justify-content:space-between; padding:8px 0; font-size:12px; }
+    .confirmation-label { font-weight:bold; color:#666; }
+    .confirmation-value { color:#333; text-align:right; max-width:60%; }
+    .file-list { list-style:none; padding:0; }
+    .file-list li { padding:8px 12px; background:#f0f9f4; margin-bottom:5px; border-radius:3px; font-size:11px; display:flex; align-items:center; gap:8px; }
+    .warning-box { background:#fff3cd; border-left:4px solid #ffc107; padding:15px; border-radius:5px; margin-top:20px; }
+    .warning-box p { margin:0; color:#856404; font-size:12px; line-height:1.6; }
+    .modal-buttons { display:flex; gap:15px; justify-content:center; margin-top:30px; }
+    .btn-modal { padding:12px 30px; border:none; border-radius:5px; font-size:13px; font-weight:600; cursor:pointer; transition:all .3s; }
+    .btn-confirm { background: linear-gradient(135deg, #1e5a3e, #2d7a4f); color:white; }
+    .btn-cancel { background:#6c757d; color:white; }
+    .version-tag { position:fixed; bottom:10px; left:10px; background:rgba(30,90,62,0.1); color:#1e5a3e; padding:4px 10px; border-radius:4px; font-size:10px; font-weight:600; z-index:100; border:1px solid rgba(30,90,62,0.2); }
+    @media (max-width:768px){
+      body{padding:10px;}
+      .form-grid{grid-template-columns:1fr;}
+      .form-content{padding:20px;}
+      .section-header{margin:0 -20px 20px -20px;}
+      .header{flex-direction:column; gap:15px; text-align:center;}
+      .document-info h2,.document-info p{ text-align:center; }
+      .floating-buttons{bottom:20px; right:20px; gap:12px;}
+      .floating-btn{width:55px; height:55px; font-size:24px;}
+      .floating-btn-tooltip{display:none;}
+      .modal-body{padding:20px;}
+      .modal-buttons{flex-direction:column;}
+      .version-tag{font-size:9px; padding:3px 8px;}
+    }
+    .file-upload-group { border:2px dashed #ccc; border-radius:5px; padding:15px; background:#fafafa; transition:all .3s; }
+    .file-upload-group:hover { border-color:#1e5a3e; background:#f0f9f4; }
+    .file-upload-group.has-file { border-color:#4caf50; background:#e8f5e9; }
+    .file-upload-group label { margin-bottom:8px; }
+    .btn-returning { background: rgba(255,255,255,0.15); color: #fff; border: 1px solid rgba(255,255,255,0.4); padding: 8px 16px; border-radius: 5px; cursor: pointer; font-size: 11px; font-weight: 600; transition: all .3s; text-transform: uppercase; letter-spacing: .3px; }
+    .btn-returning:hover { background: rgba(255,255,255,0.25); border-color: #fff; }
+    .rfc-search-modal .modal-search-box { display: flex; gap: 10px; margin: 20px 0; }
+    .rfc-search-modal .modal-search-box input { flex: 1; padding: 12px 15px; font-size: 16px; border: 2px solid #ccc; border-radius: 5px; text-transform: uppercase; font-weight: 600; letter-spacing: 1px; }
+    .rfc-search-modal .modal-search-box input:focus { border-color: #1e5a3e; outline: none; }
+    .rfc-search-modal .btn-search { background: #1e5a3e; color: #fff; border: none; padding: 12px 25px; border-radius: 5px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .rfc-search-modal .btn-search:disabled { opacity: .5; cursor: not-allowed; }
+    .rfc-search-result { padding: 15px; border-radius: 5px; margin-top: 15px; display: none; }
+    .rfc-search-result.found { display: block; background: #e8f5e9; border-left: 4px solid #4caf50; }
+    .rfc-search-result.not-found { display: block; background: #fff3cd; border-left: 4px solid #ffc107; }
+    .rfc-search-result.error { display: block; background: #f8d7da; border-left: 4px solid #dc3545; }
+    .file-on-record { display: none; padding: 10px 15px; background: #e3f2fd; border-left: 4px solid #2196f3; border-radius: 3px; margin-bottom: 10px; font-size: 11px; color: #1565c0; align-items: center; justify-content: space-between; }
+    .file-on-record.active { display: flex; }
+    .file-on-record .on-record-text { font-weight: 600; }
+    .file-on-record .btn-upload-new { background: none; border: 1px solid #1565c0; color: #1565c0; padding: 4px 10px; border-radius: 3px; cursor: pointer; font-size: 10px; font-weight: 600; }
+    .file-on-record .btn-upload-new:hover { background: #1565c0; color: #fff; }
+    .returning-banner { display: none; background: linear-gradient(135deg, #e8f5e9, #c8e6c9); border-left: 4px solid #4caf50; padding: 15px 20px; margin: 0 -40px 25px -40px; font-size: 12px; color: #2e7d32; align-items: center; justify-content: space-between; }
+    .returning-banner.active { display: flex; }
+    .returning-banner .banner-text strong { font-size: 13px; }
+    .returning-banner .btn-clear-prefill { background: none; border: 1px solid #2e7d32; color: #2e7d32; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600; }
+    .returning-banner .btn-clear-prefill:hover { background: #2e7d32; color: #fff; }
+    @media (max-width:768px) { .btn-returning { font-size:10px; padding:6px 12px; } .returning-banner { margin:0 -20px 20px -20px; flex-direction:column; gap:10px; } }
+    /* ─── PAIC: estilos adicionales para bloques nuevos ─── */
+    .study-reminder { background:#fff3cd; border-left:4px solid #ffc107; padding:12px 16px; border-radius:3px; margin-bottom:18px; font-size:11px; color:#856404; }
+    .study-reminder strong { display:block; margin-bottom:3px; }
+    .paic-badge { display:inline-block; background:rgba(255,255,255,0.18); border:1px solid rgba(255,255,255,0.35); border-radius:12px; padding:3px 12px; font-size:10px; letter-spacing:.5px; text-transform:uppercase; margin-top:5px; }
   </style>
 </head>
 <body>
-
-  <!-- MODAL BIENVENIDA -->
+  <div class="version-tag">PAIC v1.0</div>
   <div id="welcomeModal" class="modal-overlay">
-    <div class="modal-box" style="max-width:480px;">
-      <div class="modal-logo">
-        <div style="font-size:28px;">🌿</div>
-        <h2 style="margin-top:10px;">Bienvenido al PAIC</h2>
-        <p style="font-size:12px; color:#555; margin-top:5px;">Portal de Asesores, Intermediarios y Consultorias</p>
-        <p style="font-size:11px; color:#888; margin-top:3px;">Ejecutiva Ambiental</p>
+    <div style="background: white; border-radius: 10px; max-width: 600px; width: 90%; padding: 40px; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
+      <div style="width: 80px; height: 80px; background: #1e5a3e; border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; color: white; font-size: 30px; font-weight: bold;">PAIC</div>
+      <h2 style="color: #1e5a3e; margin: 0 0 20px 0; font-size: 24px;">Bienvenido al PAIC</h2>
+      <p style="color: #333; font-size: 14px; line-height: 1.6; margin-bottom: 10px;"><strong>PORTAL DE ASESORES, INTERMEDIARIOS Y CONSULTOR&Iacute;AS</strong></p>
+      <p style="color: #666; font-size: 13px; line-height: 1.8; margin-bottom: 15px;">Esta plataforma le permite cargar estudios e informaci&oacute;n operativa de sus clientes finales de forma segura y estructurada.</p>
+      <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px 20px; margin: 20px 0; border-radius: 3px; text-align:left;">
+        <p style="color: #856404; font-size: 12px; margin: 0; line-height: 1.7;"><strong>&#9888;&#65039; Regla de negocio:</strong><br>Este formulario corresponde a <strong>1 registro = 1 estudio</strong>. Si requiere cargar m&uacute;ltiples estudios, realice un registro independiente por cada uno.</p>
       </div>
-      <div style="background:#e8f5e9; border-radius:6px; padding:14px; margin:15px 0; font-size:12px; color:#2e7d32;">
-        <strong>Plataforma operativa para carga de estudios</strong><br>
-        Este portal está diseñado para asesores, intermediarios y consultorias que gestionan el registro de información de sus clientes finales.
+      <div style="background: #f0f9f4; border-left: 4px solid #1e5a3e; padding: 15px 20px; margin: 20px 0; border-radius: 3px;">
+        <p style="color: #1e5a3e; font-size: 13px; margin: 0; font-weight: 500;">&iquest;Tiene alguna duda sobre el registro?<br><span style="color:#666; font-weight:normal; font-size:12px;">Comun&iacute;quese con nosotros:</span></p>
       </div>
-      <div style="background:#fff3cd; border-left:4px solid #ffc107; padding:12px 14px; border-radius:0 5px 5px 0; font-size:11px; color:#856404; margin-bottom:15px;">
-        <strong>Regla de negocio:</strong> Este formulario corresponde a <strong>1 registro = 1 estudio</strong>. Si requiere cargar multiples estudios, realice un registro independiente por cada uno.
+      <div style="display: flex; gap: 15px; justify-content: center; margin: 25px 0;">
+        <a href="tel:2229417295" style="flex: 1; background: #1e5a3e; color: white; padding: 15px 20px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; display:flex; align-items:center; justify-content:center; gap:8px;"><span style="font-size: 20px;">&#128222;</span> Llamar Ahora</a>
+        <a href="https://wa.me/522791113533" target="_blank" style="flex: 1; background: #25D366; color: white; padding: 15px 20px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; display:flex; align-items:center; justify-content:center; gap:8px;"><span style="font-size: 20px;">&#128172;</span> WhatsApp</a>
       </div>
-      <p style="font-size:12px; color:#555; margin-bottom:15px;">Si requiere asistencia para completar el registro, contactenos:</p>
-      <div class="modal-contact">
-        <a href="tel:2229417295" class="btn-modal-contact btn-phone">📞 222 941 7295</a>
-        <a href="https://wa.me/522791113533" target="_blank" class="btn-modal-contact btn-whatsapp">💬 WhatsApp</a>
-      </div>
-      <button class="btn-continue" onclick="closeWelcomeModal()">Continuar al Registro</button>
+      <button onclick="closeWelcomeModal()" style="background: #6c757d; color: white; border: none; padding: 12px 40px; border-radius: 5px; font-size: 15px; font-weight: 600; cursor: pointer;">Continuar al Registro</button>
     </div>
   </div>
 
-  <!-- MODAL BUSCAR CLIENTE POR RFC -->
-  <div id="returningModal" class="modal-overlay" style="display:none;">
-    <div class="modal-box" style="max-width:460px;">
-      <button class="modal-close" onclick="closeReturningModal()">&times;</button>
-      <h2>Buscar Cliente por RFC</h2>
-      <p style="font-size:12px; color:#555; margin-bottom:12px;">Ingrese el RFC del <strong>cliente final</strong> para recuperar sus datos registrados en el sistema.</p>
-      <div class="rfc-search-box">
-        <input type="text" id="rfcSearch" placeholder="RFC del cliente (ej: ABC010101XXX)" maxlength="13" style="text-transform:uppercase;">
-        <button type="button" id="btnSearchRFC" class="btn-search-rfc" onclick="searchClientByRFC()">Buscar</button>
+  <div id="returningModal" class="modal-overlay">
+    <div class="rfc-search-modal" style="background:white; border-radius:10px; max-width:500px; width:90%; padding:30px; box-shadow:0 10px 40px rgba(0,0,0,0.3);">
+      <h2 style="color:#1e5a3e; margin:0 0 5px 0; font-size:20px;">Buscar cliente por RFC</h2>
+      <p style="color:#666; font-size:13px; margin:0 0 15px 0;">Ingrese el RFC del <strong>cliente final</strong> para recuperar sus datos y agilizar el registro.</p>
+      <div class="modal-search-box">
+        <input type="text" id="rfcSearch" placeholder="RFC del cliente (ej. ABC123456XX0)" maxlength="13" autocomplete="off">
+        <button type="button" class="btn-search" id="btnSearchRFC" onclick="searchClientByRFC()">Buscar</button>
       </div>
       <div id="rfcSearchResult" class="rfc-search-result"></div>
+      <div style="text-align:center; margin-top:20px;">
+        <button type="button" onclick="closeReturningModal()" style="background:#6c757d; color:white; border:none; padding:10px 30px; border-radius:5px; font-size:13px; cursor:pointer;">Cerrar</button>
+      </div>
     </div>
   </div>
 
-  <!-- MODAL CONFIRMACION -->
   <div id="confirmationModal" class="modal-overlay">
-    <div class="modal-box" style="max-width:600px;">
-      <button class="modal-close" onclick="closeConfirmationModal()">&times;</button>
-      <h2>Revision Previa al Envio</h2>
-      <p style="font-size:12px; color:#666; margin-bottom:18px;">Verifique que toda la informacion sea correcta antes de enviar.</p>
-      <div id="confirmationContent"></div>
+    <div class="modal-content">
+      <div class="modal-header"><h2>⚠️ Verificar Información Antes de Enviar</h2></div>
+      <div class="modal-body" id="confirmationContent"></div>
     </div>
   </div>
 
   <div class="main-container">
-    <!-- HEADER -->
     <div class="header">
-      <h1>PAIC</h1>
-      <div class="subtitle">Portal de Asesores, Intermediarios y Consultorias</div>
-      <div class="subtitle" style="font-size:11px; opacity:0.75;">Ejecutiva Ambiental &mdash; Plataforma de carga operativa</div>
-      <div class="portal-badge">Registro por estudio &bull; 1 registro = 1 estudio</div>
+      <div class="logo-section">
+        <div class="logo">EA</div>
+        <div class="company-info">
+          <h1>EJECUTIVA AMBIENTAL</h1>
+          <p>SEGURIDAD E HIGIENE, CAPACITACI&Oacute;N, MANTENIMIENTO INDUSTRIAL, PROTECCI&Oacute;N CIVIL, MEDIO AMBIENTE</p>
+        </div>
+      </div>
+      <div class="document-info">
+        <h2>PAIC</h2>
+        <p>Portal de Asesores, Intermediarios y Consultor&iacute;as</p>
+        <span class="paic-badge">1 registro = 1 estudio</span><br>
+        <button type="button" class="btn-returning" onclick="openReturningModal()" style="margin-top:8px;">Buscar cliente por RFC</button>
+      </div>
     </div>
-
     <div class="form-content">
-      <!-- BANNER CLIENTE IDENTIFICADO -->
-      <div class="returning-banner" id="returningBanner">
-        <span class="banner-icon">✅</span>
-        <div class="banner-text"></div>
-        <button type="button" class="btn-clear-prefill" onclick="clearPrefill()">Limpiar</button>
-      </div>
-
-      <!-- CAPA 1: SECCION ASESOR/INTERMEDIARIO -->
-      <div class="returning-section">
-        <div class="rule-badge">1 registro = 1 estudio &mdash; Si requiere cargar varios estudios, realice un registro independiente por cada uno</div>
-        <p>Si el cliente final ya cuenta con datos registrados en el sistema, puede recuperarlos para agilizar el registro.</p>
-        <button type="button" class="btn-returning" onclick="openReturningModal()">🔍 Buscar cliente registrado por RFC</button>
-      </div>
-
-      <form id="paicForm" novalidate>
-
-        <!-- ========================= -->
-        <!-- CAPA 2: DATOS DEL CLIENTE FINAL -->
-        <!-- ========================= -->
+      <form id="paicForm">
         <div class="section">
-          <div class="section-header">Capa 2 &mdash; Datos del Cliente Final</div>
-          <div style="background:#e8f5e9; border-left:4px solid #4caf50; padding:12px 20px; font-size:11px; color:#2e7d32;">
-            Capture los datos del <strong>cliente final</strong> al que pertenece el estudio que esta registrando.
+          <div class="section-header">Información General</div>
+          <div id="returningBanner" class="returning-banner">
+            <div class="banner-text">
+              <strong>Cliente identificado</strong><br>
+              Hemos pre-llenado sus datos. Verifique que estén correctos y complete solo lo nuevo.
+            </div>
+            <button type="button" class="btn-clear-prefill" onclick="clearPrefill()">Limpiar datos</button>
+          </div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>Nombre y puesto del asesor / intermediario<span class="required">*</span></label>
+              <input type="text" name="nombre_solicitante" required>
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>Denominación/Razón social<span class="required">*</span></label>
+              <input type="text" name="razon_social" required>
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>Sucursal<span class="required">*</span></label>
+              <input type="text" name="sucursal" required placeholder="Ej: Matriz, Planta Norte, Sucursal Centro, etc.">
+              <span class="helper-text">Especifique el nombre de la sucursal o ubicación específica</span>
+            </div>
           </div>
           <div class="form-grid">
             <div class="form-group">
-              <label>Nombre y puesto del solicitante (asesor/intermediario)<span class="required">*</span></label>
-              <input type="text" name="nombre_solicitante" required placeholder="Nombre completo y cargo">
+              <label>RFC<span class="required">*</span></label>
+              <input type="text" name="rfc" required maxlength="13" style="text-transform: uppercase;">
             </div>
             <div class="form-group">
-              <label>Telefono de contacto<span class="required">*</span></label>
-              <input type="tel" name="telefono_empresa" required placeholder="10 digitos">
+              <label>Teléfono empresa<span class="required">*</span></label>
+              <input type="tel" name="telefono_empresa" required>
             </div>
-            <div class="form-group">
-              <label>Razon Social del cliente final<span class="required">*</span></label>
-              <input type="text" name="razon_social" required placeholder="Nombre fiscal completo">
-            </div>
-            <div class="form-group">
-              <label>RFC del cliente final<span class="required">*</span></label>
-              <input type="text" name="rfc" required maxlength="13" placeholder="RFC a 12 o 13 caracteres" style="text-transform:uppercase;">
-            </div>
-            <div class="form-group">
-              <label>Sucursal / Centro de trabajo<span class="required">*</span></label>
-              <input type="text" name="sucursal" required placeholder="Nombre de la sucursal o planta">
-            </div>
-            <div class="form-group">
+          </div>
+          <div class="form-grid">
+            <div class="form-group full-width">
               <label>Representante legal<span class="required">*</span></label>
-              <input type="text" name="representante_legal" required placeholder="Nombre completo">
-            </div>
-            <div class="form-group full-width">
-              <label>Direccion del centro de evaluacion<span class="required">*</span></label>
-              <input type="text" name="direccion_evaluacion" required placeholder="Calle, numero, colonia, municipio, estado">
-            </div>
-            <div class="form-group">
-              <label>Responsable en sitio<span class="required">*</span></label>
-              <input type="text" name="responsable" required placeholder="Persona de contacto en la instalacion">
-            </div>
-            <div class="form-group">
-              <label>Telefono del responsable<span class="required">*</span></label>
-              <input type="tel" name="telefono_responsable" required placeholder="10 digitos">
-            </div>
-            <div class="form-group">
-              <label>Giro del negocio<span class="required">*</span></label>
-              <input type="text" name="giro" required placeholder="Actividad economica principal">
-            </div>
-            <div class="form-group">
-              <label>Actividad principal (opcional)</label>
-              <input type="text" name="actividad_principal" placeholder="Descripcion breve">
-            </div>
-            <div class="form-group">
-              <label>Registro patronal (opcional)</label>
-              <input type="text" name="registro_patronal" placeholder="Numero de registro IMSS">
-            </div>
-            <div class="form-group">
-              <label>Capacidad instalada (opcional)</label>
-              <input type="text" name="capacidad_instalada" placeholder="Ej: 200 trabajadores">
-            </div>
-            <div class="form-group">
-              <label>Capacidad de operacion (opcional)</label>
-              <input type="text" name="capacidad_operacion" placeholder="Ej: 150 trabajadores">
-            </div>
-            <div class="form-group full-width">
-              <label>Dias, turnos y horarios de trabajo<span class="required">*</span></label>
-              <input type="text" name="dias_turnos_horarios" required placeholder="Ej: Lunes a viernes, turno matutino 8:00-17:00">
+              <input type="text" name="representante_legal" required>
             </div>
           </div>
-        </div>
-
-        <!-- SECCION: SOBRE EL INFORME DE RESULTADOS -->
-        <div class="section">
-          <div class="section-header">Destino del Informe de Resultados</div>
-          <div class="form-grid">
-            <div class="form-group">
-              <label>Informe dirigido a (nombre)<span class="required">*</span></label>
-              <input type="text" name="nombre_dirigido" required placeholder="A quien va dirigido el informe">
-            </div>
-            <div class="form-group">
-              <label>Puesto del destinatario<span class="required">*</span></label>
-              <input type="text" name="puesto_dirigido" required placeholder="Cargo del destinatario">
-            </div>
-            <div class="form-group full-width">
-              <label>Correo electronico para entrega del informe digital<span class="required">*</span></label>
-              <input type="email" name="correo_informe" required placeholder="correo@empresa.com">
-              <span class="helper-text">⚠️ Verifique que el correo sea correcto. Es el medio principal para la entrega del informe.</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- SECCION: FECHAS PREFERIDAS -->
-        <div class="section">
-          <div class="section-header">Coordinacion de la Evaluacion</div>
           <div class="form-grid">
             <div class="form-group full-width">
-              <label>Fechas preferidas para la visita de evaluacion<span class="required">*</span></label>
-              <textarea name="fechas_preferidas" required placeholder="Indique al menos 2 opciones de fecha. Ej: 15 de abril, 18 de abril o 22 de abril 2025."></textarea>
-              <span class="helper-text">Proporcione al menos 2 opciones para facilitar la coordinacion con nuestro equipo tecnico.</span>
+              <label>Dirección donde se evaluará<span class="required">*</span></label>
+              <input type="text" name="direccion_evaluacion" required>
             </div>
           </div>
-        </div>
-
-        <!-- SECCION: DESCRIPCION DEL PROCESO -->
-        <div class="section">
-          <div class="section-header">Descripcion del Proceso Productivo (Opcional)</div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Responsable de atendernos<span class="required">*</span></label>
+              <input type="text" name="responsable" required>
+            </div>
+            <div class="form-group">
+              <label>Teléfono<span class="required">*</span></label>
+              <input type="tel" name="telefono_responsable" required>
+            </div>
+          </div>
           <div class="form-grid">
             <div class="form-group full-width">
-              <label>Descripcion del proceso</label>
-              <textarea name="descripcion_proceso" placeholder="Describa brevemente el proceso productivo u operativo de la instalacion del cliente."></textarea>
+              <label>Giro de la empresa<span class="required">*</span></label>
+              <input type="text" name="giro" required>
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>Actividad principal</label>
+              <input type="text" name="actividad_principal">
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Registro patronal</label>
+              <input type="text" name="registro_patronal">
+            </div>
+            <div class="form-group">
+              <label>Capacidad instalada</label>
+              <input type="text" name="capacidad_instalada">
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>Capacidad de operación</label>
+              <input type="text" name="capacidad_operacion">
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>Días, turnos y horarios de trabajo<span class="required">*</span></label>
+              <textarea name="dias_turnos_horarios" required placeholder="Ej: Lunes a Viernes, 2 turnos (8:00-16:00 y 16:00-00:00)"></textarea>
+              <span class="helper-text">Especifique los días de la semana, número de turnos y horarios</span>
             </div>
           </div>
         </div>
-
-        <!-- SECCION: ARCHIVOS BASE (CAPA 2 DOCUMENTOS) -->
         <div class="section">
-          <div class="section-header">Archivos Base del Cliente Final</div>
+          <div class="section-header">Sobre el Informe de Resultados</div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>Nombre de a quién se dirige<span class="required">*</span></label>
+              <input type="text" name="nombre_dirigido" required>
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>Puesto de a quién se dirige<span class="required">*</span></label>
+              <input type="text" name="puesto_dirigido" required>
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>Correo electrónico para enviar el informe digital<span class="required">*</span></label>
+              <input type="email" name="correo_informe" required>
+              <span class="helper-text">⚠️ Verifique que el correo sea correcto - aquí recibirá su informe mediante nuestra plataforma</span>
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-header">Coordinación de Evaluación</div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>Fechas preferidas para evaluación en sitio<span class="required">*</span></label>
+              <textarea name="fechas_preferidas" required placeholder="Ej: Preferimos la primera semana de febrero o tercera semana de marzo" rows="3"></textarea>
+              <span class="helper-text">⚠️ OBLIGATORIO - Esto nos ayuda a coordinar mejor la visita. Indique rangos de fechas o semanas de preferencia</span>
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-header">Descripción del Proceso</div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>Breve descripción del proceso operativo o productivo</label>
+              <textarea name="descripcion_proceso" placeholder="Describa brevemente el proceso operativo de su empresa..."></textarea>
+              <span class="helper-text">También puede adjuntar documento más adelante</span>
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-header">Archivos Adjuntos</div>
           <div class="form-grid">
             <div class="form-group full-width file-upload-group" data-upload-group="planos">
-              <label>Planos generales de la instalacion<span class="required">*</span></label>
-              <input type="file" name="planos" accept=".pdf,.jpg,.jpeg,.png,.dwg" data-file-input="planos" required>
-              <span class="helper-text">Formatos: PDF, JPG, PNG, DWG &mdash; Max 10MB</span>
+              <label>1) Planos generales - Layout de la empresa<span class="required">*</span></label>
+              <input type="file" name="planos" accept=".pdf,.jpg,.jpeg,.png,.dwg" required data-file-input="planos">
+              <span class="helper-text">⚠️ OBLIGATORIO - Formatos: PDF, ZIP, JPG, PNG, DWG (Máx. 10MB)</span>
               <div class="file-preview" data-preview="planos">
                 <div class="file-preview-content">
                   <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
@@ -328,10 +348,12 @@
                 </div>
               </div>
             </div>
+          </div>
+          <div class="form-grid">
             <div class="form-group full-width file-upload-group" data-upload-group="mantenimiento">
-              <label>Programa de mantenimiento</label>
-              <input type="file" name="mantenimiento" accept=".pdf,.jpg,.jpeg,.png" data-file-input="mantenimiento">
-              <span class="helper-text">Formatos: PDF, JPG, PNG &mdash; Max 10MB</span>
+              <label>2) Programa de mantenimiento</label>
+              <input type="file" name="mantenimiento" accept=".pdf,.doc,.docx,.xls,.xlsx" data-file-input="mantenimiento">
+              <span class="helper-text">Luminarias, maquinaria, sistema de tierras (según aplique) - Formatos: PDF, JPG, PNG (Máx. 10MB)</span>
               <div class="file-preview" data-preview="mantenimiento">
                 <div class="file-preview-content">
                   <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
@@ -339,10 +361,12 @@
                 </div>
               </div>
             </div>
+          </div>
+          <div class="form-grid">
             <div class="form-group full-width file-upload-group" data-upload-group="proceso_produccion">
-              <label>Proceso de produccion / Hojas de seguridad</label>
+              <label>3) Proceso de producción / Hojas de Seguridad</label>
               <input type="file" name="proceso_produccion" accept=".pdf,.doc,.docx" data-file-input="proceso_produccion">
-              <span class="helper-text">Formatos: PDF, DOC, DOCX &mdash; Max 10MB</span>
+              <span class="helper-text">Descripción del proceso u hojas de seguridad (NOM-010) - Formatos: PDF, DOC, ZIP (Máx. 10MB)</span>
               <div class="file-preview" data-preview="proceso_produccion">
                 <div class="file-preview-content">
                   <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
@@ -350,10 +374,12 @@
                 </div>
               </div>
             </div>
+          </div>
+          <div class="form-grid">
             <div class="form-group full-width file-upload-group" data-upload-group="requisitos_ingreso">
-              <label>Requisitos de ingreso / EPP requerido</label>
+              <label>4) Requisitos obligatorios para ingresar a planta - </label>
               <input type="file" name="requisitos_ingreso" accept=".pdf,.doc,.docx" data-file-input="requisitos_ingreso">
-              <span class="helper-text">Formatos: PDF, DOC, DOCX &mdash; Max 10MB</span>
+              <span class="helper-text">EPP, documentación u otros</span>
               <div class="file-preview" data-preview="requisitos_ingreso">
                 <div class="file-preview-content">
                   <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
@@ -364,170 +390,171 @@
           </div>
         </div>
 
-        <!-- ========================= -->
-        <!-- CAPA 3: BLOQUES DE ESTUDIO -->
-        <!-- ========================= -->
-
-        <!-- ================= BLOQUE 1: LABORATORIO ================= -->
         <div class="section">
-          <div class="section-header">Capa 3 &mdash; Bloque 1: Laboratorio <span class="section-badge">1 estudio por registro</span></div>
-          <div style="padding:20px 20px 0 20px;">
-            <div class="study-reminder">
-              <strong>⚠️ Importante:</strong> Este formulario es un registro por estudio. Si requiere cargar varios estudios de laboratorio, debera realizar un registro independiente por cada uno.
-            </div>
-            <div class="form-grid" style="padding:0; margin-bottom:20px;">
-              <div class="form-group full-width">
-                <label>Seleccione el estudio de laboratorio a registrar</label>
-                <select name="estudio_laboratorio" id="estudio_laboratorio">
-                  <option value="">-- Seleccione una opcion (si aplica) --</option>
-                  <option value="NOM-022-STPS">NOM-022-STPS &mdash; Electricidad estatica</option>
-                  <option value="NOM-025-STPS">NOM-025-STPS &mdash; Condiciones de iluminacion</option>
-                  <option value="NOM-081-SEMARNAT">NOM-081-SEMARNAT &mdash; Limites maximos de ruido</option>
-                  <option value="NOM-011-STPS">NOM-011-STPS &mdash; Ruido</option>
-                  <option value="NOM-024-STPS">NOM-024-STPS &mdash; Vibraciones</option>
-                  <option value="NOM-015-STPS">NOM-015-STPS &mdash; Condiciones termicas</option>
-                </select>
-                <span class="helper-text">Deje en blanco si este bloque no aplica para este registro.</span>
-              </div>
-            </div>
+          <div class="section-header">LABORATORIO</div>
+          <div class="study-reminder">
+            <strong>&#9888;&#65039; Importante &mdash; 1 registro = 1 estudio</strong>
+            Este formulario corresponde a un registro por estudio. Si requiere cargar varios estudios de laboratorio, deber&aacute; realizar un registro independiente por cada uno.
           </div>
-          <div id="laboratorioArchivos" style="display:none; padding:0 20px 20px;">
-            <div class="conditional-header">📎 Documentos del estudio de laboratorio</div>
-            <div class="form-grid" style="padding:0;">
-              <div class="form-group full-width file-upload-group" data-upload-group="hojas_campo_laboratorio">
-                <label>Hojas de campo<span class="required" id="req_hojas_lab">*</span></label>
-                <input type="file" name="hojas_campo_laboratorio" accept=".pdf,.xls,.xlsx,.doc,.docx,.zip" data-file-input="hojas_campo_laboratorio">
-                <span class="helper-text">Formatos: PDF, XLS, XLSX, DOC, DOCX, ZIP &mdash; Max 10MB</span>
-                <div class="file-preview" data-preview="hojas_campo_laboratorio">
-                  <div class="file-preview-content">
-                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
-                    <button type="button" class="file-remove" data-clear="hojas_campo_laboratorio">Eliminar</button>
-                  </div>
-                </div>
-              </div>
-              <div class="form-group full-width file-upload-group" data-upload-group="fotografias_laboratorio">
-                <label>Fotografias</label>
-                <input type="file" name="fotografias_laboratorio" accept=".zip,.pdf,.jpg,.jpeg,.png" data-file-input="fotografias_laboratorio">
-                <span class="helper-text">Formatos: ZIP, PDF, JPG, JPEG, PNG &mdash; Max 10MB</span>
-                <div class="file-preview" data-preview="fotografias_laboratorio">
-                  <div class="file-preview-content">
-                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
-                    <button type="button" class="file-remove" data-clear="fotografias_laboratorio">Eliminar</button>
-                  </div>
-                </div>
-              </div>
-              <div class="form-group full-width file-upload-group" data-upload-group="croquis_laboratorio">
-                <label>Croquis</label>
-                <input type="file" name="croquis_laboratorio" accept=".pdf,.jpg,.jpeg,.png,.dwg,.zip" data-file-input="croquis_laboratorio">
-                <span class="helper-text">Formatos: PDF, JPG, JPEG, PNG, DWG, ZIP &mdash; Max 10MB</span>
-                <div class="file-preview" data-preview="croquis_laboratorio">
-                  <div class="file-preview-content">
-                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
-                    <button type="button" class="file-remove" data-clear="croquis_laboratorio">Eliminar</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- ================= BLOQUE 2: HIGIENE ================= -->
-        <div class="section">
-          <div class="section-header">Capa 3 &mdash; Bloque 2: Higiene <span class="section-badge">1 estudio por registro</span></div>
-          <div style="padding:20px 20px 0 20px;">
-            <div class="study-reminder">
-              <strong>⚠️ Importante:</strong> Este formulario es un registro por estudio. Si requiere cargar varios estudios de higiene, debera realizar un registro independiente por cada uno.
-            </div>
-            <div class="form-grid" style="padding:0; margin-bottom:20px;">
-              <div class="form-group full-width">
-                <label>Seleccione la NOM de higiene STPS correspondiente</label>
-                <select name="estudio_higiene" id="estudio_higiene">
-                  <option value="">-- Seleccione una opcion (si aplica) --</option>
-                  <option value="NOM-001-STPS-2008">NOM-001-STPS-2008 &mdash; Edificios, locales e instalaciones</option>
-                  <option value="NOM-002-STPS-2010">NOM-002-STPS-2010 &mdash; Condiciones de seguridad contra incendio</option>
-                  <option value="NOM-004-STPS-1999">NOM-004-STPS-1999 &mdash; Sistemas y dispositivos de seguridad en maquinaria</option>
-                  <option value="NOM-006-STPS-2014">NOM-006-STPS-2014 &mdash; Manejo y almacenamiento de materiales</option>
-                  <option value="NOM-009-STPS-2011">NOM-009-STPS-2011 &mdash; Condiciones de seguridad para trabajo en altura</option>
-                  <option value="NOM-010-STPS-2014">NOM-010-STPS-2014 &mdash; Agentes quimicos contaminantes del ambiente laboral</option>
-                  <option value="NOM-011-STPS-2001">NOM-011-STPS-2001 &mdash; Ruido</option>
-                  <option value="NOM-012-STPS-2012">NOM-012-STPS-2012 &mdash; Condiciones de seguridad y salud en el trabajo a presion</option>
-                  <option value="NOM-014-STPS-2000">NOM-014-STPS-2000 &mdash; Exposicion laboral a presiones ambientales anormales</option>
-                  <option value="NOM-015-STPS-2001">NOM-015-STPS-2001 &mdash; Condiciones termicas elevadas o abatidas</option>
-                  <option value="NOM-024-STPS-2001">NOM-024-STPS-2001 &mdash; Vibraciones</option>
-                  <option value="NOM-025-STPS-2008">NOM-025-STPS-2008 &mdash; Condiciones de iluminacion</option>
-                  <option value="NOM-029-STPS-2011">NOM-029-STPS-2011 &mdash; Mantenimiento de instalaciones electricas</option>
-                  <option value="NOM-030-STPS-2009">NOM-030-STPS-2009 &mdash; Servicios preventivos de seguridad y salud en el trabajo</option>
-                  <option value="otra">Otra NOM STPS (especificar)</option>
-                </select>
-              </div>
-              <div class="form-group full-width" id="otra_nom_higiene_group" style="display:none;">
-                <label>Especifique la NOM STPS<span class="required">*</span></label>
-                <input type="text" name="otra_nom_higiene" id="otra_nom_higiene" placeholder="Ej: NOM-035-STPS-2018">
-              </div>
-            </div>
-          </div>
-          <div id="higieneArchivos" style="display:none; padding:0 20px 20px;">
-            <div class="conditional-header">📎 Documentos del estudio de higiene</div>
-            <div class="form-grid" style="padding:0;">
-              <div class="form-group full-width file-upload-group" data-upload-group="hojas_campo_higiene">
-                <label>Hojas de campo<span class="required" id="req_hojas_hig">*</span></label>
-                <input type="file" name="hojas_campo_higiene" accept=".pdf,.xls,.xlsx,.doc,.docx,.zip" data-file-input="hojas_campo_higiene">
-                <span class="helper-text">Formatos: PDF, XLS, XLSX, DOC, DOCX, ZIP &mdash; Max 10MB</span>
-                <div class="file-preview" data-preview="hojas_campo_higiene">
-                  <div class="file-preview-content">
-                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
-                    <button type="button" class="file-remove" data-clear="hojas_campo_higiene">Eliminar</button>
-                  </div>
-                </div>
-              </div>
-              <div class="form-group full-width file-upload-group" data-upload-group="fotografias_higiene">
-                <label>Fotografias</label>
-                <input type="file" name="fotografias_higiene" accept=".zip,.pdf,.jpg,.jpeg,.png" data-file-input="fotografias_higiene">
-                <span class="helper-text">Formatos: ZIP, PDF, JPG, JPEG, PNG &mdash; Max 10MB</span>
-                <div class="file-preview" data-preview="fotografias_higiene">
-                  <div class="file-preview-content">
-                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
-                    <button type="button" class="file-remove" data-clear="fotografias_higiene">Eliminar</button>
-                  </div>
-                </div>
-              </div>
-              <div class="form-group full-width file-upload-group" data-upload-group="croquis_higiene">
-                <label>Croquis</label>
-                <input type="file" name="croquis_higiene" accept=".pdf,.jpg,.jpeg,.png,.dwg,.zip" data-file-input="croquis_higiene">
-                <span class="helper-text">Formatos: PDF, JPG, JPEG, PNG, DWG, ZIP &mdash; Max 10MB</span>
-                <div class="file-preview" data-preview="croquis_higiene">
-                  <div class="file-preview-content">
-                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
-                    <button type="button" class="file-remove" data-clear="croquis_higiene">Eliminar</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- ================= BLOQUE 3: INSPECCION (NOM-020-STPS) ================= -->
-        <div class="section">
-          <div class="section-header">Capa 3 &mdash; Bloque 3: Inspeccion &mdash; NOM-020-STPS</div>
-          <div style="padding:20px;">
-            <div class="study-reminder">
-              <strong>⚠️ Importante:</strong> Este formulario es un registro por estudio. Si requiere cargar mas estudios de inspeccion, realice un registro independiente.
-            </div>
+          <div class="form-grid">
             <div class="form-group full-width">
-              <label style="font-size:13px; text-transform:none;">Aplica evaluacion de NOM-020-STPS &mdash; Recipientes sujetos a presion, recipientes criogenicos y generadores de vapor o calderas<span class="required">*</span></label>
+              <label>Seleccione el estudio de laboratorio a registrar</label>
+              <select name="estudio_laboratorio" id="estudio_laboratorio">
+                <option value="">-- No aplica / Seleccione --</option>
+                <option value="NOM-022-STPS">NOM-022-STPS &mdash; Electricidad est&aacute;tica</option>
+                <option value="NOM-025-STPS">NOM-025-STPS &mdash; Condiciones de iluminaci&oacute;n</option>
+                <option value="NOM-081-SEMARNAT">NOM-081-SEMARNAT &mdash; L&iacute;mites m&aacute;ximos de ruido</option>
+                <option value="NOM-011-STPS">NOM-011-STPS &mdash; Ruido</option>
+                <option value="NOM-024-STPS">NOM-024-STPS &mdash; Vibraciones</option>
+                <option value="NOM-015-STPS">NOM-015-STPS &mdash; Condiciones t&eacute;rmicas</option>
+              </select>
+              <span class="helper-text">Deje en blanco si este bloque no aplica para este registro.</span>
+            </div>
+          </div>
+          <div id="laboratorioArchivos" style="display:none;">
+            <div class="conditional-section active" style="margin-top:0;">
+              <div class="conditional-header">&#128206; DOCUMENTOS DEL ESTUDIO DE LABORATORIO</div>
+              <div class="form-grid">
+                <div class="form-group full-width file-upload-group" data-upload-group="hojas_campo_laboratorio">
+                  <label>Hojas de campo<span class="required">*</span></label>
+                  <input type="file" name="hojas_campo_laboratorio" accept=".pdf,.xls,.xlsx,.doc,.docx,.zip" data-file-input="hojas_campo_laboratorio">
+                  <span class="helper-text">Formatos: PDF, XLS, XLSX, DOC, DOCX, ZIP &mdash; M&aacute;x. 10MB</span>
+                  <div class="file-preview" data-preview="hojas_campo_laboratorio">
+                    <div class="file-preview-content">
+                      <div class="file-info"><span class="file-icon">&#128196;</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                      <button type="button" class="file-remove" data-clear="hojas_campo_laboratorio">Eliminar</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="form-grid">
+                <div class="form-group full-width file-upload-group" data-upload-group="fotografias_laboratorio">
+                  <label>Fotograf&iacute;as</label>
+                  <input type="file" name="fotografias_laboratorio" accept=".zip,.pdf,.jpg,.jpeg,.png" data-file-input="fotografias_laboratorio">
+                  <span class="helper-text">Formatos: ZIP, PDF, JPG, JPEG, PNG &mdash; M&aacute;x. 10MB</span>
+                  <div class="file-preview" data-preview="fotografias_laboratorio">
+                    <div class="file-preview-content">
+                      <div class="file-info"><span class="file-icon">&#128196;</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                      <button type="button" class="file-remove" data-clear="fotografias_laboratorio">Eliminar</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="form-grid">
+                <div class="form-group full-width file-upload-group" data-upload-group="croquis_laboratorio">
+                  <label>Croquis</label>
+                  <input type="file" name="croquis_laboratorio" accept=".pdf,.jpg,.jpeg,.png,.dwg,.zip" data-file-input="croquis_laboratorio">
+                  <span class="helper-text">Formatos: PDF, JPG, JPEG, PNG, DWG, ZIP &mdash; M&aacute;x. 10MB</span>
+                  <div class="file-preview" data-preview="croquis_laboratorio">
+                    <div class="file-preview-content">
+                      <div class="file-info"><span class="file-icon">&#128196;</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                      <button type="button" class="file-remove" data-clear="croquis_laboratorio">Eliminar</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-header">HIGIENE</div>
+          <div class="study-reminder">
+            <strong>&#9888;&#65039; Importante &mdash; 1 registro = 1 estudio</strong>
+            Este formulario corresponde a un registro por estudio. Si requiere cargar varios estudios de higiene, deber&aacute; realizar un registro independiente por cada uno.
+          </div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>Seleccione la NOM de higiene STPS correspondiente</label>
+              <select name="estudio_higiene" id="estudio_higiene">
+                <option value="">-- No aplica / Seleccione --</option>
+                <option value="NOM-001-STPS-2008">NOM-001-STPS-2008 &mdash; Edificios, locales e instalaciones</option>
+                <option value="NOM-002-STPS-2010">NOM-002-STPS-2010 &mdash; Condiciones de seguridad contra incendio</option>
+                <option value="NOM-004-STPS-1999">NOM-004-STPS-1999 &mdash; Sistemas y dispositivos de seguridad en maquinaria</option>
+                <option value="NOM-006-STPS-2014">NOM-006-STPS-2014 &mdash; Manejo y almacenamiento de materiales</option>
+                <option value="NOM-009-STPS-2011">NOM-009-STPS-2011 &mdash; Trabajo en altura</option>
+                <option value="NOM-010-STPS-2014">NOM-010-STPS-2014 &mdash; Agentes qu&iacute;micos contaminantes del ambiente laboral</option>
+                <option value="NOM-011-STPS-2001">NOM-011-STPS-2001 &mdash; Ruido</option>
+                <option value="NOM-015-STPS-2001">NOM-015-STPS-2001 &mdash; Condiciones t&eacute;rmicas elevadas o abatidas</option>
+                <option value="NOM-024-STPS-2001">NOM-024-STPS-2001 &mdash; Vibraciones</option>
+                <option value="NOM-025-STPS-2008">NOM-025-STPS-2008 &mdash; Condiciones de iluminaci&oacute;n</option>
+                <option value="NOM-029-STPS-2011">NOM-029-STPS-2011 &mdash; Mantenimiento de instalaciones el&eacute;ctricas</option>
+                <option value="NOM-030-STPS-2009">NOM-030-STPS-2009 &mdash; Servicios preventivos de seguridad y salud</option>
+                <option value="NOM-035-STPS-2018">NOM-035-STPS-2018 &mdash; Factores de riesgo psicosocial</option>
+                <option value="otra">Otra NOM STPS (especificar)</option>
+              </select>
+              <span class="helper-text">Deje en blanco si este bloque no aplica para este registro.</span>
+            </div>
+            <div class="form-group full-width" id="otra_nom_higiene_group" style="display:none;">
+              <label>Especifique la NOM STPS<span class="required">*</span></label>
+              <input type="text" name="otra_nom_higiene" id="otra_nom_higiene" placeholder="Ej: NOM-012-STPS-2012">
+            </div>
+          </div>
+          <div id="higieneArchivos" style="display:none;">
+            <div class="conditional-section active" style="margin-top:0;">
+              <div class="conditional-header">&#128206; DOCUMENTOS DEL ESTUDIO DE HIGIENE</div>
+              <div class="form-grid">
+                <div class="form-group full-width file-upload-group" data-upload-group="hojas_campo_higiene">
+                  <label>Hojas de campo<span class="required">*</span></label>
+                  <input type="file" name="hojas_campo_higiene" accept=".pdf,.xls,.xlsx,.doc,.docx,.zip" data-file-input="hojas_campo_higiene">
+                  <span class="helper-text">Formatos: PDF, XLS, XLSX, DOC, DOCX, ZIP &mdash; M&aacute;x. 10MB</span>
+                  <div class="file-preview" data-preview="hojas_campo_higiene">
+                    <div class="file-preview-content">
+                      <div class="file-info"><span class="file-icon">&#128196;</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                      <button type="button" class="file-remove" data-clear="hojas_campo_higiene">Eliminar</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="form-grid">
+                <div class="form-group full-width file-upload-group" data-upload-group="fotografias_higiene">
+                  <label>Fotograf&iacute;as</label>
+                  <input type="file" name="fotografias_higiene" accept=".zip,.pdf,.jpg,.jpeg,.png" data-file-input="fotografias_higiene">
+                  <span class="helper-text">Formatos: ZIP, PDF, JPG, JPEG, PNG &mdash; M&aacute;x. 10MB</span>
+                  <div class="file-preview" data-preview="fotografias_higiene">
+                    <div class="file-preview-content">
+                      <div class="file-info"><span class="file-icon">&#128196;</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                      <button type="button" class="file-remove" data-clear="fotografias_higiene">Eliminar</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="form-grid">
+                <div class="form-group full-width file-upload-group" data-upload-group="croquis_higiene">
+                  <label>Croquis</label>
+                  <input type="file" name="croquis_higiene" accept=".pdf,.jpg,.jpeg,.png,.dwg,.zip" data-file-input="croquis_higiene">
+                  <span class="helper-text">Formatos: PDF, JPG, JPEG, PNG, DWG, ZIP &mdash; M&aacute;x. 10MB</span>
+                  <div class="file-preview" data-preview="croquis_higiene">
+                    <div class="file-preview-content">
+                      <div class="file-info"><span class="file-icon">&#128196;</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
+                      <button type="button" class="file-remove" data-clear="croquis_higiene">Eliminar</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="section">
+          <div class="section-header">INSPECCI&Oacute;N &mdash; NOM-020-STPS &mdash; RECIPIENTES, CALDERAS Y GENERADORES DE VAPOR</div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label style="font-size:13px; text-transform:none;">
+                   ¿El servicio es para evaluación de NOM-020-STPS-2011 (Recipientes sujetos a presión, recipientes criogénicos y generadores de vapor o calderas)?<span class="required">*</span>
+              </label>
               <div class="radio-group">
                 <div class="radio-option">
                   <input type="radio" id="nom020_si" name="aplica_nom020" value="si" required>
-                  <label for="nom020_si">Si aplica (requiere documentacion)</label>
+                  <label for="nom020_si">Sí</label>
                 </div>
                 <div class="radio-option">
                   <input type="radio" id="nom020_no" name="aplica_nom020" value="no">
-                  <label for="nom020_no">No aplica para este estudio</label>
+                  <label for="nom020_no">No, no aplica para nosotros</label>
                 </div>
               </div>
             </div>
           </div>
-
           <div id="documentacionLegalSection" class="conditional-section">
             <div class="conditional-header">⚠️ DOCUMENTACIÓN OBLIGATORIA PARA NOM-020-STPS</div>
             <div class="form-grid">
@@ -638,19 +665,33 @@
                   </div>
                 </div>
               </div>
-            </div>
-            <div class="form-grid">
+               <div class="form-grid">
               <div class="form-group full-width file-upload-group" data-upload-group="calibracion_valvula">
                 <label>I) Dictamen de Calibración de la válvula <span class="required" id="asterisco_calib">*</span></label>
-                <div style="background:#fff8e1; border:1px solid #ffe082; padding:10px; border-radius:4px; margin-bottom:10px; display:flex; align-items:flex-start; gap:8px;">
-                  <input type="checkbox" id="check_sin_calibracion" name="sin_calibracion" style="margin-top:3px; cursor:pointer;">
-                  <label for="check_sin_calibracion" style="cursor:pointer; font-size:11px; color:#f57f17; text-transform:none; margin:0; line-height:1.4;">
-                    <strong>Si no tienes calibradas tus valvulas</strong><br>
-                    Puedes contratar con Ejecutiva este servicio adicional el mismo dia de la dictaminacion en tus instalaciones.
+                <div style="background: #fff8e1; border: 1px solid #ffe082; padding: 10px; border-radius: 4px; margin-bottom: 10px; display: flex; align-items: flex-start; gap: 8px;">
+                  <input type="checkbox" id="check_sin_calibracion" name="sin_calibracion" style="margin-top: 3px; cursor: pointer;">
+                  <label for="check_sin_calibracion" style="cursor: pointer; font-size: 11px; color: #f57f17; text-transform: none; margin: 0; line-height: 1.4;">
+                    <strong>Si no tienes calibradas tus válvulas</strong><br>
+                    Puedes contratar con Ejecutiva este servicio adicional el mismo día de la dictaminación en tus instalaciones.
                   </label>
                 </div>
                 <input type="file" name="calibracion_valvula" accept=".pdf" data-file-input="calibracion_valvula" data-conditional-required="nom020">
-                <span class="helper-text" id="help_text_calib">Adjunte el archivo PDF de su ultima calibracion.</span>
+                <span class="helper-text" id="help_text_calib">Adjunte el archivo PDF de su última calibración.</span>
+                <div class="file-preview" data-preview="calibracion_valvula">
+                  <div class="file-preview-content">
+                    <div class="file-info">
+                      <span class="file-icon">📄</span>
+                      <div><div class="file-name"></div><div class="file-size"></div></div>
+                    </div>
+                    <button type="button" class="file-remove" data-clear="calibracion_valvula">Eliminar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div id="seccion_archivo_calibracion" style="display:none; background:#e8f5e9; padding:15px; border-radius:5px; margin-bottom:20px;">
+              <div class="form-group full-width file-upload-group" data-upload-group="calibracion_valvula">
+                <label>Adjuntar dictamen de calibración<span class="required">*</span></label>
+                <input type="file" name="calibracion_valvula" accept=".pdf" data-file-input="calibracion_valvula">
                 <div class="file-preview" data-preview="calibracion_valvula">
                   <div class="file-preview-content">
                     <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
@@ -660,429 +701,374 @@
               </div>
             </div>
             <div id="seccion_mensaje_calibracion" style="display:none; margin-bottom:20px;">
-              <div style="background:#fff3cd; border-left:4px solid #ffc107; padding:15px; border-radius:5px;">
-                <p style="margin:0; color:#856404; font-size:12px;">
-                  <strong>Enterado.</strong> Puede comunicarse con el area comercial o atencion a clientes para solicitar informes sobre ese servicio, nosotros lo podemos realizar en sus instalaciones.
+              <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; border-radius: 5px;">
+                <p style="margin: 0; color: #856404; font-size: 12px;">
+                  <strong>✅ Enterado.</strong> Puede comunicarse con el área comercial o atención a clientes para solicitar informes sobre ese servicio, nosotros lo podemos realizar en sus instalaciones
                 </p>
               </div>
             </div>
+            </div>
           </div>
         </div>
-
-        <!-- BOTON ENVIO -->
         <div class="submit-section">
-          <button type="submit" class="btn-submit" id="submitBtn">Revisar y Enviar Informacion</button>
+          <button type="submit" class="btn-submit" id="submitBtn">Revisar y Enviar Información</button>
           <div class="loading" id="loading">
             <div class="loading-spinner"></div>
-            <p class="loading-text">Subiendo documentos a Drive...</p>
+            <p class="loading-text">🔄 Subiendo documentos a Drive...</p>
           </div>
           <div class="message success-message" id="successMsg">
-            <strong>Informacion enviada correctamente.</strong><br><br>
-            Nuestro equipo revisara la informacion y se comunicara en las proximas <strong>24 horas</strong>.
+            <strong>¡Información enviada correctamente!</strong><br><br>
+            Nuestro equipo revisará la información y se comunicará con usted en las próximas <strong>24 horas</strong>.
           </div>
           <div class="message error-message" id="errorMsg">
-            <span id="errorMsgText">Error al enviar la informacion. Por favor, intente nuevamente o contactenos directamente.</span>
+            ✗ <span id="errorMsgText">Error al enviar la información. Por favor, intente nuevamente o contáctenos directamente.</span>
           </div>
         </div>
-
       </form>
     </div>
   </div>
-
   <div class="floating-buttons">
     <a href="tel:2229417295" class="floating-btn phone" title="Llamar ahora">
-      <span class="floating-btn-tooltip">Dudas con el formulario? Llamanos: 222 941 7295</span>📞
+      <span class="floating-btn-tooltip">¿Dudas con el formulario? Llámanos: 222 941 7295</span>📞
     </a>
     <a href="https://wa.me/522791113533" target="_blank" class="floating-btn whatsapp" title="WhatsApp">
-      <span class="floating-btn-tooltip">Necesitas ayuda? WhatsApp: 279 111 3533</span>💬
+      <span class="floating-btn-tooltip">¿Necesitas ayuda llenando esto? WhatsApp: 279 111 3533</span>💬
     </a>
   </div>
-
+  
   <script>
-    // =============================================
-    // PAIC - Portal de Asesores, Intermediarios y Consultorias
-    // Derivado de SEAPD.html - Ejecutiva Ambiental
-    // Capa base: SCRIPT_URL, action, fetch, fileToBase64 sin cambios
-    // =============================================
-
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby8t7Py-cilePxLiGa-Lq7Df73XaRlmkRYV_kXbTs79HFydaJyub8muA0PBLRkPevUuXg/exec";
+    // ✅ URL NUEVA ACTUALIZADA
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby8t7Py-cilePxLiGa-Lq7Df73XaRlmkRYV_kXbTs79HFydaJyub8muA0PBLRkPevUuXg/exec';
+    
     const MAX_FILE_SIZE = 10 * 1024 * 1024;
-    const MAX_TOTAL_SIZE = 25 * 1024 * 1024;
-    const WELCOME_COOKIE_NAME = "paic_welcome_shown";
+    const WELCOME_COOKIE_NAME = 'ea_welcome_shown';
     const WELCOME_COOKIE_DAYS = 30;
 
-    // ---- Cookies ----
     function setCookie(name, value, days) {
       const date = new Date();
       date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
-      document.cookie = name + "=" + value + ";expires=" + date.toUTCString() + ";path=/";
+      document.cookie = `${name}=${value};expires=${date.toUTCString()};path=/`;
     }
     function getCookie(name) {
       const nameEQ = name + "=";
-      const ca = document.cookie.split(";");
+      const ca = document.cookie.split(';');
       for (let c of ca) {
-        while (c.charAt(0) === " ") c = c.substring(1);
+        while (c.charAt(0) === ' ') c = c.substring(1);
         if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length);
       }
       return null;
     }
 
-    // ---- Modal Bienvenida ----
-    window.addEventListener("load", () => {
+    window.addEventListener('load', () => {
       if (!getCookie(WELCOME_COOKIE_NAME)) {
         setTimeout(() => {
-          const wm = document.getElementById("welcomeModal");
-          if (wm) wm.style.display = "flex";
+          const wm = document.getElementById('welcomeModal');
+          if (wm) wm.style.display = 'flex';
         }, 500);
       }
     });
+
     function closeWelcomeModal() {
-      const wm = document.getElementById("welcomeModal");
-      if (wm) wm.style.display = "none";
-      setCookie(WELCOME_COOKIE_NAME, "true", WELCOME_COOKIE_DAYS);
+      const wm = document.getElementById('welcomeModal');
+      if (wm) wm.style.display = 'none';
+      setCookie(WELCOME_COOKIE_NAME, 'true', WELCOME_COOKIE_DAYS);
     }
     window.closeWelcomeModal = closeWelcomeModal;
 
-    // ---- Utilidades de archivos ----
     function formatFileSize(bytes) {
-      if (!bytes) return "0 Bytes";
+      if (!bytes) return '0 Bytes';
       const k = 1024;
-      const sizes = ["Bytes", "KB", "MB", "GB"];
+      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
       const i = Math.floor(Math.log(bytes) / Math.log(k));
-      return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i];
+      return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
     }
 
     function clearFileUI(fileKey) {
-      const input = document.querySelector("[data-file-input=" + JSON.stringify(fileKey) + "]");
-      const preview = document.querySelector("[data-preview=" + JSON.stringify(fileKey) + "]");
-      const uploadGroup = document.querySelector("[data-upload-group=" + JSON.stringify(fileKey) + "]");
-      if (input) input.value = "";
-      if (preview) preview.classList.remove("active");
-      if (uploadGroup) uploadGroup.classList.remove("has-file");
+      const input = document.querySelector(`[data-file-input="${fileKey}"]`);
+      const preview = document.querySelector(`[data-preview="${fileKey}"]`);
+      const uploadGroup = document.querySelector(`[data-upload-group="${fileKey}"]`);
+      if (input) input.value = '';
+      if (preview) preview.classList.remove('active');
+      if (uploadGroup) uploadGroup.classList.remove('has-file');
     }
 
     function clearConditionalFilesByAttr(attrValue) {
-      document.querySelectorAll("[data-conditional-required=" + JSON.stringify(attrValue) + "]").forEach(field => {
+      document.querySelectorAll(`[data-conditional-required="${attrValue}"]`).forEach(field => {
         field.required = false;
-        if (field.type === "file") {
+        if (field.type === 'file') {
           const key = field.dataset.fileInput;
           if (key) clearFileUI(key);
-          else field.value = "";
+          else field.value = '';
         }
       });
     }
 
-    // ---- Listeners de archivos ----
-    document.querySelectorAll("input[type=file]").forEach(input => {
-      input.addEventListener("change", function () {
+    document.querySelectorAll('input[type="file"]').forEach(input => {
+      input.addEventListener('change', function () {
         const fileKey = this.dataset.fileInput;
-        const preview = document.querySelector("[data-preview=" + JSON.stringify(fileKey) + "]");
-        const uploadGroup = document.querySelector("[data-upload-group=" + JSON.stringify(fileKey) + "]");
+        const preview = document.querySelector(`[data-preview="${fileKey}"]`);
+        const uploadGroup = document.querySelector(`[data-upload-group="${fileKey}"]`);
         if (!preview) return;
         if (this.files && this.files[0]) {
           const file = this.files[0];
           if (file.size > MAX_FILE_SIZE) {
-            alert("El archivo es demasiado grande. Maximo 10MB por archivo.");
-            this.value = "";
-            preview.classList.remove("active");
-            if (uploadGroup) uploadGroup.classList.remove("has-file");
+            alert('El archivo es demasiado grande. Máximo 10MB por archivo.');
+            this.value = '';
+            preview.classList.remove('active');
+            if (uploadGroup) uploadGroup.classList.remove('has-file');
             return;
           }
-          const nameEl = preview.querySelector(".file-name");
-          const sizeEl = preview.querySelector(".file-size");
+          const nameEl = preview.querySelector('.file-name');
+          const sizeEl = preview.querySelector('.file-size');
           if (nameEl) nameEl.textContent = file.name;
           if (sizeEl) sizeEl.textContent = formatFileSize(file.size);
-          preview.classList.add("active");
-          if (uploadGroup) uploadGroup.classList.add("has-file");
+          preview.classList.add('active');
+          if (uploadGroup) uploadGroup.classList.add('has-file');
         } else {
-          preview.classList.remove("active");
-          if (uploadGroup) uploadGroup.classList.remove("has-file");
+          preview.classList.remove('active');
+          if (uploadGroup) uploadGroup.classList.remove('has-file');
         }
       });
     });
 
-    document.querySelectorAll(".file-remove").forEach(btn => {
-      btn.addEventListener("click", function () {
+    document.querySelectorAll('.file-remove').forEach(btn => {
+      btn.addEventListener('click', function () {
         const key = this.dataset.clear;
         if (key) clearFileUI(key);
       });
     });
 
-    // ---- RFC: mayusculas + validacion ----
-    const rfcInput = document.querySelector("input[name=rfc]");
-    if (rfcInput) {
-      rfcInput.addEventListener("input", function () {
-        this.value = this.value.toUpperCase();
-        if (this.value.length >= 12) {
-          const rfcPattern = /^[A-Z&Ñ]{3,4}[0-9]{6}[A-Z0-9]{3}$/;
-          this.style.borderColor = rfcPattern.test(this.value) ? "#28a745" : "#dc3545";
-        }
-      });
-    }
-
-    // ---- Bloque Laboratorio: mostrar archivos cuando se selecciona estudio ----
-    const selectLaboratorio = document.getElementById("estudio_laboratorio");
-    const labArchivos = document.getElementById("laboratorioArchivos");
-    if (selectLaboratorio) {
-      selectLaboratorio.addEventListener("change", function () {
-        const show = this.value !== "";
-        if (labArchivos) labArchivos.style.display = show ? "block" : "none";
-        const reqHojas = document.querySelector("[name=hojas_campo_laboratorio]");
-        if (reqHojas) reqHojas.required = show;
-        if (!show) {
-          clearFileUI("hojas_campo_laboratorio");
-          clearFileUI("fotografias_laboratorio");
-          clearFileUI("croquis_laboratorio");
-        }
-      });
-    }
-
-    // ---- Bloque Higiene: mostrar archivos + campo "Otra NOM" ----
-    const selectHigiene = document.getElementById("estudio_higiene");
-    const higieneArchivos = document.getElementById("higieneArchivos");
-    const otraGroup = document.getElementById("otra_nom_higiene_group");
-    const otraInput = document.getElementById("otra_nom_higiene");
-    if (selectHigiene) {
-      selectHigiene.addEventListener("change", function () {
-        const val = this.value;
-        const show = val !== "";
-        const isOtra = val === "otra";
-        if (higieneArchivos) higieneArchivos.style.display = show ? "block" : "none";
-        if (otraGroup) otraGroup.style.display = isOtra ? "block" : "none";
-        if (otraInput) otraInput.required = isOtra;
-        const reqHojas = document.querySelector("[name=hojas_campo_higiene]");
-        if (reqHojas) reqHojas.required = show;
-        if (!show) {
-          clearFileUI("hojas_campo_higiene");
-          clearFileUI("fotografias_higiene");
-          clearFileUI("croquis_higiene");
-          if (otraInput) { otraInput.required = false; otraInput.value = ""; }
-        }
-      });
-    }
-
-    // ---- Bloque Inspeccion: NOM-020 condicional ----
-    const docLegalSection = document.getElementById("documentacionLegalSection");
-    document.querySelectorAll("input[name=aplica_nom020]").forEach(r => {
-      r.addEventListener("change", function () {
-        const on = this.value === "si";
-        if (docLegalSection) docLegalSection.classList.toggle("active", on);
-        document.querySelectorAll("[data-conditional-required=nom020]").forEach(f => (f.required = on));
+    const docLegalSection = document.getElementById('documentacionLegalSection');
+    document.querySelectorAll('input[name="aplica_nom020"]').forEach(r => {
+      r.addEventListener('change', function () {
+        const on = this.value === 'si';
+        if (docLegalSection) docLegalSection.classList.toggle('active', on);
+        document.querySelectorAll('[data-conditional-required="nom020"]').forEach(f => (f.required = on));
         if (!on) {
-          document.querySelectorAll("[data-conditional-required=nom020]").forEach(f => {
-            if (f.type === "file") {
+          document.querySelectorAll('[data-conditional-required="nom020"]').forEach(f => {
+            if (f.type === 'file') {
               const key = f.dataset.fileInput;
               if (key) clearFileUI(key);
             } else {
-              f.value = "";
+              f.value = '';
             }
           });
-          // reset calibracion
-          const chk = document.getElementById("check_sin_calibracion");
-          if (chk) { chk.checked = false; }
-          const fileCalib = document.querySelector("[data-file-input=calibracion_valvula]");
-          const asterisco = document.getElementById("asterisco_calib");
-          const helpText = document.getElementById("help_text_calib");
-          const msgCalib = document.getElementById("seccion_mensaje_calibracion");
-          if (fileCalib) { fileCalib.style.display = ""; }
-          if (asterisco) asterisco.style.display = "";
-          if (helpText) helpText.textContent = "Adjunte el archivo PDF de su ultima calibracion.";
-          if (msgCalib) msgCalib.style.display = "none";
         }
       });
     });
 
-    // ---- Checkbox "sin calibracion" ----
-    const checkSinCalibracion = document.getElementById("check_sin_calibracion");
+    // Handler del checkbox "sin calibración de válvulas" para NOM-020
+    const checkSinCalibracion = document.getElementById('check_sin_calibracion');
     if (checkSinCalibracion) {
-      checkSinCalibracion.addEventListener("change", function () {
-        const fileInput = document.querySelector("[data-file-input=calibracion_valvula]");
-        const asterisco = document.getElementById("asterisco_calib");
-        const helpText = document.getElementById("help_text_calib");
-        const msgCalib = document.getElementById("seccion_mensaje_calibracion");
+      checkSinCalibracion.addEventListener('change', function() {
+        const fileInput = document.querySelector('[data-file-input="calibracion_valvula"]');
+        const asterisco = document.getElementById('asterisco_calib');
+        const helpText = document.getElementById('help_text_calib');
         if (this.checked) {
-          if (fileInput) { fileInput.required = false; fileInput.style.display = "none"; clearFileUI("calibracion_valvula"); }
-          if (asterisco) asterisco.style.display = "none";
-          if (helpText) helpText.textContent = "Ejecutiva Ambiental realizara la calibracion el dia de la dictaminacion.";
-          if (msgCalib) msgCalib.style.display = "block";
+          // No tiene calibración - ocultar archivo, quitar obligatorio
+          if (fileInput) { fileInput.required = false; fileInput.style.display = 'none'; clearFileUI('calibracion_valvula'); }
+          if (asterisco) asterisco.style.display = 'none';
+          if (helpText) helpText.textContent = 'Ejecutiva Ambiental realizará la calibración el día de la dictaminación.';
         } else {
-          if (fileInput) { fileInput.style.display = ""; fileInput.required = true; }
-          if (asterisco) asterisco.style.display = "";
-          if (helpText) helpText.textContent = "Adjunte el archivo PDF de su ultima calibracion.";
-          if (msgCalib) msgCalib.style.display = "none";
+          // Sí tiene calibración - mostrar archivo, hacerlo obligatorio
+          if (fileInput) { fileInput.style.display = ''; fileInput.required = true; }
+          if (asterisco) asterisco.style.display = '';
+          if (helpText) helpText.textContent = 'Adjunte el archivo PDF de su última calibración.';
         }
       });
     }
 
-    // ---- Modal Confirmacion ----
+    const rfcInput = document.querySelector('input[name="rfc"]');
+    if (rfcInput) {
+      rfcInput.addEventListener('input', function () {
+        this.value = this.value.toUpperCase();
+        if (this.value.length >= 12) {
+          const rfcPattern = /^[A-Z&Ñ]{3,4}[0-9]{6}[A-Z0-9]{3}$/;
+          this.style.borderColor = rfcPattern.test(this.value) ? '#28a745' : '#dc3545';
+        }
+      });
+    }
+
     function closeConfirmationModal() {
-      const cm = document.getElementById("confirmationModal");
-      if (cm) cm.classList.remove("active");
+      const cm = document.getElementById('confirmationModal');
+      if (cm) cm.classList.remove('active');
     }
     window.closeConfirmationModal = closeConfirmationModal;
 
-    const formMain = document.getElementById("paicForm");
+    const formMain = document.getElementById('paicForm');
     if (formMain) {
-      formMain.addEventListener("submit", function (e) {
+      formMain.addEventListener('submit', function (e) {
         e.preventDefault();
         showConfirmationModal();
       });
     }
 
     function showConfirmationModal() {
-      const form = document.getElementById("paicForm");
+      const form = document.getElementById('paicForm');
       const formData = new FormData(form);
-
-      // Determinar bloque activo
-      const estudioLab = formData.get("estudio_laboratorio") || "";
-      const estudioHig = formData.get("estudio_higiene") || "";
-      const otraHig = formData.get("otra_nom_higiene") || "";
-      const aplNom020 = formData.get("aplica_nom020") || "";
-
-      let bloqueActivo = [];
-      if (estudioLab) bloqueActivo.push("Laboratorio: " + estudioLab);
-      if (estudioHig) {
-        const label = estudioHig === "otra" ? ("Higiene: Otra NOM - " + otraHig) : ("Higiene: " + estudioHig);
-        bloqueActivo.push(label);
-      }
-      if (aplNom020 === "si") bloqueActivo.push("Inspeccion: NOM-020-STPS");
-
       let filesCount = 0;
       const filesInfo = [];
-      document.querySelectorAll("input[type=file]").forEach(input => {
+      document.querySelectorAll('input[type="file"]').forEach(input => {
         if (input.files && input.files[0]) {
           filesCount++;
-          const labelEl = input.parentElement ? input.parentElement.querySelector("label") : null;
+          const labelEl = input.parentElement?.querySelector('label');
           filesInfo.push({
-            label: labelEl ? labelEl.textContent.replace("*", "").trim() : input.name,
+            label: labelEl ? labelEl.textContent.replace('*', '').trim() : input.name,
             name: input.files[0].name,
             size: formatFileSize(input.files[0].size)
           });
         }
       });
-
-      let html = "<div class=confirmation-section><h3>DATOS DEL CLIENTE FINAL</h3>";
-      html += "<div class=confirmation-item><span class=confirmation-label>Razon Social:</span><span class=confirmation-value>" + (formData.get("razon_social") || "") + "</span></div>";
-      html += "<div class=confirmation-item><span class=confirmation-label>Sucursal:</span><span class=confirmation-value>" + (formData.get("sucursal") || "") + "</span></div>";
-      html += "<div class=confirmation-item><span class=confirmation-label>RFC:</span><span class=confirmation-value>" + (formData.get("rfc") || "") + "</span></div>";
-      html += "<div class=confirmation-item><span class=confirmation-label>Responsable:</span><span class=confirmation-value>" + (formData.get("responsable") || "") + "</span></div>";
-      html += "<div class=confirmation-item><span class=confirmation-label>Correo informe:</span><span class=confirmation-value style=font-weight:bold;color:#1e5a3e;>" + (formData.get("correo_informe") || "") + "</span></div>";
-      html += "</div>";
-
-      html += "<div class=confirmation-section><h3>REGLA DE NEGOCIO: 1 REGISTRO = 1 ESTUDIO</h3>";
-      if (bloqueActivo.length > 0) {
-        html += "<ul class=file-list>";
-        bloqueActivo.forEach(function(b) { html += "<li><strong>" + b + "</strong></li>"; });
-        html += "</ul>";
-      } else {
-        html += "<p style=color:#856404;>No se selecciono ningun bloque de estudio.</p>";
-      }
-      html += "</div>";
-
-      html += "<div class=confirmation-section><h3>ARCHIVOS ADJUNTOS (" + filesCount + " archivos)</h3>";
-      if (filesCount > 0) {
-        html += "<ul class=file-list>";
-        filesInfo.forEach(function(f) { html += "<li>✓ " + f.label + " <br><strong>" + f.name + "</strong> (" + f.size + ")</li>"; });
-        html += "</ul>";
-      } else {
-        html += "<p style=color:#856404;>No se adjuntaron archivos.</p>";
-      }
-      html += "</div>";
-
-      html += "<div class=warning-box><p><strong>IMPORTANTE:</strong> Verifique que toda la informacion sea correcta antes de enviar. El correo electronico es especialmente importante.</p></div>";
-      html += "<div class=modal-buttons>";
-      html += "<button type=button class="btn-modal btn-confirm" onclick=confirmAndSend()>Confirmar y Enviar</button>";
-      html += "<button type=button class="btn-modal btn-cancel" onclick=closeConfirmationModal()>Corregir Datos</button>";
-      html += "</div>";
-
-      document.getElementById("confirmationContent").innerHTML = html;
-      document.getElementById("confirmationModal").classList.add("active");
+      let confirmationHTML = `
+        <div class="confirmation-section">
+          <h3>📋 DATOS GENERALES</h3>
+          <div class="confirmation-item"><span class="confirmation-label">Razón Social:</span><span class="confirmation-value">${formData.get('razon_social') || ''}</span></div>
+          <div class="confirmation-item"><span class="confirmation-label">Sucursal:</span><span class="confirmation-value">${formData.get('sucursal') || ''}</span></div>
+          <div class="confirmation-item"><span class="confirmation-label">RFC:</span><span class="confirmation-value">${formData.get('rfc') || ''}</span></div>
+          <div class="confirmation-item"><span class="confirmation-label">Responsable:</span><span class="confirmation-value">${formData.get('responsable') || ''}</span></div>
+          <div class="confirmation-item"><span class="confirmation-label">Correo para informe:</span><span class="confirmation-value" style="font-weight:bold;color:#1e5a3e;">${formData.get('correo_informe') || ''}</span></div>
+        </div>
+        <div class="confirmation-section">
+          <h3>📎 ARCHIVOS ADJUNTOS (${filesCount} archivos)</h3>
+          ${filesCount > 0 ? `
+            <ul class="file-list">
+              ${filesInfo.map(f => `<li>✓ ${f.label} <br><strong>${f.name}</strong> (${f.size})</li>`).join('')}
+            </ul>
+          ` : '<p style="color:#856404;">⚠️ No se adjuntaron archivos</p>'}
+        </div>
+      `;
+      const aplicaNom020 = formData.get('aplica_nom020');
+      const estudioLab = formData.get('estudio_laboratorio') || '';
+      const estudioHig = formData.get('estudio_higiene') || '';
+      const otraHig    = formData.get('otra_nom_higiene') || '';
+      let bloques = [];
+      if (estudioLab) bloques.push('Laboratorio: ' + estudioLab);
+      if (estudioHig) bloques.push('Higiene: ' + (estudioHig === 'otra' ? 'Otra NOM - ' + otraHig : estudioHig));
+      if (aplicaNom020 === 'si') bloques.push('Inspección: NOM-020-STPS');
+      confirmationHTML += `
+        <div class="confirmation-section">
+          <h3>📋 REGLA: 1 REGISTRO = 1 ESTUDIO</h3>
+          ${bloques.length > 0 ? '<ul class="file-list">' + bloques.map(b => '<li><strong>' + b + '</strong></li>').join('') + '</ul>' : '<p style="color:#856404;">⚠️ No se seleccionó ningún bloque de estudio</p>'}
+        </div>
+      `;
+      confirmationHTML += `
+        <div class="warning-box">
+          <p><strong>⚠️ IMPORTANTE:</strong> Verifique que toda la información sea correcta antes de enviar. El correo electrónico es especialmente importante.</p>
+        </div>
+        <div class="modal-buttons">
+          <button type="button" class="btn-modal btn-confirm" onclick="confirmAndSend()">✓ Confirmar y Enviar</button>
+          <button type="button" class="btn-modal btn-cancel" onclick="closeConfirmationModal()">← Corregir Datos</button>
+        </div>
+      `;
+      document.getElementById('confirmationContent').innerHTML = confirmationHTML;
+      document.getElementById('confirmationModal').classList.add('active');
     }
 
-    function showError(message, detail) {
-      const errorMsg = document.getElementById("errorMsg");
-      const errorMsgText = document.getElementById("errorMsgText");
+    function showError(message, detail = '') {
+      const errorMsg = document.getElementById('errorMsg');
+      const errorMsgText = document.getElementById('errorMsgText');
       if (errorMsgText) {
         let fullMessage = message;
-        if (detail) fullMessage += "<br><small style=opacity:0.8;font-size:11px;>(" + detail + ")</small>";
+        if (detail) {
+          fullMessage += `<br><small style="opacity:0.8; font-size:11px;">(${detail})</small>`;
+        }
         errorMsgText.innerHTML = fullMessage;
       }
       if (errorMsg) {
-        errorMsg.style.display = "block";
-        errorMsg.scrollIntoView({ behavior: "smooth", block: "center" });
+        errorMsg.style.display = 'block';
+        errorMsg.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
     }
 
     async function confirmAndSend() {
       closeConfirmationModal();
-      const form = document.getElementById("paicForm");
-      const submitBtn = document.getElementById("submitBtn");
-      const loading = document.getElementById("loading");
-      const successMsg = document.getElementById("successMsg");
-      const errorMsg = document.getElementById("errorMsg");
-      if (successMsg) successMsg.style.display = "none";
-      if (errorMsg) errorMsg.style.display = "none";
+      const form = document.getElementById('paicForm');
+      const submitBtn = document.getElementById('submitBtn');
+      const loading = document.getElementById('loading');
+      const successMsg = document.getElementById('successMsg');
+      const errorMsg = document.getElementById('errorMsg');
+      if (successMsg) successMsg.style.display = 'none';
+      if (errorMsg) errorMsg.style.display = 'none';
       if (submitBtn) submitBtn.disabled = true;
-      if (loading) loading.style.display = "block";
+      if (loading) loading.style.display = 'block';
       try {
         const formData = new FormData(form);
-        const data = { action: "registrarCliente", portal_origen: "PAIC" };
+        const data = { action: 'registrarCliente', portal_origen: 'PAIC' };
+        
         let totalFileSize = 0;
         for (let [key, value] of formData.entries()) {
           if (value instanceof File && value.size > 0) {
             totalFileSize += value.size;
             data[key] = await fileToBase64(value);
-            data[key + "_filename"] = value.name;
-            data[key + "_size"] = value.size;
+            data[key + '_filename'] = value.name;
+            data[key + '_size'] = value.size;
           } else {
             data[key] = value;
           }
         }
+        const MAX_TOTAL_SIZE = 25 * 1024 * 1024;
         if (totalFileSize > MAX_TOTAL_SIZE) {
-          throw new Error("ARCHIVOS_MUY_GRANDES");
+          throw new Error('ARCHIVOS_MUY_GRANDES');
         }
+        console.log('Enviando datos al servidor...', { totalFileSize: (totalFileSize / 1024 / 1024).toFixed(2) + ' MB' });
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 120000);
+        const timeoutId = setTimeout(() => controller.abort(), 120000); 
+        
         const response = await fetch(SCRIPT_URL, {
-          method: "POST",
-          headers: { "Content-Type": "text/plain" },
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
           body: JSON.stringify(data),
           signal: controller.signal
         });
         clearTimeout(timeoutId);
-        if (!response.ok) throw new Error("HTTP_ERROR_" + response.status);
+        if (!response.ok) {
+          throw new Error(`HTTP_ERROR_${response.status}`);
+        }
         let result;
         const responseText = await response.text();
         try {
           result = JSON.parse(responseText);
         } catch (parseError) {
-          result = { success: true };
+          if (response.ok && responseText.includes('success')) {
+            result = { success: true };
+          } else if (response.ok) {
+            result = { success: true };
+          } else {
+            throw new Error('RESPUESTA_INVALIDA');
+          }
         }
-        if (result.success === false) throw new Error(result.error || "ERROR_SERVIDOR");
-        if (loading) loading.style.display = "none";
-        if (successMsg) successMsg.style.display = "block";
+        if (result.success === false) {
+          throw new Error(result.error || 'ERROR_SERVIDOR');
+        }
+        if (loading) loading.style.display = 'none';
+        if (successMsg) successMsg.style.display = 'block';
         form.reset();
-        document.querySelectorAll(".file-preview").forEach(p => p.classList.remove("active"));
-        document.querySelectorAll(".file-upload-group").forEach(g => g.classList.remove("has-file"));
-        if (docLegalSection) docLegalSection.classList.remove("active");
-        document.querySelectorAll("[data-conditional-required=nom020]").forEach(f => (f.required = false));
-        if (labArchivos) labArchivos.style.display = "none";
-        if (higieneArchivos) higieneArchivos.style.display = "none";
-        if (otraGroup) otraGroup.style.display = "none";
-        if (successMsg) successMsg.scrollIntoView({ behavior: "smooth", block: "center" });
+        document.querySelectorAll('.file-preview').forEach(p => p.classList.remove('active'));
+        document.querySelectorAll('.file-upload-group').forEach(g => g.classList.remove('has-file'));
+        if (docLegalSection) docLegalSection.classList.remove('active');
+        document.querySelectorAll('[data-conditional-required="nom020"]').forEach(f => (f.required = false));
+        const labArch = document.getElementById('laboratorioArchivos'); if (labArch) labArch.style.display = 'none';
+        const higArch = document.getElementById('higieneArchivos'); if (higArch) higArch.style.display = 'none';
+        const otraGrp = document.getElementById('otra_nom_higiene_group'); if (otraGrp) otraGrp.style.display = 'none';
+        const selLab = document.getElementById('estudio_laboratorio'); if (selLab) selLab.value = '';
+        const selHig = document.getElementById('estudio_higiene'); if (selHig) selHig.value = '';
+        if (successMsg) successMsg.scrollIntoView({ behavior: 'smooth', block: 'center' });
       } catch (error) {
-        if (loading) loading.style.display = "none";
-        if (error.name === "AbortError" || error.message === "AbortError") {
-          showError("La solicitud tardo demasiado tiempo.", "Intente con archivos mas pequeños o contactenos directamente");
-        } else if (error.message === "ARCHIVOS_MUY_GRANDES") {
-          showError("Los archivos adjuntos son demasiado grandes en total (max. 25MB).", "Intente comprimir los archivos PDF o reducir el tamaño de las imagenes");
-        } else if (error.message === "Failed to fetch" || error.message.includes("NetworkError")) {
-          showError("Error de conexion. Verifique su conexion a Internet.", "Si el problema persiste, contactenos por WhatsApp");
-        } else if (error.message.startsWith("HTTP_ERROR_")) {
-          const status = error.message.replace("HTTP_ERROR_", "");
-          showError("Error del servidor (codigo " + status + "). Por favor intente nuevamente.", "Si el problema persiste, contactenos directamente");
+        console.error('Error en envío:', error);
+        if (loading) loading.style.display = 'none';
+        if (error.name === 'AbortError' || error.message === 'AbortError') {
+          showError('La solicitud tardó demasiado tiempo. Puede ser que los archivos sean muy grandes.', 'Intente con archivos más pequeños o contáctenos directamente');
+        } else if (error.message === 'ARCHIVOS_MUY_GRANDES') {
+          showError('Los archivos adjuntos son demasiado grandes en total (máx. 25MB).', 'Intente comprimir los archivos PDF o reducir el tamaño de las imágenes');
+        } else if (error.message === 'Failed to fetch' || error.message.includes('NetworkError')) {
+          showError('Error de conexión. Verifique su conexión a Internet.', 'Si el problema persiste, contáctenos por WhatsApp');
+        } else if (error.message.startsWith('HTTP_ERROR_')) {
+          const status = error.message.replace('HTTP_ERROR_', '');
+          showError(`Error del servidor (código ${status}). Por favor intente nuevamente.`, 'Si el problema persiste, contáctenos directamente');
+        } else if (error.message === 'RESPUESTA_INVALIDA' || error.message === 'ERROR_SERVIDOR') {
+          showError('El servidor no pudo procesar la solicitud. Por favor intente nuevamente.', 'Si el problema persiste, contáctenos por WhatsApp o teléfono');
         } else {
-          showError("Error al enviar la informacion. Por favor, intente nuevamente o contactenos directamente.", error.message || "Error desconocido");
+          showError('Error al enviar la información. Por favor, intente nuevamente o contáctenos directamente.', error.message || 'Error desconocido');
         }
       } finally {
         if (submitBtn) submitBtn.disabled = false;
@@ -1099,209 +1085,292 @@
       });
     }
 
-    // ---- Modal buscar cliente por RFC ----
     let isReturningClient = false;
     function openReturningModal() {
-      const modal = document.getElementById("returningModal");
-      if (modal) modal.style.display = "flex";
-      const input = document.getElementById("rfcSearch");
-      if (input) { input.value = ""; input.focus(); }
-      const result = document.getElementById("rfcSearchResult");
-      if (result) { result.className = "rfc-search-result"; result.style.display = "none"; }
+      const modal = document.getElementById('returningModal');
+      if (modal) modal.style.display = 'flex';
+      const input = document.getElementById('rfcSearch');
+      if (input) { input.value = ''; input.focus(); }
+      const result = document.getElementById('rfcSearchResult');
+      if (result) { result.className = 'rfc-search-result'; result.style.display = 'none'; }
     }
     window.openReturningModal = openReturningModal;
 
     function closeReturningModal() {
-      const modal = document.getElementById("returningModal");
-      if (modal) modal.style.display = "none";
+      const modal = document.getElementById('returningModal');
+      if (modal) modal.style.display = 'none';
     }
     window.closeReturningModal = closeReturningModal;
 
-    const rfcSearchInput = document.getElementById("rfcSearch");
+    const rfcSearchInput = document.getElementById('rfcSearch');
     if (rfcSearchInput) {
-      rfcSearchInput.addEventListener("input", function () { this.value = this.value.toUpperCase(); });
-      rfcSearchInput.addEventListener("keydown", function (e) {
-        if (e.key === "Enter") { e.preventDefault(); searchClientByRFC(); }
+      rfcSearchInput.addEventListener('input', function() {
+        this.value = this.value.toUpperCase();
+      });
+      rfcSearchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); searchClientByRFC(); }
       });
     }
 
+    // =======================================================
+    // NUEVA LÓGICA DE BÚSQUEDA MULTI-SUCURSAL
+    // =======================================================
     async function searchClientByRFC() {
-      const rfcInput = document.getElementById("rfcSearch");
-      const resultDiv = document.getElementById("rfcSearchResult");
-      const btnSearch = document.getElementById("btnSearchRFC");
-      const rfc = (rfcInput ? rfcInput.value.trim().toUpperCase() : "");
+      const rfcInput = document.getElementById('rfcSearch');
+      const resultDiv = document.getElementById('rfcSearchResult');
+      const btnSearch = document.getElementById('btnSearchRFC');
+      const rfc = (rfcInput ? rfcInput.value.trim().toUpperCase() : '');
       if (!rfc || rfc.length < 12) {
-        resultDiv.className = "rfc-search-result error";
-        resultDiv.style.display = "block";
-        resultDiv.innerHTML = "<strong>RFC no valido.</strong> Debe tener al menos 12 caracteres.";
+        resultDiv.className = 'rfc-search-result error';
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = '<strong>RFC no válido.</strong> Debe tener al menos 12 caracteres.';
         return;
       }
       btnSearch.disabled = true;
-      btnSearch.textContent = "Buscando...";
-      resultDiv.style.display = "none";
+      btnSearch.textContent = 'Buscando...';
+      resultDiv.style.display = 'none';
+      
       try {
-        const url = SCRIPT_URL + "?action=buscarClienteRFC&rfc=" + encodeURIComponent(rfc);
+        const url = SCRIPT_URL + '?action=buscarClienteRFC&rfc=' + encodeURIComponent(rfc);
         const response = await fetch(url);
         const data = await response.json();
+        
         if (data.found && data.sucursales && data.sucursales.length > 0) {
           window._returningClientBranches = data.sucursales;
           window._returningRazonSocial = data.razon_social;
-          let optionsHtml = "<option value=''>-- Seleccione una opcion --</option>";
-          data.sucursales.forEach(function (suc, index) {
-            optionsHtml += "<option value='" + index + "'>Actualizar " + (suc.sucursal || "Matriz") + "</option>";
+
+          let optionsHtml = '<option value="">-- Seleccione una opción --</option>';
+          data.sucursales.forEach((suc, index) => {
+            optionsHtml += `<option value="${index}">🏢 Actualizar ${suc.sucursal || 'Matriz'}</option>`;
           });
-          optionsHtml += "<option value='new' style='font-weight:bold;color:#1e5a3e;'>Registrar Nueva Sucursal</option>";
-          resultDiv.className = "rfc-search-result found";
-          resultDiv.style.display = "block";
-          resultDiv.innerHTML = "<strong>Cliente encontrado:</strong> " + data.razon_social + "<br><br>" +
-            "<label style=font-size:11px;font-weight:bold;color:#1e5a3e;>Que desea hacer?</label>" +
-            "<select id=branchSelectModal style=width:100%;padding:8px;margin-top:5px;margin-bottom:15px;border:1px solid #ccc;border-radius:4px;>" + optionsHtml + "</select>" +
-            "<button type=button onclick=applyClientData() style=background:#1e5a3e;color:#fff;border:none;padding:10px 25px;border-radius:5px;font-size:13px;font-weight:600;cursor:pointer;width:100%;>Continuar con esta seleccion</button>";
+          optionsHtml += `<option value="new" style="font-weight:bold; color:#1e5a3e;">➕ Registrar Nueva Sucursal</option>`;
+
+          resultDiv.className = 'rfc-search-result found';
+          resultDiv.style.display = 'block';
+          resultDiv.innerHTML = `
+            <strong>Cliente encontrado:</strong> <span style="font-size:13px;">${data.razon_social}</span><br><br>
+            <label style="font-size:11px; font-weight:bold; color:#1e5a3e;">¿Qué desea hacer?</label>
+            <select id="branchSelectModal" style="width:100%; padding:8px; margin-top:5px; margin-bottom:15px; border:1px solid #ccc; border-radius:4px;">
+              ${optionsHtml}
+            </select>
+            <button type="button" onclick="applyClientData()" style="background:#1e5a3e; color:#fff; border:none; padding:10px 25px; border-radius:5px; font-size:13px; font-weight:600; cursor:pointer; width:100%;">Continuar con esta selección</button>
+          `;
         } else {
-          resultDiv.className = "rfc-search-result not-found";
-          resultDiv.style.display = "block";
-          resultDiv.innerHTML = "<strong>Cliente no encontrado.</strong><br><small>Puede continuar llenando el formulario como un nuevo cliente final.</small>";
+          resultDiv.className = 'rfc-search-result not-found';
+          resultDiv.style.display = 'block';
+          resultDiv.innerHTML = '<strong>RFC no encontrado.</strong><br><small>Puede continuar llenando el formulario como cliente nuevo.</small>';
         }
       } catch (err) {
-        resultDiv.className = "rfc-search-result error";
-        resultDiv.style.display = "block";
-        resultDiv.innerHTML = "<strong>Error de conexion.</strong><br><small>Verifique su conexion a internet e intente nuevamente.</small>";
+        resultDiv.className = 'rfc-search-result error';
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = '<strong>Error de conexión.</strong><br><small>Verifique su conexión a internet e intente nuevamente.</small>';
       } finally {
         btnSearch.disabled = false;
-        btnSearch.textContent = "Buscar";
+        btnSearch.textContent = 'Buscar';
       }
     }
     window.searchClientByRFC = searchClientByRFC;
 
     function applyClientData() {
-      const select = document.getElementById("branchSelectModal");
+      const select = document.getElementById('branchSelectModal');
       if (!select || select.value === "") {
-        alert("Por favor, seleccione una sucursal o elija Nueva Sucursal.");
+        alert("Por favor, seleccione una sucursal o elija 'Nueva Sucursal'.");
         return;
       }
+
       isReturningClient = true;
       const val = select.value;
+
       if (val === "new") {
+        // Opción: NUEVA SUCURSAL (Llena solo datos fiscales)
         const baseData = window._returningClientBranches[0];
-        document.querySelector("[name=razon_social]").value = baseData.razon_social || window._returningRazonSocial;
-        document.querySelector("[name=rfc]").value = baseData.rfc || "";
-        document.querySelector("[name=representante_legal]").value = baseData.representante_legal || "";
-        document.querySelector("[name=sucursal]").value = "";
-        document.querySelector("[name=direccion_evaluacion]").value = "";
-        document.querySelector("[name=telefono_empresa]").value = "";
-        document.querySelector("[name=nombre_solicitante]").value = "";
-        document.querySelector("[name=responsable]").value = "";
-        document.querySelector("[name=telefono_responsable]").value = "";
-        document.querySelector("[name=correo_informe]").value = "";
+        document.querySelector('[name="razon_social"]').value = baseData.razon_social || window._returningRazonSocial;
+        document.querySelector('[name="rfc"]').value = baseData.rfc || '';
+        document.querySelector('[name="representante_legal"]').value = baseData.representante_legal || '';
+        
+        // Limpiamos los campos específicos de sucursal
+        document.querySelector('[name="sucursal"]').value = '';
+        document.querySelector('[name="direccion_evaluacion"]').value = '';
+        document.querySelector('[name="telefono_empresa"]').value = '';
+        document.querySelector('[name="nombre_solicitante"]').value = '';
+        document.querySelector('[name="responsable"]').value = '';
+        document.querySelector('[name="telefono_responsable"]').value = '';
+        document.querySelector('[name="correo_informe"]').value = '';
       } else {
+        // Opción: ACTUALIZAR EXISTENTE (Llena TODO)
         const data = window._returningClientBranches[val];
         const fieldMap = {
-          nombre_solicitante: data.nombre_solicitante, razon_social: data.razon_social,
-          sucursal: data.sucursal, rfc: data.rfc, telefono_empresa: data.telefono_empresa,
-          representante_legal: data.representante_legal, direccion_evaluacion: data.direccion_evaluacion,
-          responsable: data.responsable, telefono_responsable: data.telefono_responsable,
-          giro: data.giro, actividad_principal: data.actividad_principal,
-          registro_patronal: data.registro_patronal, capacidad_instalada: data.capacidad_instalada,
-          capacidad_operacion: data.capacidad_operacion, dias_turnos_horarios: data.dias_turnos_horarios,
-          nombre_dirigido: data.nombre_dirigido, puesto_dirigido: data.puesto_dirigido,
-          correo_informe: data.correo_informe, descripcion_proceso: data.descripcion_proceso
+          'nombre_solicitante': data.nombre_solicitante,
+          'razon_social': data.razon_social,
+          'sucursal': data.sucursal,
+          'rfc': data.rfc,
+          'telefono_empresa': data.telefono_empresa,
+          'representante_legal': data.representante_legal,
+          'direccion_evaluacion': data.direccion_evaluacion,
+          'responsable': data.responsable,
+          'telefono_responsable': data.telefono_responsable,
+          'giro': data.giro,
+          'actividad_principal': data.actividad_principal,
+          'registro_patronal': data.registro_patronal,
+          'capacidad_instalada': data.capacidad_instalada,
+          'capacidad_operacion': data.capacidad_operacion,
+          'dias_turnos_horarios': data.dias_turnos_horarios,
+          'nombre_dirigido': data.nombre_dirigido,
+          'puesto_dirigido': data.puesto_dirigido,
+          'correo_informe': data.correo_informe,
+          'descripcion_proceso': data.descripcion_proceso
         };
         for (const [fieldName, value] of Object.entries(fieldMap)) {
           if (value) {
-            const el = document.querySelector("[name=" + JSON.stringify(fieldName) + "]");
+            const el = document.querySelector(`[name="${fieldName}"]`);
             if (el) el.value = value;
           }
         }
-        if (data.link_drive_cliente) showOnRecordIndicators();
-      }
-      const rfcField = document.querySelector("input[name=rfc]");
-      if (rfcField && rfcField.value.length >= 12) rfcField.style.borderColor = "#28a745";
-      const banner = document.getElementById("returningBanner");
-      if (banner) {
-        banner.classList.add("active");
-        const bt = banner.querySelector(".banner-text");
-        if (bt) {
-          if (val === "new") {
-            bt.innerHTML = "<strong>Cliente identificado</strong><br>Datos fiscales autocompletados. Ingrese los datos de la <strong>nueva sucursal</strong>.";
-          } else {
-            bt.innerHTML = "<strong>Sucursal identificada</strong><br>Datos prellenados. Verifique que esten correctos y complete solo lo nuevo.";
-          }
+        
+        if (data.link_drive_cliente) {
+          showOnRecordIndicators();
         }
       }
+
+      const rfcField = document.querySelector('input[name="rfc"]');
+      if (rfcField && rfcField.value.length >= 12) {
+        rfcField.style.borderColor = '#28a745';
+      }
+
+      const banner = document.getElementById('returningBanner');
+      if (banner) {
+        banner.classList.add('active');
+        if(val === "new") {
+          banner.querySelector('.banner-text').innerHTML = `<strong>Cliente identificado</strong><br>Datos fiscales autocompletados. Por favor ingrese los datos de la <strong>Nueva Sucursal</strong>.`;
+        } else {
+           banner.querySelector('.banner-text').innerHTML = `<strong>Sucursal identificada</strong><br>Hemos pre-llenado sus datos. Verifique que estén correctos y complete solo lo nuevo.`;
+        }
+      }
+
       closeReturningModal();
-      const formContent = document.querySelector(".form-content");
-      if (formContent) formContent.scrollIntoView({ behavior: "smooth" });
+      const formContent = document.querySelector('.form-content');
+      if (formContent) formContent.scrollIntoView({ behavior: 'smooth' });
     }
     window.applyClientData = applyClientData;
 
     function showOnRecordIndicators() {
-      const generalFileKeys = ["planos", "mantenimiento", "proceso_produccion", "requisitos_ingreso"];
-      generalFileKeys.forEach(function (key) {
-        const uploadGroup = document.querySelector("[data-upload-group=" + JSON.stringify(key) + "]");
+      const generalFileKeys = [
+        'planos', 'mantenimiento', 'proceso_produccion', 'requisitos_ingreso'
+      ];
+      generalFileKeys.forEach(key => {
+        const uploadGroup = document.querySelector(`[data-upload-group="${key}"]`);
         if (!uploadGroup) return;
-        if (uploadGroup.querySelector(".file-on-record")) return;
-        const fileInput = uploadGroup.querySelector("input[type=file]");
+        if (uploadGroup.querySelector('.file-on-record')) return;
+        const fileInput = uploadGroup.querySelector('input[type="file"]');
         if (!fileInput) return;
-        const indicator = document.createElement("div");
-        indicator.className = "file-on-record active";
+        const indicator = document.createElement('div');
+        indicator.className = 'file-on-record active';
         indicator.dataset.onRecordFor = key;
-        indicator.innerHTML = "<span class=on-record-text>Ya tenemos este documento en expediente</span>" +
-          "<button type=button class=btn-upload-new onclick=showFileInput(" + JSON.stringify(key) + ")>Subir nuevo</button>";
-        fileInput.style.display = "none";
-        fileInput.removeAttribute("required");
+        indicator.innerHTML = `
+          <span class="on-record-text">Ya tenemos este documento en expediente</span>
+          <button type="button" class="btn-upload-new" onclick="showFileInput('${key}')">Subir nuevo</button>
+        `;
+        fileInput.style.display = 'none';
+        fileInput.removeAttribute('required');
         uploadGroup.insertBefore(indicator, fileInput);
-        const helper = uploadGroup.querySelector(".helper-text");
-        if (helper) helper.style.display = "none";
+        const helper = uploadGroup.querySelector('.helper-text');
+        if (helper) helper.style.display = 'none';
       });
     }
 
     function showFileInput(fileKey) {
-      const uploadGroup = document.querySelector("[data-upload-group=" + JSON.stringify(fileKey) + "]");
+      const uploadGroup = document.querySelector(`[data-upload-group="${fileKey}"]`);
       if (!uploadGroup) return;
-      const indicator = uploadGroup.querySelector(".file-on-record");
-      if (indicator) indicator.classList.remove("active");
-      const fileInput = uploadGroup.querySelector("input[type=file]");
+      const indicator = uploadGroup.querySelector('.file-on-record');
+      if (indicator) indicator.classList.remove('active');
+      const fileInput = uploadGroup.querySelector('input[type="file"]');
       if (fileInput) {
-        fileInput.style.display = "";
-        if (fileKey === "planos") fileInput.required = true;
+        fileInput.style.display = '';
+        if (fileKey === 'planos') fileInput.required = true;
       }
-      const helper = uploadGroup.querySelector(".helper-text");
-      if (helper) helper.style.display = "";
+      const helper = uploadGroup.querySelector('.helper-text');
+      if (helper) helper.style.display = '';
     }
     window.showFileInput = showFileInput;
 
     function clearPrefill() {
       isReturningClient = false;
-      const form = document.getElementById("paicForm");
+      const form = document.getElementById('paicForm');
       if (form) form.reset();
-      const banner = document.getElementById("returningBanner");
-      if (banner) banner.classList.remove("active");
-      document.querySelectorAll(".file-on-record").forEach(function (indicator) {
+      const banner = document.getElementById('returningBanner');
+      if (banner) banner.classList.remove('active');
+      document.querySelectorAll('.file-on-record').forEach(indicator => {
         const key = indicator.dataset.onRecordFor;
         indicator.remove();
         if (key) {
-          const ug = document.querySelector("[data-upload-group=" + JSON.stringify(key) + "]");
-          if (ug) {
-            const fi = ug.querySelector("input[type=file]");
-            if (fi) { fi.style.display = ""; if (key === "planos") fi.required = true; }
-            const helper = ug.querySelector(".helper-text");
-            if (helper) helper.style.display = "";
+          const uploadGroup = document.querySelector(`[data-upload-group="${key}"]`);
+          if (uploadGroup) {
+            const fileInput = uploadGroup.querySelector('input[type="file"]');
+            if (fileInput) {
+              fileInput.style.display = '';
+              if (key === 'planos') fileInput.required = true;
+            }
+            const helper = uploadGroup.querySelector('.helper-text');
+            if (helper) helper.style.display = '';
           }
         }
       });
-      document.querySelectorAll(".file-preview").forEach(p => p.classList.remove("active"));
-      document.querySelectorAll(".file-upload-group").forEach(g => g.classList.remove("has-file"));
-      if (docLegalSection) docLegalSection.classList.remove("active");
-      document.querySelectorAll("[data-conditional-required=nom020]").forEach(f => (f.required = false));
-      if (labArchivos) labArchivos.style.display = "none";
-      if (higieneArchivos) higieneArchivos.style.display = "none";
-      if (otraGroup) otraGroup.style.display = "none";
-      const rfcField = document.querySelector("input[name=rfc]");
-      if (rfcField) rfcField.style.borderColor = "";
+      document.querySelectorAll('.file-preview').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.file-upload-group').forEach(g => g.classList.remove('has-file'));
+      if (docLegalSection) docLegalSection.classList.remove('active');
+      document.querySelectorAll('[data-conditional-required="nom020"]').forEach(f => (f.required = false));
+      const labArch2 = document.getElementById('laboratorioArchivos'); if (labArch2) labArch2.style.display = 'none';
+      const higArch2 = document.getElementById('higieneArchivos'); if (higArch2) higArch2.style.display = 'none';
+      const otraGrp2 = document.getElementById('otra_nom_higiene_group'); if (otraGrp2) otraGrp2.style.display = 'none';
+      const selLab2 = document.getElementById('estudio_laboratorio'); if (selLab2) selLab2.value = '';
+      const selHig2 = document.getElementById('estudio_higiene'); if (selHig2) selHig2.value = '';
+      const rfcField = document.querySelector('input[name="rfc"]');
+      if (rfcField) rfcField.style.borderColor = '';
       window._returningClientData = null;
     }
     window.clearPrefill = clearPrefill;
 
+    // ─── PAIC: lógica Bloque LABORATORIO ───
+    const selectLaboratorio = document.getElementById('estudio_laboratorio');
+    const labArchivos = document.getElementById('laboratorioArchivos');
+    if (selectLaboratorio) {
+      selectLaboratorio.addEventListener('change', function () {
+        const show = this.value !== '';
+        if (labArchivos) labArchivos.style.display = show ? 'block' : 'none';
+        const reqHojas = document.querySelector('[name="hojas_campo_laboratorio"]');
+        if (reqHojas) reqHojas.required = show;
+        if (!show) {
+          clearFileUI('hojas_campo_laboratorio');
+          clearFileUI('fotografias_laboratorio');
+          clearFileUI('croquis_laboratorio');
+        }
+      });
+    }
+
+    // ─── PAIC: lógica Bloque HIGIENE ───
+    const selectHigiene = document.getElementById('estudio_higiene');
+    const higieneArchivos = document.getElementById('higieneArchivos');
+    const otraGroup = document.getElementById('otra_nom_higiene_group');
+    const otraInput = document.getElementById('otra_nom_higiene');
+    if (selectHigiene) {
+      selectHigiene.addEventListener('change', function () {
+        const val = this.value;
+        const show = val !== '';
+        const isOtra = val === 'otra';
+        if (higieneArchivos) higieneArchivos.style.display = show ? 'block' : 'none';
+        if (otraGroup) otraGroup.style.display = isOtra ? 'block' : 'none';
+        if (otraInput) otraInput.required = isOtra;
+        const reqHojas = document.querySelector('[name="hojas_campo_higiene"]');
+        if (reqHojas) reqHojas.required = show;
+        if (!show) {
+          clearFileUI('hojas_campo_higiene');
+          clearFileUI('fotografias_higiene');
+          clearFileUI('croquis_higiene');
+          if (otraInput) { otraInput.required = false; otraInput.value = ''; }
+        }
+      });
+    }
   </script>
+
 </body>
 </html>
