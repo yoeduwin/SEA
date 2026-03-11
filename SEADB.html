@@ -247,8 +247,8 @@
                     <div class="filter-group"><label>Empresa</label><select id="filter-informe-empresa"><option value="">Todas</option></select></div>
                     <div class="filter-group"><label>Fecha Desde</label><input type="date" id="filter-informe-fecha-desde"></div>
                     <div class="filter-group"><label>Fecha Hasta</label><input type="date" id="filter-informe-fecha-hasta"></div>
-                    <div class="filter-group"><label>NOM</label><select id="filter-informe-nom"><option value="">Todas</option></select></div>
-                    <div class="filter-group"><label>Sucursal</label><select id="filter-informe-sucursal"><option value="">Todas</option></select></div>
+                    <div class="filter-group"><label>NOM</label><input type="text" id="filter-informe-nom" placeholder="Buscar NOM..." list="nom-datalist" autocomplete="off"><datalist id="nom-datalist"></datalist></div>
+                    <div class="filter-group"><label>Sucursal</label><input type="text" id="filter-informe-sucursal" placeholder="Buscar sucursal..."></div>
                     <div class="filter-group"><label>RFC</label><input type="text" id="filter-informe-rfc" placeholder="RFC del cliente"></div>
                     <div class="filter-group">
                         <label>Ordenar por</label>
@@ -640,15 +640,23 @@
         async function loadInformes() {
             try {
                 const response = await fetch(CSV_URL_INFORMES); const csvText = await response.text(); const rows = parseCSV(csvText);
-                allInformes = rows.slice(1).map(row => ({ fecha: row[0] || '', empresa: row[1] || '', nom: row[2] || '', persona: row[3] || '', correo: row[4] || '', link: row[5] || '', remitente: row[6] || '', rfc: row[7] || '', sucursal: row[8] || '' })).filter(row => row.empresa && row.link);
+                allInformes = rows.slice(1).map(row => ({ fecha: row[0] || '', empresa: row[1] || '', nom: row[2] || '', persona: row[3] || '', correo: row[4] || '', link: row[5] || '', remitente: row[6] || '', rfc: row[7] || '', sucursal: row[11] || '' })).filter(row => row.empresa && row.link); // sucursal = col L (índice 11)
                 filteredInformes = [...allInformes]; sortInformes('fecha-desc'); updateInformesFilters(); renderInformes();
             } catch (error) { document.getElementById('informesContainer').innerHTML = `<div class="no-results"><div class="no-results-icon">⚠️</div><p>Error al cargar los informes</p></div>`; }
         }
 
         function updateInformesFilters() {
-            const empresas = [...new Set(allInformes.map(inf => inf.empresa.trim()))].filter(Boolean).sort(); fillSelect('filter-informe-empresa', empresas);
-            const noms = [...new Set(allInformes.map(inf => inf.nom.trim()))].filter(Boolean).sort(); fillSelect('filter-informe-nom', noms);
-            const sucursales = [...new Set(allInformes.map(inf => inf.sucursal.trim()))].filter(Boolean).sort(); fillSelect('filter-informe-sucursal', sucursales);
+            const empresas = [...new Set(allInformes.map(inf => inf.empresa.trim()))].filter(Boolean).sort();
+            fillSelect('filter-informe-empresa', empresas);
+            updateNomDatalist(); // popula sugerencias de NOM (todas al inicio)
+        }
+
+        // Actualiza el <datalist> de NOM según la empresa seleccionada (cascada)
+        function updateNomDatalist() {
+            const empresa = document.getElementById('filter-informe-empresa').value;
+            const fuente = empresa ? allInformes.filter(inf => inf.empresa.trim() === empresa) : allInformes;
+            const noms = [...new Set(fuente.map(inf => inf.nom.trim()))].filter(Boolean).sort();
+            document.getElementById('nom-datalist').innerHTML = noms.map(n => `<option value="${n}">`).join('');
         }
 
         function applyInformesFilters() {
@@ -657,8 +665,10 @@
             const filterSucursal = document.getElementById('filter-informe-sucursal').value; const filterRFC = document.getElementById('filter-informe-rfc').value.toLowerCase();
             const sortBy = document.getElementById('filter-informe-sort').value;
             filteredInformes = allInformes.filter(informe => {
-                if (filterEmpresa && informe.empresa.trim() !== filterEmpresa) return false; if (filterNOM && informe.nom.trim() !== filterNOM) return false;
-                if (filterSucursal && informe.sucursal.trim() !== filterSucursal) return false; if (filterRFC && !informe.rfc.toLowerCase().includes(filterRFC)) return false;
+                if (filterEmpresa && informe.empresa.trim() !== filterEmpresa) return false;
+                if (filterNOM && !informe.nom.toLowerCase().includes(filterNOM.toLowerCase())) return false; // búsqueda abierta
+                if (filterSucursal && !informe.sucursal.toLowerCase().includes(filterSucursal.toLowerCase())) return false; // búsqueda abierta
+                if (filterRFC && !informe.rfc.toLowerCase().includes(filterRFC)) return false;
                 if (filterFechaDesde || filterFechaHasta) { const fecha = parseFecha(informe.fecha); if (!fecha) return false; if (filterFechaDesde && fecha < new Date(filterFechaDesde)) return false; if (filterFechaHasta && fecha > new Date(filterFechaHasta + 'T23:59:59')) return false; }
                 return true;
             });
@@ -672,7 +682,12 @@
         }
 
         function clearInformesFilters() { ['filter-informe-empresa', 'filter-informe-fecha-desde', 'filter-informe-fecha-hasta', 'filter-informe-nom', 'filter-informe-sucursal', 'filter-informe-rfc'].forEach(id => document.getElementById(id).value = ''); document.getElementById('filter-informe-sort').value = 'fecha-desc'; applyInformesFilters(); showToast('Filtros limpiados'); }
-        ['filter-informe-empresa', 'filter-informe-fecha-desde', 'filter-informe-fecha-hasta', 'filter-informe-nom', 'filter-informe-sucursal'].forEach(id => document.getElementById(id).addEventListener('change', applyInformesFilters)); document.getElementById('filter-informe-rfc').addEventListener('input', applyInformesFilters); document.getElementById('filter-informe-sort').addEventListener('change', applyInformesFilters);
+        // Empresa (select): al cambiar actualiza datalist de NOM y filtra
+        document.getElementById('filter-informe-empresa').addEventListener('change', () => { updateNomDatalist(); applyInformesFilters(); });
+        // Fechas y orden: change
+        ['filter-informe-fecha-desde', 'filter-informe-fecha-hasta', 'filter-informe-sort'].forEach(id => document.getElementById(id).addEventListener('change', applyInformesFilters));
+        // Campos de texto abierto: input (reactivo al escribir)
+        ['filter-informe-nom', 'filter-informe-sucursal', 'filter-informe-rfc'].forEach(id => document.getElementById(id).addEventListener('input', applyInformesFilters));
 
         function renderInformes() {
             const container = document.getElementById('informesContainer'); document.getElementById('informes-count').textContent = filteredInformes.length;
