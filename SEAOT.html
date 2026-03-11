@@ -197,15 +197,7 @@
       <div class="section-header">Información del Servicio</div>
       <div class="section-content">
         <div class="form-grid">
-          <div class="form-group full-width no-print">
-            <label>Serie de Orden (Operativo)</label>
-            <div class="radio-group">
-              <label><input type="radio" name="orderSeries" value="OTA" checked onchange="updateOrderNumber()"> Serie A (OTA)</label>
-              <label><input type="radio" name="orderSeries" value="OTB" onchange="updateOrderNumber()"> Serie B (OTB)</label>
-            </div>
-            <div class="series-info" id="seriesInfo">Último: OT-000 | Siguiente sugerido: ...</div>
-          </div>
-          <div class="form-group"><label>N° de Orden de Servicio</label><input type="text" id="wo_orderNumber" placeholder="OTA2603-1"></div>
+          <div class="form-group"><label>N° de Orden de Servicio</label><input type="text" id="wo_orderNumber" placeholder="OTB2603-1"></div>
           <div class="form-group"><label>Fecha de Emisión</label><input type="date" id="wo_issueDate"></div>
           <div class="form-group"><label>Referencia de Cotización</label><input type="text" id="wo_quoteRef"></div>
         </div>
@@ -453,7 +445,7 @@
   }
 
   // ================== LÓGICA OT ORIGINAL Y FOLIOS MENSUALES ==================
-  function getSelectedSeries() { const radio = document.querySelector('input[name="orderSeries"]:checked'); return radio ? radio.value : 'OTA'; }
+  function getSelectedSeries() { return 'OTB'; }
   function getLastOrderNumber(series) { return localStorage.getItem(`lastOrder_${series}`) || `${series}-000`; }
   function saveLastOrderNumber(series, orderNumber) { localStorage.setItem(`lastOrder_${series}`, orderNumber); }
   
@@ -645,7 +637,6 @@ Tel: 222-941-7295`;
     const issueDateInput = document.getElementById('wo_issueDate');
     if (issueDateInput) issueDateInput.value = new Date().toISOString().split('T')[0];
     document.querySelectorAll('.service-input').forEach(setupServiceAutocomplete);
-    document.querySelectorAll('input[name="orderSeries"]').forEach(r => r.addEventListener('change', updateOrderNumber));
     updateOrderNumber();
     document.querySelectorAll('.nav-tab').forEach(tab => tab.addEventListener('click', syncData));
     generateQRCode();
