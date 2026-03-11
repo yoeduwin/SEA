@@ -167,7 +167,50 @@
             .filters-grid { grid-template-columns: 1fr; }
         }
     </style>
-</head>
+    <style>
+        /* ─── Informes Module — Rediseño ejecutivo ───────────────────────── */
+        .inf-filters-bar { background: white; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 14px rgba(0,0,0,0.04); padding: 1rem 1.25rem 1.1rem; margin-bottom: 1.25rem; border: 1px solid #eaecef; }
+        .inf-filters-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.85rem; }
+        .inf-filters-title { font-size: 0.7rem; font-weight: 700; color: #9199a3; text-transform: uppercase; letter-spacing: 0.9px; }
+        .inf-filters-clear { background: none; border: 1px solid #e2e6ea; color: #6c757d; padding: 0.28rem 0.75rem; border-radius: 6px; cursor: pointer; font-size: 0.73rem; font-weight: 500; transition: all 0.15s; }
+        .inf-filters-clear:hover { background: #fee2e2; border-color: #fca5a5; color: #b91c1c; }
+        .inf-filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.65rem; }
+        .inf-filter-item { display: flex; flex-direction: column; gap: 0.22rem; }
+        .inf-filter-item label { font-size: 0.67rem; font-weight: 700; color: #9199a3; text-transform: uppercase; letter-spacing: 0.5px; }
+        .inf-filter-item input, .inf-filter-item select { padding: 0.42rem 0.65rem; border: 1px solid #e2e6ea; border-radius: 7px; font-size: 0.82rem; color: #2c3e50; background: #fafbfc; transition: border-color 0.15s, box-shadow 0.15s; }
+        .inf-filter-item input:focus, .inf-filter-item select:focus { outline: none; border-color: #2d5f4f; box-shadow: 0 0 0 3px rgba(45,95,79,0.09); background: white; }
+        /* Toolbar */
+        .inf-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 0.85rem 1.25rem; border-bottom: 1px solid #f0f2f4; flex-wrap: wrap; gap: 0.5rem; }
+        .inf-toolbar-left { display: flex; align-items: center; gap: 0.5rem; }
+        .inf-toolbar-title { font-size: 0.82rem; font-weight: 600; color: #374151; }
+        .inf-toolbar-count { font-size: 0.78rem; color: #9199a3; }
+        .inf-view-btns { display: flex; gap: 0.25rem; }
+        .inf-view-btn { padding: 0.32rem 0.75rem; border: 1px solid #e2e6ea; background: white; border-radius: 6px; cursor: pointer; font-size: 0.73rem; color: #6c757d; font-weight: 500; transition: all 0.15s; }
+        .inf-view-btn.active { background: #1e5a3e; color: white; border-color: #1e5a3e; }
+        .inf-export-btn { padding: 0.32rem 0.75rem; border: 1px solid #e2e6ea; background: white; border-radius: 6px; cursor: pointer; font-size: 0.73rem; color: #6c757d; font-weight: 500; transition: all 0.15s; }
+        .inf-export-btn:hover { background: #f8f9fa; }
+        /* Grid de tarjetas */
+        .inf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 0.85rem; padding: 1.25rem; }
+        .inf-card { background: white; border-radius: 10px; overflow: hidden; border: 1px solid #eaecef; box-shadow: 0 1px 3px rgba(0,0,0,0.05); transition: box-shadow 0.2s ease, transform 0.2s ease; }
+        .inf-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.1); transform: translateY(-1px); }
+        .inf-card-head { padding: 0.8rem 1rem 0.65rem; display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; }
+        .inf-nom { font-size: 0.67rem; font-weight: 700; color: white; padding: 0.22rem 0.6rem; border-radius: 4px; letter-spacing: 0.3px; white-space: nowrap; flex-shrink: 0; }
+        .inf-fecha { font-size: 0.71rem; color: #8a92a0; font-weight: 500; white-space: nowrap; padding-top: 0.1rem; }
+        .inf-card-body { padding: 0 1rem 0.75rem; }
+        .inf-empresa-name { font-size: 0.93rem; font-weight: 700; color: #1a2332; line-height: 1.35; }
+        .inf-tags { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-top: 0.35rem; }
+        .inf-tag { font-size: 0.66rem; color: #5a6472; background: #f1f3f5; padding: 0.13rem 0.5rem; border-radius: 3px; font-weight: 600; }
+        .inf-divider { border: none; border-top: 1px solid #f0f2f4; margin: 0; }
+        .inf-card-contacts { padding: 0.65rem 1rem; display: flex; flex-direction: column; gap: 0.28rem; }
+        .inf-contact-row { display: flex; gap: 0.5rem; align-items: baseline; }
+        .inf-contact-key { font-size: 0.67rem; font-weight: 700; color: #9199a3; text-transform: uppercase; letter-spacing: 0.3px; min-width: 56px; flex-shrink: 0; }
+        .inf-contact-val { font-size: 0.79rem; color: #374151; word-break: break-word; }
+        .inf-card-foot { padding: 0.6rem 1rem; background: #fafbfc; border-top: 1px solid #f0f2f4; display: flex; gap: 0.35rem; align-items: center; }
+        .inf-btn-drive { flex: 1; padding: 0.4rem 0; border: none; border-radius: 6px; cursor: pointer; font-size: 0.74rem; font-weight: 600; background: #1e5a3e; color: white; transition: background 0.15s; display: flex; align-items: center; justify-content: center; gap: 0.3rem; }
+        .inf-btn-drive:hover { background: #174d34; }
+        .inf-btn-icon { padding: 0.4rem 0.52rem; border: 1px solid #e2e6ea; border-radius: 6px; cursor: pointer; font-size: 0.78rem; background: white; color: #495057; transition: all 0.15s; line-height: 1; }
+        .inf-btn-icon:hover { background: #f0f2f4; border-color: #c9d0d8; }
+    </style>
 <body>
     <div class="header">
         <h1>📊 Panel de Control - Ejecutiva Ambiental</h1>
@@ -238,37 +281,44 @@
     </div>
     <div id="tab-informes" class="tab-content">
         <div class="container">
-            <div class="filters">
-                <h3 style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
-                    🔍 Buscar Informes
-                    <button class="btn" onclick="clearInformesFilters()" style="background: #e74c3c; border: none; font-size: 0.75rem; padding: 0.3rem 0.8rem; color: white; border-radius: 6px; cursor: pointer;">Limpiar Filtros</button>
-                </h3>
-                <div class="filter-grid">
-                    <div class="filter-group"><label>Empresa</label><select id="filter-informe-empresa"><option value="">Todas</option></select></div>
-                    <div class="filter-group"><label>Fecha Desde</label><input type="date" id="filter-informe-fecha-desde"></div>
-                    <div class="filter-group"><label>Fecha Hasta</label><input type="date" id="filter-informe-fecha-hasta"></div>
-                    <div class="filter-group"><label>NOM</label><input type="text" id="filter-informe-nom" placeholder="Buscar NOM..." list="nom-datalist" autocomplete="off"><datalist id="nom-datalist"></datalist></div>
-                    <div class="filter-group"><label>Sucursal</label><input type="text" id="filter-informe-sucursal" placeholder="Buscar sucursal..."></div>
-                    <div class="filter-group"><label>RFC</label><input type="text" id="filter-informe-rfc" placeholder="RFC del cliente"></div>
-                    <div class="filter-group">
+            <div class="inf-filters-bar">
+                <div class="inf-filters-header">
+                    <span class="inf-filters-title">Filtros de búsqueda</span>
+                    <button class="inf-filters-clear" onclick="clearInformesFilters()">✕ Limpiar</button>
+                </div>
+                <div class="inf-filter-grid">
+                    <div class="inf-filter-item"><label>Empresa</label><input type="text" id="filter-informe-empresa" placeholder="Buscar empresa..." list="empresa-datalist" autocomplete="off"><datalist id="empresa-datalist"></datalist></div>
+                    <div class="inf-filter-item"><label>Fecha desde</label><input type="date" id="filter-informe-fecha-desde"></div>
+                    <div class="inf-filter-item"><label>Fecha hasta</label><input type="date" id="filter-informe-fecha-hasta"></div>
+                    <div class="inf-filter-item"><label>NOM</label><input type="text" id="filter-informe-nom" placeholder="Ej. NOM-035..." list="nom-datalist" autocomplete="off"><datalist id="nom-datalist"></datalist></div>
+                    <div class="inf-filter-item"><label>Sucursal</label><input type="text" id="filter-informe-sucursal" placeholder="Buscar sucursal..."></div>
+                    <div class="inf-filter-item"><label>RFC</label><input type="text" id="filter-informe-rfc" placeholder="RFC del cliente"></div>
+                    <div class="inf-filter-item">
                         <label>Ordenar por</label>
                         <select id="filter-informe-sort">
-                            <option value="fecha-desc">Fecha (reciente primero)</option><option value="fecha-asc">Fecha (antiguo primero)</option>
-                            <option value="empresa-asc">Empresa (A-Z)</option><option value="empresa-desc">Empresa (Z-A)</option>
+                            <option value="fecha-desc">Fecha — reciente primero</option>
+                            <option value="fecha-asc">Fecha — antiguo primero</option>
+                            <option value="empresa-asc">Empresa A → Z</option>
+                            <option value="empresa-desc">Empresa Z → A</option>
                         </select>
                     </div>
                 </div>
             </div>
-            <div class="table-container" style="margin-top: 1.5rem;">
-                <div class="table-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
-                    <h3>📄 Informes Disponibles (<span id="informes-count">0</span> registros)</h3>
-                    <div class="informes-toolbar">
-                        <button class="btn-view active" id="btn-card-view" onclick="setInformesView('cards')" title="Vista de tarjetas">🃏 Tarjetas</button>
-                        <button class="btn-view" id="btn-table-view" onclick="setInformesView('table')" title="Vista de tabla">📊 Tabla</button>
-                        <button class="btn-view" onclick="exportInformesCSV()" title="Exportar CSV" style="margin-left: 0.3rem;">📥 Exportar</button>
+            <div class="table-container" style="margin-top: 0;">
+                <div class="inf-toolbar">
+                    <div class="inf-toolbar-left">
+                        <span class="inf-toolbar-title">Informes disponibles</span>
+                        <span class="inf-toolbar-count">· <span id="informes-count">0</span> registros</span>
+                    </div>
+                    <div style="display:flex; gap:0.35rem; align-items:center;">
+                        <div class="inf-view-btns">
+                            <button class="inf-view-btn active" id="btn-card-view" onclick="setInformesView('cards')">Tarjetas</button>
+                            <button class="inf-view-btn" id="btn-table-view" onclick="setInformesView('table')">Tabla</button>
+                        </div>
+                        <button class="inf-export-btn" onclick="exportInformesCSV()">↓ Exportar</button>
                     </div>
                 </div>
-                <div id="informesContainer" style="padding: 1.5rem;"><div class="loading"><div class="spinner"></div>Cargando informes...</div></div>
+                <div id="informesContainer" style="min-height:200px;"><div class="loading"><div class="spinner"></div>Cargando informes...</div></div>
             </div>
         </div>
     </div>
@@ -647,14 +697,14 @@
 
         function updateInformesFilters() {
             const empresas = [...new Set(allInformes.map(inf => inf.empresa.trim()))].filter(Boolean).sort();
-            fillSelect('filter-informe-empresa', empresas);
-            updateNomDatalist(); // popula sugerencias de NOM (todas al inicio)
+            document.getElementById('empresa-datalist').innerHTML = empresas.map(e => `<option value="${e}">`).join('');
+            updateNomDatalist();
         }
 
-        // Actualiza el <datalist> de NOM según la empresa seleccionada (cascada)
+        // Actualiza sugerencias de NOM filtrando por el texto de empresa (cascada)
         function updateNomDatalist() {
-            const empresa = document.getElementById('filter-informe-empresa').value;
-            const fuente = empresa ? allInformes.filter(inf => inf.empresa.trim() === empresa) : allInformes;
+            const empresa = document.getElementById('filter-informe-empresa').value.toLowerCase();
+            const fuente = empresa ? allInformes.filter(inf => inf.empresa.toLowerCase().includes(empresa)) : allInformes;
             const noms = [...new Set(fuente.map(inf => inf.nom.trim()))].filter(Boolean).sort();
             document.getElementById('nom-datalist').innerHTML = noms.map(n => `<option value="${n}">`).join('');
         }
@@ -665,9 +715,9 @@
             const filterSucursal = document.getElementById('filter-informe-sucursal').value; const filterRFC = document.getElementById('filter-informe-rfc').value.toLowerCase();
             const sortBy = document.getElementById('filter-informe-sort').value;
             filteredInformes = allInformes.filter(informe => {
-                if (filterEmpresa && informe.empresa.trim() !== filterEmpresa) return false;
-                if (filterNOM && !informe.nom.toLowerCase().includes(filterNOM.toLowerCase())) return false; // búsqueda abierta
-                if (filterSucursal && !informe.sucursal.toLowerCase().includes(filterSucursal.toLowerCase())) return false; // búsqueda abierta
+                if (filterEmpresa && !informe.empresa.toLowerCase().includes(filterEmpresa.toLowerCase())) return false; // búsqueda abierta
+                if (filterNOM && !informe.nom.toLowerCase().includes(filterNOM.toLowerCase())) return false;
+                if (filterSucursal && !informe.sucursal.toLowerCase().includes(filterSucursal.toLowerCase())) return false;
                 if (filterRFC && !informe.rfc.toLowerCase().includes(filterRFC)) return false;
                 if (filterFechaDesde || filterFechaHasta) { const fecha = parseFecha(informe.fecha); if (!fecha) return false; if (filterFechaDesde && fecha < new Date(filterFechaDesde)) return false; if (filterFechaHasta && fecha > new Date(filterFechaHasta + 'T23:59:59')) return false; }
                 return true;
@@ -682,12 +732,15 @@
         }
 
         function clearInformesFilters() { ['filter-informe-empresa', 'filter-informe-fecha-desde', 'filter-informe-fecha-hasta', 'filter-informe-nom', 'filter-informe-sucursal', 'filter-informe-rfc'].forEach(id => document.getElementById(id).value = ''); document.getElementById('filter-informe-sort').value = 'fecha-desc'; applyInformesFilters(); showToast('Filtros limpiados'); }
-        // Empresa (select): al cambiar actualiza datalist de NOM y filtra
-        document.getElementById('filter-informe-empresa').addEventListener('change', () => { updateNomDatalist(); applyInformesFilters(); });
+        // Todos los campos de texto filtran al escribir; empresa además actualiza datalist de NOM
+        ['filter-informe-empresa', 'filter-informe-nom', 'filter-informe-sucursal', 'filter-informe-rfc'].forEach(id => {
+            document.getElementById(id).addEventListener('input', () => {
+                if (id === 'filter-informe-empresa') updateNomDatalist();
+                applyInformesFilters();
+            });
+        });
         // Fechas y orden: change
         ['filter-informe-fecha-desde', 'filter-informe-fecha-hasta', 'filter-informe-sort'].forEach(id => document.getElementById(id).addEventListener('change', applyInformesFilters));
-        // Campos de texto abierto: input (reactivo al escribir)
-        ['filter-informe-nom', 'filter-informe-sucursal', 'filter-informe-rfc'].forEach(id => document.getElementById(id).addEventListener('input', applyInformesFilters));
 
         function renderInformes() {
             const container = document.getElementById('informesContainer'); document.getElementById('informes-count').textContent = filteredInformes.length;
@@ -698,27 +751,41 @@
         function setInformesView(mode) { informesViewMode = mode; document.getElementById('btn-card-view').classList.toggle('active', mode === 'cards'); document.getElementById('btn-table-view').classList.toggle('active', mode === 'table'); renderInformes(); }
 
         function renderInformesCards(container) {
-            container.innerHTML = `<div class="informes-grid"></div>`; const grid = container.querySelector('.informes-grid');
+            const grid = document.createElement('div');
+            grid.className = 'inf-grid';
             filteredInformes.forEach(informe => {
-                const card = document.createElement('div'); card.className = 'informe-card'; card.style.borderLeftColor = getNomColor(informe.nom);
+                const card = document.createElement('div');
+                card.className = 'inf-card';
+                const nomColor = getNomColor(informe.nom);
+                const tags = [
+                    informe.sucursal ? `<span class="inf-tag">${informe.sucursal}</span>` : '',
+                    informe.rfc ? `<span class="inf-tag">${informe.rfc}</span>` : ''
+                ].filter(Boolean).join('');
                 card.innerHTML = `
-                    <div class="informe-header"><div class="informe-empresa">${informe.empresa}</div><div class="informe-fecha">${informe.fecha}</div></div>
-                    <div class="informe-details">
-                        <div class="informe-detail"><span class="informe-detail-label">NOM:</span><span class="nom-badge" style="background: ${getNomColor(informe.nom)}">${informe.nom || 'N/A'}</span></div>
-                        ${informe.sucursal ? `<div class="informe-detail"><span class="informe-detail-label">Sucursal:</span><span class="sucursal-badge">${informe.sucursal}</span></div>` : ''}
-                        <div class="informe-detail"><span class="informe-detail-label">Contacto:</span><span class="informe-detail-value">${informe.persona}</span></div>
-                        <div class="informe-detail"><span class="informe-detail-label">Correo:</span><span class="informe-detail-value">${informe.correo}</span></div>
-                        ${informe.rfc ? `<div class="informe-detail"><span class="informe-detail-label">RFC:</span><span class="informe-detail-value">${informe.rfc}</span></div>` : ''}
+                    <div class="inf-card-head">
+                        <span class="inf-nom" style="background:${nomColor}">${informe.nom || 'NOM'}</span>
+                        <span class="inf-fecha">${informe.fecha}</span>
                     </div>
-                    <div class="informe-actions">
-                        <button class="action-btn drive" onclick="openDrive('${escapeQuotes(informe.link)}')">📁 Ver en Drive</button>
-                        <button class="action-btn whatsapp" onclick="shareWhatsApp('${escapeQuotes(informe.empresa)}', '${escapeQuotes(informe.link)}')">💬 WhatsApp</button>
-                        <button class="action-btn email" onclick="shareEmail('${escapeQuotes(informe.empresa)}', '${escapeQuotes(informe.link)}', '${escapeQuotes(informe.correo)}')">✉️ Email</button>
-                        <button class="action-btn copy" onclick="copyLink('${escapeQuotes(informe.link)}')">📋 Copiar</button>
+                    <div class="inf-card-body">
+                        <div class="inf-empresa-name">${informe.empresa}</div>
+                        ${tags ? `<div class="inf-tags">${tags}</div>` : ''}
+                    </div>
+                    <hr class="inf-divider">
+                    <div class="inf-card-contacts">
+                        <div class="inf-contact-row"><span class="inf-contact-key">Contacto</span><span class="inf-contact-val">${informe.persona || '—'}</span></div>
+                        <div class="inf-contact-row"><span class="inf-contact-key">Correo</span><span class="inf-contact-val">${informe.correo || '—'}</span></div>
+                    </div>
+                    <div class="inf-card-foot">
+                        <button class="inf-btn-drive" onclick="openDrive('${escapeQuotes(informe.link)}')">📁 Ver informe</button>
+                        <button class="inf-btn-icon" title="WhatsApp" onclick="shareWhatsApp('${escapeQuotes(informe.empresa)}', '${escapeQuotes(informe.link)}')">💬</button>
+                        <button class="inf-btn-icon" title="Enviar por email" onclick="shareEmail('${escapeQuotes(informe.empresa)}', '${escapeQuotes(informe.link)}', '${escapeQuotes(informe.correo)}')">✉️</button>
+                        <button class="inf-btn-icon" title="Copiar enlace" onclick="copyLink('${escapeQuotes(informe.link)}')">📋</button>
                     </div>
                 `;
                 grid.appendChild(card);
             });
+            container.innerHTML = '';
+            container.appendChild(grid);
         }
 
         function renderInformesTable(container) {
