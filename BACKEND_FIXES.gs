@@ -35,6 +35,7 @@ function doPost(e) {
       case 'createExpediente': return output_(fase3_CrearExpediente(data));
       case 'addFilesToExpediente': return output_(fase3_AddFilesToExpediente(data));
       case 'updateEstatus': return output_(updateEstatusSafe_(data));
+      case 'updateEstatusInforme': return output_(updateEstatusInformeSafe_(data));
       case 'updateResponsable': return output_(updateResponsableSafe_(data));
       default: return output_({ success: false, error: 'Acción POST no reconocida.' });
     }
@@ -231,8 +232,9 @@ function fase2_RegistrarOT(data) {
   sheet.appendRow([
     new Date(), data.ot_folio || '', data.tipo_orden || 'OTA', '', data.nom_servicio || '',
     data.cliente_razon_social || '', data.sucursal || '', data.rfc || '', data.personal_asignado || '',
-    data.fecha_visita || '', data.fecha_entrega_limite || '', '', 'NO INICIADO',
-    data.link_drive_cliente || '', data.observaciones || ''
+    data.fecha_visita || '', data.fecha_entrega_limite || '', '', 'NO INICIADO',  // col 13 = estatus externo (SEADB)
+    data.link_drive_cliente || '', data.observaciones || '',
+    'NO INICIADO'  // col 16 = estatus_informe (interno SEAINF)
   ]);
   return { success: true, message: 'OT Registrada correctamente' };
 }
@@ -366,8 +368,10 @@ function getOrdenesSafe_() {
   const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
   const values = sheet.getDataRange().getDisplayValues();
   const ordenes = values.slice(1).filter(row => {
-    const estatus = String(row[12] || '').trim().toUpperCase();
-    return estatus !== 'ENTREGADO' && estatus !== 'FINALIZADO';
+    // Filtra por estatus INTERNO (col 16, índice 15): excluye informes ya finalizados/cancelados internamente
+    // col 13 (estatus externo) lo gestiona SEADB de forma independiente
+    const estatusInforme = String(row[15] || '').trim().toUpperCase();
+    return estatusInforme !== 'FINALIZADO' && estatusInforme !== 'CANCELADO';
   }).map(row => ({
     ot: row[1],
     tipo_orden: row[2],
@@ -379,7 +383,8 @@ function getOrdenesSafe_() {
     rfc: row[7],
     personal: row[8],
     fecha_visita: row[9],
-    link_drive: row[13]
+    link_drive: row[13],
+    estatus_informe: row[15] || 'NO INICIADO'  // estado interno del dpto. informes
   })).filter(orden => orden.ot && orden.ot.trim() !== '');
   return { success: true, data: ordenes };
 }
@@ -412,6 +417,19 @@ function updateEstatusSafe_(data) {
          sheet.getRange(i + 1, 12).setValue(Utilities.formatDate(new Date(), "GMT-6", "dd/MM/yyyy"));
       }
       return { success: true, message: 'Actualizado' };
+    }
+  }
+  return { success: false, error: 'OT no encontrada' };
+}
+// Actualiza SOLO el estatus interno del dpto. de informes (col 16).
+// NO toca col 13 (estatus externo que lee SEADB) ni la fecha real de entrega.
+function updateEstatusInformeSafe_(data) {
+  const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+  const values = sheet.getDataRange().getValues();
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][1]).trim() === String(data.ot).trim()) {
+      sheet.getRange(i + 1, 16).setValue(data.estatus.toUpperCase()); // col 16 = Estatus Informe (interno)
+      return { success: true, message: 'Estatus informe actualizado' };
     }
   }
   return { success: false, error: 'OT no encontrada' };

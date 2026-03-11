@@ -844,7 +844,7 @@
           telefono: r.telefono || r.telefono_empresa || '',
           direccion: r.direccion || r.direccion_evaluacion || '',
           responsable: r.responsable || r.personal || r.personal_asignado || '',
-          estatus: r.estatus || 'NO INICIADO',
+          estatus: r.estatus_informe || 'NO INICIADO',  // lee col 16 (interno), NO el estatus externo de SEADB
           linkDrive: r.linkDrive || r.link_drive || r.link_drive_cliente || '',
           tipoOrden: r.tipoOrden || r.tipo_orden || ''
         }));
@@ -997,7 +997,9 @@
 
   async function cambiarDatoRapido(ot, campo, valor) {
     if (!ot || !valor) return;
-    const action = campo === 'estatus' ? 'updateEstatus' : 'updateResponsable';
+    // 'updateEstatusInforme' escribe en col 16 (proceso interno SEAINF).
+    // 'updateEstatus' queda EXCLUSIVO para SEADB (entrega externa al cliente).
+    const action = campo === 'estatus' ? 'updateEstatusInforme' : 'updateResponsable';
     const payload = { action, ot };
     if (campo === 'estatus') payload.estatus = valor;
     else payload.responsable = valor;
