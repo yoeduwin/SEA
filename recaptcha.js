@@ -19,7 +19,7 @@
 const SEARecaptcha = (() => {
   // ─── CONFIGURACIÓN ─────────────────────────────────────────────────────────
   // Reemplazar con tu Site Key de reCAPTCHA v3 (Google reCAPTCHA Console)
-  const SITE_KEY = 'TU_RECAPTCHA_V3_SITE_KEY';
+  const SITE_KEY = '6LdIq4csAAAAAHCggurLxQbsc15M8MnAD8UIOR1E';
 
   // Acción usada para identificar el contexto en el dashboard de reCAPTCHA
   const ACTION = 'sea_portal_submit';
