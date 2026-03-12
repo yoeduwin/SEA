@@ -29,19 +29,26 @@ const CONFIG = {
 // =========================================================================
 // Modos de autenticación por acción:
 //   GOOGLE    → requiere id_token válido + usuario en whitelist
-//   RECAPTCHA → requiere recaptcha_token válido (portales públicos/clientes)
-//   EITHER    → acepta cualquiera de los dos (ej. registrarCliente: interno y público)
+//   RECAPTCHA → requiere recaptcha_token válido (portales públicos de clientes)
+//   EITHER    → acepta id_token (Google) o recaptcha_token
 //
-// Módulos para control de acceso por usuario (columnas en USUARIOS_AUTORIZADOS):
-//   SEAPD → Registro de clientes (interno)
+// Páginas internas con Google Auth: SEADB, SEAOT, SEAINF
+// Portales públicos con reCAPTCHA:  paic.html, SEAPD.html (registro de clientes)
+//
+// Módulos para control por columna en USUARIOS_AUTORIZADOS:
+//   SEADB → Dashboard / control de entregas
 //   SEAOT → Órdenes de trabajo
 //   SEAINF → Expedientes e informes
 // =========================================================================
 const AUTH_MODE = {
-  // ── Requiere Google Auth ─────────────────────────────────────────────────
+  // ── Requiere Google Auth (herramientas internas) ─────────────────────────
+  // SEADB
+  getTablero:             'GOOGLE',
+  updateEstatus:          'GOOGLE',
+  updateResponsable:      'GOOGLE',
   // SEAOT
-  buscarClienteRFC:       'EITHER',   // SEAOT usa Google Auth; paic (público) usa reCAPTCHA
-  buscarClienteNombre:    'EITHER',   // SEAOT usa Google Auth; paic (público) usa reCAPTCHA
+  buscarClienteRFC:       'EITHER',   // SEAOT usa Google Auth; paic/SEAPD (públicos) usan reCAPTCHA
+  buscarClienteNombre:    'EITHER',   // igual que buscarClienteRFC
   registrarOT:            'GOOGLE',
   // SEAINF
   getOrdenes:             'GOOGLE',
@@ -49,17 +56,16 @@ const AUTH_MODE = {
   createExpediente:       'GOOGLE',
   addFilesToExpediente:   'GOOGLE',
   updateEstatusInforme:   'GOOGLE',
-  // ── Requiere reCAPTCHA (portales públicos / cliente) ────────────────────
-  getTablero:             'EITHER',   // SEADB usa reCAPTCHA; SEAINF usa Google Auth
-  updateEstatus:          'RECAPTCHA',
-  updateResponsable:      'RECAPTCHA',
-  // ── Acepta cualquiera (SEAPD interno con Google Auth, paic público con reCAPTCHA) ──
-  registrarCliente:       'EITHER'
+  // ── Requiere reCAPTCHA (portales públicos de registro de clientes) ────────
+  // paic.html y SEAPD.html son portales donde los CLIENTES se registran
+  registrarCliente:       'RECAPTCHA'
 };
 
 // Mapeo acción → módulo (para verificar acceso por columna en la hoja)
 const ACTION_MODULE = {
-  registrarCliente:       'SEAPD',
+  getTablero:             'SEADB',
+  updateEstatus:          'SEADB',
+  updateResponsable:      'SEADB',
   buscarClienteRFC:       'SEAOT',
   buscarClienteNombre:    'SEAOT',
   registrarOT:            'SEAOT',
@@ -116,10 +122,11 @@ function verificarIdToken_(idToken) {
 // ── verificarUsuarioAutorizado_ ───────────────────────────────────────────
 /**
  * Verifica si el email está activo en USUARIOS_AUTORIZADOS y tiene acceso al módulo.
- * Crea la hoja con usuarios iniciales si no existe.
- * Columnas: Email | Nombre | Rol | Activo | FechaAlta | SEAPD | SEAOT | SEAINF | Notas
+ * Columnas: Email | Nombre | Rol | Activo | FechaAlta | SEADB | SEAOT | SEAINF | Notas
+ * Para crear/recrear la hoja con los datos iniciales, ejecutar crearHojaUsuarios() desde
+ * el editor de GAS (una sola vez).
  * @param {string} email
- * @param {string} modulo  'SEAPD' | 'SEAOT' | 'SEAINF' | '' (sin restricción de módulo)
+ * @param {string} modulo  'SEADB' | 'SEAOT' | 'SEAINF' | '' (sin restricción de módulo)
  * @returns {boolean}
  */
 function verificarUsuarioAutorizado_(email, modulo) {
@@ -128,22 +135,11 @@ function verificarUsuarioAutorizado_(email, modulo) {
 
   try {
     const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-    let sheet = ss.getSheetByName('USUARIOS_AUTORIZADOS');
+    const sheet = ss.getSheetByName('USUARIOS_AUTORIZADOS');
 
     if (!sheet) {
-      // Crear hoja con usuarios iniciales
-      sheet = ss.insertSheet('USUARIOS_AUTORIZADOS');
-      const headers = ['Email', 'Nombre', 'Rol', 'Activo (TRUE/FALSE)', 'Fecha Alta', 'SEAPD', 'SEAOT', 'SEAINF', 'Notas'];
-      sheet.appendRow(headers);
-      sheet.appendRow(['eduwin.ejecutiva@gmail.com',      'Administrador',       'admin',            true, new Date(), true, true, true,  '']);
-      sheet.appendRow(['aclientes.ejecutiva@gmail.com',   'Operador A Clientes', 'operador',         true, new Date(), true, true, true,  '']);
-      sheet.appendRow(['operaciones.ejecutivamx@gmail.com','Operador Operaciones','operador',         true, new Date(), true, true, true,  '']);
-      sheet.appendRow(['calidad.ejecutivamx@gmail.com',   'Aux. Operador Calidad','auxiliar_operador',true, new Date(), true, true, true,  '']);
-      // Formato encabezado
-      const headerRange = sheet.getRange(1, 1, 1, headers.length);
-      headerRange.setFontWeight('bold').setBackground('#1a73e8').setFontColor('#ffffff');
-      sheet.setFrozenRows(1);
-      Logger.log('Hoja USUARIOS_AUTORIZADOS creada con usuarios iniciales.');
+      Logger.log('Hoja USUARIOS_AUTORIZADOS no existe. Ejecuta crearHojaUsuarios() desde el editor GAS.');
+      return false;
     }
 
     const data = sheet.getDataRange().getValues();
@@ -172,6 +168,54 @@ function verificarUsuarioAutorizado_(email, modulo) {
     Logger.log('verificarUsuarioAutorizado_ error: ' + e.message);
     return false;
   }
+}
+
+// ── crearHojaUsuarios ─────────────────────────────────────────────────────
+/**
+ * EJECUTAR UNA VEZ desde el editor de GAS (menú Ejecutar → crearHojaUsuarios).
+ * Crea (o recrea) la hoja USUARIOS_AUTORIZADOS con las columnas correctas
+ * y los 4 usuarios autorizados pre-cargados.
+ *
+ * Si la hoja ya existe, la elimina y la recrea para garantizar columnas actualizadas.
+ */
+function crearHojaUsuarios() {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+
+  // Eliminar hoja existente si hay
+  const existing = ss.getSheetByName('USUARIOS_AUTORIZADOS');
+  if (existing) {
+    ss.deleteSheet(existing);
+    Logger.log('Hoja anterior eliminada.');
+  }
+
+  // Crear nueva hoja
+  const sheet = ss.insertSheet('USUARIOS_AUTORIZADOS');
+
+  // Encabezados — SEADB | SEAOT | SEAINF controlan acceso por módulo
+  const headers = ['Email', 'Nombre', 'Rol', 'Activo (TRUE/FALSE)', 'Fecha Alta', 'SEADB', 'SEAOT', 'SEAINF', 'Notas'];
+  sheet.appendRow(headers);
+
+  // Usuarios autorizados iniciales (todos los módulos activos)
+  const hoy = new Date();
+  sheet.appendRow(['eduwin.ejecutiva@gmail.com',       'Administrador',        'admin',             true, hoy, true, true, true, '']);
+  sheet.appendRow(['aclientes.ejecutiva@gmail.com',    'Operador A Clientes',  'operador',          true, hoy, true, true, true, '']);
+  sheet.appendRow(['operaciones.ejecutivamx@gmail.com','Operador Operaciones', 'operador',          true, hoy, true, true, true, '']);
+  sheet.appendRow(['calidad.ejecutivamx@gmail.com',    'Aux. Operador Calidad','auxiliar_operador', true, hoy, true, true, true, '']);
+
+  // Formato encabezado
+  const headerRange = sheet.getRange(1, 1, 1, headers.length);
+  headerRange.setFontWeight('bold').setBackground('#1a73e8').setFontColor('#ffffff');
+  sheet.setFrozenRows(1);
+
+  // Ajustar ancho de columnas
+  sheet.setColumnWidth(1, 280); // Email
+  sheet.setColumnWidth(2, 200); // Nombre
+  sheet.setColumnWidth(5, 120); // Fecha Alta
+
+  Logger.log('✅ Hoja USUARIOS_AUTORIZADOS creada con 4 usuarios.');
+  Logger.log('   Para agregar/desactivar usuarios: edita directamente la hoja.');
+  Logger.log('   Columnas SEADB/SEAOT/SEAINF: TRUE = acceso permitido, FALSE = bloqueado.');
+  Logger.log('   El GAS refresca permisos en máximo 10 minutos (cache).');
 }
 
 // ── verificarRecaptcha_ ───────────────────────────────────────────────────
