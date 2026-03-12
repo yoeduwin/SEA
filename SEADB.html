@@ -384,7 +384,7 @@
 
         async function loadData() {
             try {
-                const response = await fetch(`${API_URL}?action=getTablero`);
+                const response = await SEARecaptcha.wrapFetch(`${API_URL}?action=getTablero`);
                 const result = await response.json();
                 
                 if(result.success) {
@@ -674,7 +674,7 @@
             showToast('⏳ Actualizando estado...', 5000);
             try {
                 const payload = { action: 'updateEstatus', ot: ot, estatus: 'ENTREGADO' };
-                const response = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
+                const response = await SEARecaptcha.wrapFetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
                 const result = await response.json();
                 if (result.success) { showToast('✅ OT marcada como ENTREGADA', 3000); setTimeout(() => loadData(), 2000); } else { showToast(`❌ Error: ${result.error}`, 5000); }
             } catch (error) { showToast(`❌ Error: ${error.message}`, 5000); }
@@ -857,4 +857,9 @@
 
         loadData();
     </script>
+
+    <!-- ── reCAPTCHA v3 (portal público — sin login requerido) ── -->
+    <!-- La Site Key es pública por diseño. La Secret Key vive en GAS Script Properties. -->
+    <script src="https://www.google.com/recaptcha/api.js?render=TU_RECAPTCHA_V3_SITE_KEY" async defer></script>
+    <script src="recaptcha.js"></script>
 </body></html>

@@ -330,7 +330,7 @@
     btn.disabled = true; btn.textContent = 'Buscando...'; resultDiv.innerHTML = 'Buscando clientes...';
 
     try {
-      const response = await fetch(`${SHEETS_SCRIPT_URL}?action=buscarClienteNombre&nombre=${encodeURIComponent(nombre)}`);
+      const response = await SEAAuth.wrapFetch(`${SHEETS_SCRIPT_URL}?action=buscarClienteNombre&nombre=${encodeURIComponent(nombre)}`);
       const data = await response.json();
 
       if(data.found && data.resultados && data.resultados.length > 0) {
@@ -606,7 +606,7 @@ Tel: 222-941-7295`;
         observaciones: document.getElementById('wo_generalObservations')?.value || ''
       };
 
-      const response = await fetch(SHEETS_SCRIPT_URL, {
+      const response = await SEAAuth.wrapFetch(SHEETS_SCRIPT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload)
@@ -630,7 +630,7 @@ Tel: 222-941-7295`;
     }
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  function iniciarApp() {
     const fileInput = document.getElementById('profileFile');
     const fileNameSpan = document.getElementById('fileSelectedName');
     if (fileInput && fileNameSpan) {
@@ -649,6 +649,22 @@ Tel: 222-941-7295`;
     updateOrderNumber();
     document.querySelectorAll('.nav-tab').forEach(tab => tab.addEventListener('click', syncData));
     generateQRCode();
+  }
+
+</script>
+
+<!-- ── Autenticación Google (páginas internas) ── -->
+<div id="sea-user-info" style="
+  position:fixed;top:12px;right:16px;z-index:9999;
+  display:flex;align-items:center;gap:6px;
+  background:rgba(255,255,255,0.92);border-radius:20px;
+  padding:4px 10px;box-shadow:0 1px 6px rgba(0,0,0,0.15);
+"></div>
+<script src="https://accounts.google.com/gsi/client" onload="onGISLoaded()" async defer></script>
+<script src="auth.js"></script>
+<script>
+  SEAAuth.init(function(_token, _user) {
+    iniciarApp();
   });
 </script>
 </body></html>
