@@ -64,15 +64,15 @@ const SEAAuth = (() => {
     overlay.id = 'sea-auth-overlay';
     overlay.style.cssText = [
       'position:fixed', 'inset:0', 'z-index:99999',
-      'background:rgba(0,0,0,0.88)',
+      'background:#1a1a2e',
       'display:flex', 'align-items:center', 'justify-content:center'
     ].join(';');
 
     overlay.innerHTML = `
       <div style="
-        background:#fff; border-radius:14px; padding:40px 48px;
-        text-align:center; max-width:400px; width:90%;
-        box-shadow:0 8px 40px rgba(0,0,0,0.35);
+        background:#fff; border-radius:16px; padding:56px 64px;
+        text-align:center; max-width:520px; width:92%;
+        box-shadow:0 24px 80px rgba(0,0,0,0.6);
         font-family:'Google Sans',Roboto,Arial,sans-serif;
       ">
         <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" style="margin-bottom:16px">
