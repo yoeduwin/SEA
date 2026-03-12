@@ -64,7 +64,7 @@ const SEAAuth = (() => {
     overlay.id = 'sea-auth-overlay';
     overlay.style.cssText = [
       'position:fixed', 'inset:0', 'z-index:99999',
-      'background:#1a1a2e',
+      'background:#003810',
       'display:flex', 'align-items:center', 'justify-content:center'
     ].join(';');
 
