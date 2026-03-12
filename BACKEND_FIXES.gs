@@ -913,3 +913,143 @@ function autorizarGmail() {
   );
   Logger.log('Gmail autorizado. Redesplega la webapp.');
 }
+
+// =========================================================================
+//  MIGRACIÓN DE DATOS ANTERIORES (ejecutar UNA sola vez desde el editor GAS)
+// =========================================================================
+//
+//  ANTES DE EJECUTAR:
+//  1. Reemplaza SOURCE_SPREADSHEET_ID con el ID de tu Sheet anterior
+//     (está en la URL: docs.google.com/spreadsheets/d/ESTE_ES_EL_ID/edit)
+//  2. Reemplaza SOURCE_SHEET_NAME con el nombre exacto de la pestaña
+//  3. Ejecuta migrarDatosAnteriores() desde el editor
+//  4. Revisa el Logger (Ver → Registros) para el resumen
+//
+//  Columnas asumidas en el Sheet origen (fila 1 = encabezados):
+//  A=# | B=OrdenTrabajo | C=Cotización | D=CLIENTE INICIAL | E=CLIENTE FINAL
+//  F=NOM | G=Proveedor | H=Personal | I=FECHA VISITA | ... | N=FECHA INFORME DIGITAL
+//  O=FECHA INFORME FÍSICO | P=ESTATUS
+// =========================================================================
+
+function migrarDatosAnteriores() {
+  var SOURCE_SPREADSHEET_ID = 'REEMPLAZA_CON_TU_ID_AQUI';
+  var SOURCE_SHEET_NAME     = 'REEMPLAZA_CON_NOMBRE_PESTANA';
+
+  // ── Abrir hojas ──────────────────────────────────────────────────────────
+  var srcSS    = SpreadsheetApp.openById(SOURCE_SPREADSHEET_ID);
+  var srcSheet = srcSS.getSheetByName(SOURCE_SHEET_NAME);
+  if (!srcSheet) {
+    Logger.log('ERROR: No se encontró la pestaña "' + SOURCE_SHEET_NAME + '"');
+    return;
+  }
+
+  var destSS       = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  var destOT       = destSS.getSheetByName('ORDENES_TRABAJO');
+  var destClientes = destSS.getSheetByName('CLIENTES_MAESTRO');
+  if (!destOT || !destClientes) {
+    Logger.log('ERROR: No se encontraron las hojas destino. Verifica CONFIG.SPREADSHEET_ID.');
+    return;
+  }
+
+  var srcData = srcSheet.getDataRange().getValues();
+  var hoy = new Date();
+  var otRows      = [];
+  var clientesMap = {};   // key: "RazonSocial||Sucursal" para deduplicar
+  var skipped  = 0;
+  var migradas = 0;
+
+  for (var i = 1; i < srcData.length; i++) {
+    var row = srcData[i];
+
+    // Ignorar filas vacías o con errores (#REF!)
+    var folio = String(row[1] || '').trim();
+    if (!folio || folio.indexOf('#') === 0) { skipped++; continue; }
+
+    // ── Mapeo de columnas ────────────────────────────────────────────────
+    var cotizacion   = String(row[2]  || '').trim();
+    var empresa      = String(row[3]  || '').trim();   // CLIENTE INICIAL = Razón Social
+    var sucursal     = String(row[4]  || '').trim();   // CLIENTE FINAL   = Sucursal
+    var nomServicio  = String(row[5]  || '').trim();   // NOM
+    var personal     = String(row[7]  || '').trim();
+    var fechaVisita  = row[8]  || '';
+    var fechaEntrega = row[13] || '';                  // FECHA INFORME DIGITAL
+    var fechaFisicoRaw = row[14];
+    var fechaFisico  = fechaFisicoRaw ? Utilities.formatDate(new Date(fechaFisicoRaw), Session.getScriptTimeZone(), 'dd/MM/yyyy') : '';
+    var estatusRaw   = row[15] || '';                  // ESTATUS
+
+    // ── Tipo Orden desde el folio ────────────────────────────────────────
+    var tipoOrden = folio.toUpperCase().indexOf('OTB') === 0 ? 'OTB' : 'OT';
+
+    // ── Normalizar Estatus ───────────────────────────────────────────────
+    var estatusNorm = 'NO INICIADO';
+    var estatusStr  = String(estatusRaw).toUpperCase().trim();
+    if (estatusStr === 'TRUE' || estatusStr === 'ENTREGADO' || estatusStr === 'ENTREGADA') {
+      estatusNorm = 'ENTREGADO';
+    } else if (estatusStr === 'EN PROCESO' || estatusStr === 'EN PROGRESO') {
+      estatusNorm = 'EN PROCESO';
+    }
+
+    // ── Observaciones: Cotización + Fecha Informe Físico ────────────────
+    var obs = cotizacion;
+    if (fechaFisico) obs += (obs ? ' | Físico: ' : 'Físico: ') + fechaFisico;
+
+    // ── Fila destino ORDENES_TRABAJO (16 columnas) ──────────────────────
+    otRows.push([
+      hoy,           // [0]  Fecha Registro
+      folio,         // [1]  OT Folio
+      tipoOrden,     // [2]  Tipo Orden
+      '',            // [3]  Num Informe (vacío)
+      nomServicio,   // [4]  Nom Servicio
+      empresa,       // [5]  Cliente Razón Social
+      sucursal,      // [6]  Sucursal
+      '',            // [7]  RFC (no disponible — llenar después en Sheets)
+      personal,      // [8]  Personal Asignado
+      fechaVisita,   // [9]  Fecha Visita
+      fechaEntrega,  // [10] Fecha Entrega Límite
+      '',            // [11] (vacío)
+      estatusNorm,   // [12] Estatus Externo
+      '',            // [13] Link Drive (no disponible)
+      obs,           // [14] Observaciones (Cotización + Fecha Físico)
+      'NO INICIADO'  // [15] Estatus Informe (no existía antes)
+    ]);
+    migradas++;
+
+    // ── Acumular clientes únicos ─────────────────────────────────────────
+    if (empresa) {
+      var clave = empresa + '||' + sucursal;
+      if (!clientesMap[clave]) {
+        clientesMap[clave] = { empresa: empresa, sucursal: sucursal };
+      }
+    }
+  }
+
+  // ── Escribir ORDENES_TRABAJO ─────────────────────────────────────────────
+  if (otRows.length > 0) {
+    destOT.getRange(destOT.getLastRow() + 1, 1, otRows.length, 16).setValues(otRows);
+    Logger.log('✅ ' + migradas + ' órdenes migradas a ORDENES_TRABAJO');
+  }
+
+  // ── Escribir CLIENTES_MAESTRO (deduplicado) ──────────────────────────────
+  var clientesExistentes = destClientes.getDataRange().getValues();
+  var yaExisten = {};
+  for (var j = 1; j < clientesExistentes.length; j++) {
+    var k = String(clientesExistentes[j][1] || '').trim() + '||' + String(clientesExistentes[j][2] || '').trim();
+    yaExisten[k] = true;
+  }
+  var clientesNuevos = 0;
+  for (var cl in clientesMap) {
+    if (yaExisten[cl]) continue;
+    var c = clientesMap[cl];
+    destClientes.appendRow([
+      hoy, c.empresa, c.sucursal,
+      '', '', '', '', '', '', '', '', '', '', '', '', ''
+    ]);
+    clientesNuevos++;
+  }
+
+  Logger.log('✅ ' + clientesNuevos + ' clientes nuevos en CLIENTES_MAESTRO');
+  Logger.log('⚠️  ' + skipped + ' filas ignoradas (vacías o con errores)');
+  Logger.log('─────────────────────────────────────────────────────────');
+  Logger.log('PENDIENTE: Llenar columna RFC (col D) en CLIENTES_MAESTRO');
+  Logger.log('           para habilitar búsqueda por RFC en SEAOT.');
+}
