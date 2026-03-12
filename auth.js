@@ -16,7 +16,7 @@
 const SEAAuth = (() => {
   // ─── CONFIGURACIÓN ─────────────────────────────────────────────────────────
   // Reemplazar con tu OAuth 2.0 Client ID de Google Cloud Console
-  const CLIENT_ID = 'TU_CLIENT_ID.apps.googleusercontent.com';
+  const CLIENT_ID = '407541868250-5pbtl3me85quu1nl38b1c57ebi3nn9a6.apps.googleusercontent.com';
   const TOKEN_KEY = 'sea_google_id_token';
 
   // ─── Helpers de token ──────────────────────────────────────────────────────
