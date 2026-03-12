@@ -133,14 +133,19 @@ const SEAAuth = (() => {
 
   // ─── Inicialización ───────────────────────────────────────────────────────
   let _onAuthSuccess = null;
+  let _gasUrl = null; // URL del GAS para verificación pre-carga
 
   /**
    * Punto de entrada principal.
    * @param {function(token:string, payload:object):void} onAuthSuccess
-   *   Callback invocado cuando hay sesión válida.
+   *   Callback invocado cuando hay sesión válida y el usuario está autorizado.
+   * @param {{gasUrl:string}} [options]
+   *   gasUrl: URL del GAS. Si se proporciona, verifica la whitelist ANTES de
+   *   mostrar la app. Sin esta opción, la UI se carga antes de la verificación.
    */
-  function init(onAuthSuccess) {
+  function init(onAuthSuccess, options) {
     _onAuthSuccess = onAuthSuccess;
+    _gasUrl = (options && options.gasUrl) || null;
     const existing = getToken();
 
     if (existing && !isExpired(existing)) {
@@ -184,9 +189,58 @@ const SEAAuth = (() => {
     });
   }
 
-  function _handleCredential(response) {
+  /**
+   * Llama a GAS para verificar que el usuario está en la whitelist.
+   * Se invoca ANTES de cerrar el overlay — la UI nunca se muestra a no autorizados.
+   * @param {string} token  id_token de Google
+   * @param {object} payload  Claims del JWT (email, name, etc.)
+   */
+  async function _handleCredential(response) {
     const token = response.credential;
     const payload = getPayload(token);
+
+    // Mostrar estado "verificando" en el overlay mientras pinguea GAS
+    const btn = document.getElementById('sea-signin-btn');
+    if (btn) btn.innerHTML = '<p style="color:#5f6368;font-size:14px;margin:8px 0;">Verificando acceso...</p>';
+
+    // Si hay gasUrl configurado, verificar con GAS antes de abrir la app
+    if (_gasUrl) {
+      try {
+        const pingUrl = `${_gasUrl}?action=verificarAcceso&id_token=${encodeURIComponent(token)}`;
+        const resp = await fetch(pingUrl);
+        const data = await resp.json();
+
+        if (!data.success || data.error === 'AUTH_REQUIRED') {
+          // Usuario NO autorizado — mostrar error en overlay, nunca cerrar
+          if (window.google && window.google.accounts) {
+            google.accounts.id.disableAutoSelect();
+          }
+          const email = payload ? (payload.email || '') : '';
+          showAuthError(
+            `Tu cuenta (${email}) no tiene acceso a este sistema.\n` +
+            'Contacta al administrador para solicitar acceso.'
+          );
+          // Restaurar botón de login para que pueda intentar con otra cuenta
+          if (btn) {
+            google.accounts.id.renderButton(btn,
+              { theme: 'outline', size: 'large', text: 'signin_with', locale: 'es', width: 280 }
+            );
+          }
+          return; // ← la app NO se carga
+        }
+      } catch (_err) {
+        // Error de red al verificar — mostrar mensaje pero no bloquear indefinidamente
+        showAuthError('No se pudo verificar el acceso. Revisa tu conexión e intenta de nuevo.');
+        if (btn) {
+          google.accounts.id.renderButton(btn,
+            { theme: 'outline', size: 'large', text: 'signin_with', locale: 'es', width: 280 }
+          );
+        }
+        return;
+      }
+    }
+
+    // ✅ Autorizado (o no se configuró gasUrl) — proceder normalmente
     saveToken(token);
     removeOverlay();
     showUserBar(payload);
