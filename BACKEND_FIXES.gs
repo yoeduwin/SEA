@@ -58,7 +58,10 @@ const AUTH_MODE = {
   updateEstatusInforme:   'GOOGLE',
   // ── Requiere reCAPTCHA (portales públicos de registro de clientes) ────────
   // paic.html y SEAPD.html son portales donde los CLIENTES se registran
-  registrarCliente:       'RECAPTCHA'
+  registrarCliente:       'RECAPTCHA',
+  // ── Ping de verificación previo a la carga de la app ────────────────────
+  // auth.js llama esto ANTES de mostrar la UI, para bloquear no autorizados
+  verificarAcceso:        'GOOGLE'
 };
 
 // Mapeo acción → módulo (para verificar acceso por columna en la hoja)
@@ -356,6 +359,7 @@ function doGet(e) {
 
   try {
     switch(action) {
+      case 'verificarAcceso': return output_({ success: true, email: (function(){ const u = verificarIdToken_(e.parameter.id_token||''); return u ? u.email : ''; })() });
       case 'buscarClienteRFC': return output_(fase2_BuscarClienteRFC(e.parameter.rfc));
       case 'buscarClienteNombre': return output_(fase2_BuscarClienteNombre(e.parameter.nombre));
       case 'getTablero': return output_(fase4_GetTablero());
