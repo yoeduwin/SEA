@@ -384,7 +384,7 @@
 
         async function loadData() {
             try {
-                const response = await SEARecaptcha.wrapFetch(`${API_URL}?action=getTablero`);
+                const response = await SEAAuth.wrapFetch(`${API_URL}?action=getTablero`);
                 const result = await response.json();
                 
                 if(result.success) {
@@ -674,7 +674,7 @@
             showToast('⏳ Actualizando estado...', 5000);
             try {
                 const payload = { action: 'updateEstatus', ot: ot, estatus: 'ENTREGADO' };
-                const response = await SEARecaptcha.wrapFetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
+                const response = await SEAAuth.wrapFetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
                 const result = await response.json();
                 if (result.success) { showToast('✅ OT marcada como ENTREGADA', 3000); setTimeout(() => loadData(), 2000); } else { showToast(`❌ Error: ${result.error}`, 5000); }
             } catch (error) { showToast(`❌ Error: ${error.message}`, 5000); }
@@ -855,12 +855,22 @@
         function toggleCalendarFilter(tipo) { calendarFilters[tipo] = !calendarFilters[tipo]; const checkbox = document.getElementById(`filter-${tipo}`); if (calendarFilters[tipo]) checkbox.classList.add('checked'); else checkbox.classList.remove('checked'); loadCalendarEvents(); }
         function clearCalendarFilters() { calendarFilters.visita = true; calendarFilters.digital = true; document.getElementById('filter-visita').classList.add('checked'); document.getElementById('filter-digital').classList.add('checked'); loadCalendarEvents(); showToast('✅ Filtros limpiados', 2000); }
 
-        loadData();
+        function iniciarApp() { loadData(); }
     </script>
 
-    <!-- ── reCAPTCHA v3 (portal público — sin login requerido) ── -->
-    <!-- La Site Key es pública por diseño. La Secret Key vive en GAS Script Properties. -->
-    <script src="https://www.google.com/recaptcha/api.js?render=6LdIq4csAAAAAHCggurLxQbsc15M8MnAD8UIOR1E" async defer></script>
-    <script src="recaptcha.js"></script>
+    <!-- ── Autenticación Google (herramienta interna) ── -->
+    <div id="sea-user-info" style="
+      position:fixed;top:12px;right:16px;z-index:9999;
+      display:flex;align-items:center;gap:6px;
+      background:rgba(255,255,255,0.92);border-radius:20px;
+      padding:4px 10px;box-shadow:0 1px 6px rgba(0,0,0,0.15);
+    "></div>
+    <script src="https://accounts.google.com/gsi/client" onload="onGISLoaded()" async defer></script>
+    <script src="auth.js"></script>
+    <script>
+      SEAAuth.init(function(_token, _user) {
+        iniciarApp();
+      });
+    </script>
 </body></html>
 
