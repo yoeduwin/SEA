@@ -473,7 +473,7 @@
 
   async function cargarOrdenesDisponibles() {
     try {
-      const response = await fetch(`${SCRIPT_URL}?action=getOrdenes`);
+      const response = await SEAAuth.wrapFetch(`${SCRIPT_URL}?action=getOrdenes`);
       const result = await response.json();
       const select = document.getElementById('field-ot');
       select.innerHTML = '<option value="">Seleccione una OT...</option>';
@@ -643,7 +643,7 @@
     }
     
     try {
-      const response = await fetch(`${SCRIPT_URL}?action=getConsecutivo&anio=${anio}&mes=${mes}&nom=${encodeURIComponent(nomCode)}&tipo=${tipoOrden}`);
+      const response = await SEAAuth.wrapFetch(`${SCRIPT_URL}?action=getConsecutivo&anio=${anio}&mes=${mes}&nom=${encodeURIComponent(nomCode)}&tipo=${tipoOrden}`);
       const res = await response.json();
       field.value = (res && res.success) ? res.numeroInforme : '[Automático al enviar]';
     } catch (e) {
@@ -752,7 +752,7 @@
         const priority = allFiles.filter(f => f.category === 'ORDEN_TRABAJO' || f.category === 'PERFIL_DATOS');
         const others = allFiles.filter(f => f.category !== 'ORDEN_TRABAJO' && f.category !== 'PERFIL_DATOS');
         for (const item of priority) basePayload.files.push(await fileToB64(item.file, item.category));
-        const mainResp = await fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(basePayload) });
+        const mainResp = await SEAAuth.wrapFetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(basePayload) });
         const mainResult = await mainResp.json();
         if (!mainResult.success) throw new Error(mainResult.error || 'Error al crear expediente');
         await new Promise(r => setTimeout(r, 3000));
@@ -765,14 +765,14 @@
         for (let b of batches) {
           const batchPayload = { action: 'addFilesToExpediente', ot: ot, files: [] };
           for (const item of b) batchPayload.files.push(await fileToB64(item.file, item.category));
-          const batchResp = await fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(batchPayload) });
+          const batchResp = await SEAAuth.wrapFetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(batchPayload) });
           const batchResult = await batchResp.json();
           if (!batchResult.success) console.warn('Error en lote de archivos:', batchResult.error);
           await new Promise(r => setTimeout(r, 2000));
         }
       } else {
         for (const item of allFiles) basePayload.files.push(await fileToB64(item.file, item.category));
-        const resp = await fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(basePayload) });
+        const resp = await SEAAuth.wrapFetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(basePayload) });
         const result = await resp.json();
         if (!result.success) throw new Error(result.error || 'Error al crear expediente');
       }
@@ -827,7 +827,7 @@
 
   async function cargarTablero() {
     try {
-      const response = await fetch(`${SCRIPT_URL}?action=getTablero`);
+      const response = await SEAAuth.wrapFetch(`${SCRIPT_URL}?action=getTablero`);
       const result = await response.json();
       if (result && result.success) {
         allTableroData = (result.data || []).map(r => ({
@@ -1005,7 +1005,7 @@
     else payload.responsable = valor;
     
     try {
-      const response = await fetch(SCRIPT_URL, {
+      const response = await SEAAuth.wrapFetch(SCRIPT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload)
@@ -1041,12 +1041,12 @@
     }
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  function iniciarApp() {
     cargarOrdenesDisponibles();
     cargarTablero();
     ['filter-search', 'filter-estatus', 'filter-vencimiento'].forEach(id => { document.getElementById(id).addEventListener('change', aplicarFiltros); });
     document.getElementById('filter-search').addEventListener('input', aplicarFiltros);
-  });
+  }
 </script>
 
 <script>
@@ -1135,6 +1135,21 @@
       if (typeof window.validarProgreso === 'function') window.validarProgreso();
     });
   })();
+</script>
+
+<!-- ── Autenticación Google (páginas internas) ── -->
+<div id="sea-user-info" style="
+  position:fixed;top:12px;right:16px;z-index:9999;
+  display:flex;align-items:center;gap:6px;
+  background:rgba(255,255,255,0.92);border-radius:20px;
+  padding:4px 10px;box-shadow:0 1px 6px rgba(0,0,0,0.15);
+"></div>
+<script src="https://accounts.google.com/gsi/client" onload="onGISLoaded()" async defer></script>
+<script src="auth.js"></script>
+<script>
+  SEAAuth.init(function(_token, _user) {
+    iniciarApp();
+  });
 </script>
 
 </body>

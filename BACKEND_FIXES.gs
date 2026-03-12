@@ -24,12 +24,267 @@ const CONFIG = {
   EMAIL_RETRY_ATTEMPTS: 3,
   EMAIL_RETRY_DELAY_MS: 2000
 };
+// =========================================================================
+// MÓDULO DE SEGURIDAD — Autenticación Google OAuth + reCAPTCHA v3
+// =========================================================================
+// Modos de autenticación por acción:
+//   GOOGLE    → requiere id_token válido + usuario en whitelist
+//   RECAPTCHA → requiere recaptcha_token válido (portales públicos/clientes)
+//   EITHER    → acepta cualquiera de los dos (ej. registrarCliente: interno y público)
+//
+// Módulos para control de acceso por usuario (columnas en USUARIOS_AUTORIZADOS):
+//   SEAPD → Registro de clientes (interno)
+//   SEAOT → Órdenes de trabajo
+//   SEAINF → Expedientes e informes
+// =========================================================================
+const AUTH_MODE = {
+  // ── Requiere Google Auth ─────────────────────────────────────────────────
+  // SEAOT
+  buscarClienteRFC:       'EITHER',   // SEAOT usa Google Auth; paic (público) usa reCAPTCHA
+  buscarClienteNombre:    'EITHER',   // SEAOT usa Google Auth; paic (público) usa reCAPTCHA
+  registrarOT:            'GOOGLE',
+  // SEAINF
+  getOrdenes:             'GOOGLE',
+  getConsecutivo:         'GOOGLE',
+  createExpediente:       'GOOGLE',
+  addFilesToExpediente:   'GOOGLE',
+  updateEstatusInforme:   'GOOGLE',
+  // ── Requiere reCAPTCHA (portales públicos / cliente) ────────────────────
+  getTablero:             'EITHER',   // SEADB usa reCAPTCHA; SEAINF usa Google Auth
+  updateEstatus:          'RECAPTCHA',
+  updateResponsable:      'RECAPTCHA',
+  // ── Acepta cualquiera (SEAPD interno con Google Auth, paic público con reCAPTCHA) ──
+  registrarCliente:       'EITHER'
+};
+
+// Mapeo acción → módulo (para verificar acceso por columna en la hoja)
+const ACTION_MODULE = {
+  registrarCliente:       'SEAPD',
+  buscarClienteRFC:       'SEAOT',
+  buscarClienteNombre:    'SEAOT',
+  registrarOT:            'SEAOT',
+  getOrdenes:             'SEAINF',
+  getConsecutivo:         'SEAINF',
+  createExpediente:       'SEAINF',
+  addFilesToExpediente:   'SEAINF',
+  updateEstatusInforme:   'SEAINF'
+};
+
+// ── verificarIdToken_ ──────────────────────────────────────────────────────
+/**
+ * Verifica el id_token con Google y retorna datos del usuario.
+ * Usa CacheService 10 min para no llamar tokeninfo en cada request.
+ * @param {string} idToken
+ * @returns {{email:string, name:string, sub:string}|null}
+ */
+function verificarIdToken_(idToken) {
+  if (!idToken || typeof idToken !== 'string' || idToken.length < 100) return null;
+
+  const cacheKey = 'idtok_' + idToken.slice(-32);
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    try { return JSON.parse(cached); } catch (_) { /* continúa */ }
+  }
+
+  try {
+    const url = 'https://www.googleapis.com/oauth2/v3/tokeninfo?id_token=' + encodeURIComponent(idToken);
+    const resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    if (resp.getResponseCode() !== 200) return null;
+
+    const data = JSON.parse(resp.getContentText());
+    if (data.error_description) return null;
+
+    // Verificar audience contra nuestro Client ID (protege contra tokens de otras apps)
+    const CLIENT_ID = PropertiesService.getScriptProperties().getProperty('GOOGLE_CLIENT_ID');
+    if (CLIENT_ID && data.aud !== CLIENT_ID) {
+      Logger.log('Token rechazado: aud=' + data.aud + ' esperado=' + CLIENT_ID);
+      return null;
+    }
+
+    const userInfo = { email: data.email || '', name: data.name || '', sub: data.sub || '' };
+    const ttl = Math.min(600, Math.max(5, Number(data.exp) - Math.floor(Date.now() / 1000) - 60));
+    cache.put(cacheKey, JSON.stringify(userInfo), ttl);
+    return userInfo;
+
+  } catch (e) {
+    Logger.log('verificarIdToken_ error: ' + e.message);
+    return null;
+  }
+}
+
+// ── verificarUsuarioAutorizado_ ───────────────────────────────────────────
+/**
+ * Verifica si el email está activo en USUARIOS_AUTORIZADOS y tiene acceso al módulo.
+ * Crea la hoja con usuarios iniciales si no existe.
+ * Columnas: Email | Nombre | Rol | Activo | FechaAlta | SEAPD | SEAOT | SEAINF | Notas
+ * @param {string} email
+ * @param {string} modulo  'SEAPD' | 'SEAOT' | 'SEAINF' | '' (sin restricción de módulo)
+ * @returns {boolean}
+ */
+function verificarUsuarioAutorizado_(email, modulo) {
+  if (!email) return false;
+  const emailLower = email.toLowerCase().trim();
+
+  try {
+    const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+    let sheet = ss.getSheetByName('USUARIOS_AUTORIZADOS');
+
+    if (!sheet) {
+      // Crear hoja con usuarios iniciales
+      sheet = ss.insertSheet('USUARIOS_AUTORIZADOS');
+      const headers = ['Email', 'Nombre', 'Rol', 'Activo (TRUE/FALSE)', 'Fecha Alta', 'SEAPD', 'SEAOT', 'SEAINF', 'Notas'];
+      sheet.appendRow(headers);
+      sheet.appendRow(['eduwin.ejecutiva@gmail.com',      'Administrador',       'admin',            true, new Date(), true, true, true,  '']);
+      sheet.appendRow(['aclientes.ejecutiva@gmail.com',   'Operador A Clientes', 'operador',         true, new Date(), true, true, true,  '']);
+      sheet.appendRow(['operaciones.ejecutivamx@gmail.com','Operador Operaciones','operador',         true, new Date(), true, true, true,  '']);
+      sheet.appendRow(['calidad.ejecutivamx@gmail.com',   'Aux. Operador Calidad','auxiliar_operador',true, new Date(), true, true, true,  '']);
+      // Formato encabezado
+      const headerRange = sheet.getRange(1, 1, 1, headers.length);
+      headerRange.setFontWeight('bold').setBackground('#1a73e8').setFontColor('#ffffff');
+      sheet.setFrozenRows(1);
+      Logger.log('Hoja USUARIOS_AUTORIZADOS creada con usuarios iniciales.');
+    }
+
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) return false;
+
+    // Leer encabezados para encontrar columnas de módulos dinámicamente
+    const headers = data[0].map(h => String(h).toUpperCase().replace(/[^A-Z0-9]/g, ''));
+    const moduloCol = modulo ? headers.indexOf(modulo.toUpperCase()) : -1;
+
+    for (let i = 1; i < data.length; i++) {
+      const rowEmail = String(data[i][0]).toLowerCase().trim();
+      const activo   = data[i][3]; // columna D: Activo
+
+      if (rowEmail !== emailLower) continue;
+      if (activo !== true) return false; // usuario desactivado
+
+      // Si hay columna para este módulo, verificar acceso
+      if (moduloCol >= 0) {
+        return data[i][moduloCol] === true;
+      }
+      return true; // sin columna de módulo → permitir
+    }
+    return false; // email no encontrado
+
+  } catch (e) {
+    Logger.log('verificarUsuarioAutorizado_ error: ' + e.message);
+    return false;
+  }
+}
+
+// ── verificarRecaptcha_ ───────────────────────────────────────────────────
+/**
+ * Verifica un token de reCAPTCHA v3 con Google.
+ * La Secret Key se obtiene de Script Properties (nunca en el frontend).
+ * @param {string} rcToken  token enviado por el frontend
+ * @param {number} minScore mínimo aceptable (0.0–1.0). Default 0.5
+ * @returns {boolean}
+ */
+function verificarRecaptcha_(rcToken, minScore) {
+  if (!rcToken || typeof rcToken !== 'string' || rcToken.length < 20) return false;
+
+  const SECRET = PropertiesService.getScriptProperties().getProperty('RECAPTCHA_SECRET_KEY');
+  if (!SECRET) {
+    Logger.log('RECAPTCHA_SECRET_KEY no configurada en Script Properties.');
+    return false;
+  }
+
+  try {
+    const resp = UrlFetchApp.fetch('https://www.google.com/recaptcha/api/siteverify', {
+      method: 'post',
+      payload: { secret: SECRET, response: rcToken },
+      muteHttpExceptions: true
+    });
+    if (resp.getResponseCode() !== 200) return false;
+
+    const result = JSON.parse(resp.getContentText());
+    const threshold = (typeof minScore === 'number') ? minScore : 0.5;
+    Logger.log('reCAPTCHA: success=' + result.success + ' score=' + result.score + ' action=' + result.action);
+    return result.success === true && (result.score || 0) >= threshold;
+
+  } catch (e) {
+    Logger.log('verificarRecaptcha_ error: ' + e.message);
+    return false;
+  }
+}
+
+// ── respuestaNoAutorizado_ ────────────────────────────────────────────────
+function respuestaNoAutorizado_(detalle) {
+  return ContentService
+    .createTextOutput(JSON.stringify({
+      success: false,
+      error: 'AUTH_REQUIRED',
+      message: detalle || 'Autenticación requerida. Por favor inicia sesión.'
+    }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// ── verificarAcceso_ ──────────────────────────────────────────────────────
+/**
+ * Punto único de verificación de acceso para doGet y doPost.
+ * Retorna null si el acceso es válido, o una respuesta de error si no.
+ *
+ * @param {string} action  nombre de la acción
+ * @param {string|null} idToken  token Google (puede ser null)
+ * @param {string|null} rcToken  token reCAPTCHA (puede ser null)
+ * @returns {GoogleAppsScript.Content.TextOutput|null}
+ */
+function verificarAcceso_(action, idToken, rcToken) {
+  const mode = AUTH_MODE[action];
+
+  if (!mode) {
+    // Acción no registrada → denegar por defecto
+    return respuestaNoAutorizado_('Acción no autorizada.');
+  }
+
+  if (mode === 'GOOGLE' || mode === 'EITHER') {
+    if (idToken) {
+      const usuario = verificarIdToken_(idToken);
+      if (!usuario) return respuestaNoAutorizado_('Token de sesión inválido o expirado.');
+      const modulo = ACTION_MODULE[action] || '';
+      if (!verificarUsuarioAutorizado_(usuario.email, modulo)) {
+        return respuestaNoAutorizado_('Tu cuenta (' + usuario.email + ') no tiene acceso a este módulo.');
+      }
+      return null; // ✅ acceso permitido
+    }
+    if (mode === 'GOOGLE') {
+      return respuestaNoAutorizado_('Se requiere iniciar sesión con Google.');
+    }
+    // Si mode === 'EITHER', intentar con reCAPTCHA
+  }
+
+  if (mode === 'RECAPTCHA' || mode === 'EITHER') {
+    if (rcToken) {
+      if (!verificarRecaptcha_(rcToken)) {
+        return respuestaNoAutorizado_('Verificación de seguridad fallida. Intenta de nuevo.');
+      }
+      return null; // ✅ acceso permitido
+    }
+    return respuestaNoAutorizado_('Token de seguridad faltante. Recarga la página.');
+  }
+
+  return respuestaNoAutorizado_('Método de autenticación no soportado.');
+}
+
+// =========================================================================
+// ENDPOINTS PRINCIPALES
+// =========================================================================
 function doPost(e) {
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(15000);
     const data = JSON.parse(e.postData.contents);
-    switch(data.action) {
+    const action = data.action;
+
+    // ── Verificar autenticación antes de cualquier operación ──────────────
+    const idToken = data.id_token || null;
+    const rcToken = data.recaptcha_token || null;
+    const authError = verificarAcceso_(action, idToken, rcToken);
+    if (authError) return authError;
+
+    switch(action) {
       case 'registrarCliente': return output_(fase1_RegistrarCliente(data));
       case 'registrarOT': return output_(fase2_RegistrarOT(data));
       case 'createExpediente': return output_(fase3_CrearExpediente(data));
@@ -47,8 +302,16 @@ function doPost(e) {
 }
 function doGet(e) {
   if (!e || !e.parameter || !e.parameter.action) return ContentService.createTextOutput("API Ejecutiva Ambiental v3.0 - Multi-Sucursal Activa");
+  const action = e.parameter.action;
+
+  // ── Verificar autenticación ──────────────────────────────────────────────
+  const idToken = e.parameter.id_token || null;
+  const rcToken = e.parameter.recaptcha_token || null;
+  const authError = verificarAcceso_(action, idToken, rcToken);
+  if (authError) return authError;
+
   try {
-    switch(e.parameter.action) {
+    switch(action) {
       case 'buscarClienteRFC': return output_(fase2_BuscarClienteRFC(e.parameter.rfc));
       case 'buscarClienteNombre': return output_(fase2_BuscarClienteNombre(e.parameter.nombre));
       case 'getTablero': return output_(fase4_GetTablero());

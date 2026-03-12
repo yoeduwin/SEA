@@ -1295,7 +1295,7 @@
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 120000); 
         
-        const response = await fetch(SCRIPT_URL, {
+        const response = await SEAAuth.wrapFetch(SCRIPT_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain' },
           body: JSON.stringify(data),
@@ -1411,7 +1411,7 @@
       
       try {
         const url = SCRIPT_URL + '?action=buscarClienteRFC&rfc=' + encodeURIComponent(rfc);
-        const response = await fetch(url);
+        const response = await SEAAuth.wrapFetch(url);
         const data = await response.json();
         
         if (data.found && data.sucursales && data.sucursales.length > 0) {
@@ -1606,6 +1606,24 @@
       window._returningClientData = null;
     }
     window.clearPrefill = clearPrefill;
+  </script>
+
+  <!-- ── Autenticación Google (páginas internas) ── -->
+  <div id="sea-user-info" style="
+    position:fixed;top:12px;right:16px;z-index:9999;
+    display:flex;align-items:center;gap:6px;
+    background:rgba(255,255,255,0.92);border-radius:20px;
+    padding:4px 10px;box-shadow:0 1px 6px rgba(0,0,0,0.15);
+  "></div>
+  <script src="https://accounts.google.com/gsi/client" onload="onGISLoaded()" async defer></script>
+  <script src="auth.js"></script>
+  <script>
+    // La app en SEAPD es 100% event-driven (no hay init automático)
+    // solo necesitamos inicializar la sesión para bloquear el acceso.
+    SEAAuth.init(function(_token, _user) {
+      // Sesión válida: la UI ya está disponible desde el HTML.
+      // El token se inyecta automáticamente en cada wrapFetch().
+    });
   </script>
 </body>
 </html>

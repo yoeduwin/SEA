@@ -972,7 +972,7 @@
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 120000); 
         
-        const response = await fetch(SCRIPT_URL, {
+        const response = await SEARecaptcha.wrapFetch(SCRIPT_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain' },
           body: JSON.stringify(data),
@@ -1090,7 +1090,7 @@
       
       try {
         const url = SCRIPT_URL + '?action=buscarClienteRFC&rfc=' + encodeURIComponent(rfc);
-        const response = await fetch(url);
+        const response = await SEARecaptcha.wrapFetch(url);
         const data = await response.json();
         
         if (data.found && data.sucursales && data.sucursales.length > 0) {
@@ -1329,6 +1329,11 @@
       });
     }
   </script>
+
+  <!-- ── reCAPTCHA v3 (portal público — sin login requerido) ── -->
+  <!-- La Site Key es pública por diseño. La Secret Key vive en GAS Script Properties. -->
+  <script src="https://www.google.com/recaptcha/api.js?render=TU_RECAPTCHA_V3_SITE_KEY" async defer></script>
+  <script src="recaptcha.js"></script>
 
 </body>
 </html>
