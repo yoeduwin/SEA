@@ -4,9 +4,9 @@
 // =========================================================================
 // CAMBIOS aplicados sobre el backend actual:
 //   1. fase1_RegistrarCliente()  → NO envía correo al registrar; sí crea carpeta
-//   2. fase2_BuscarClienteRFC/Nombre() → corregido índice link_drive_cliente [22]→[15]
-//      (nuevo esquema CLIENTES_MAESTRO tiene 16 columnas; Drive link en col 16, índice 15)
-//   3. fase3_CrearExpediente()   → fallback #3 corregido índice [22]→[15]
+//   2. fase2_BuscarClienteRFC/Nombre() → corregido índice link_drive_cliente [22]→[20]
+//      (nuevo esquema CLIENTES_MAESTRO tiene 21 columnas; Drive link en col 21, índice 20)
+//   3. fase3_CrearExpediente()   → fallback #3 corregido índice [22]→[20]
 //   4. getOrdenesSafe_()         → ahora devuelve rfc, sucursal, personal, nom, fecha_visita
 //      (sin rfc, SEAINF nunca podía buscar carpeta por RFC → expediente caía en raíz)
 // =========================================================================
@@ -408,13 +408,10 @@ function fase1_RegistrarCliente(data) {
     // 3. Guardar archivos y Excel
     const processedFiles = guardarArchivos(data, carpetaCliente, addLog);
     const sheetUrl = generarPerfilSheet(data, carpetaCliente, companyClean, branchClean, timestamp, addLog);
-    // 4. REGISTRAR O ACTUALIZAR EN CLIENTES_MAESTRO (16 Columnas exactas)
+    // 4. REGISTRAR O ACTUALIZAR EN CLIENTES_MAESTRO (21 Columnas exactas)
     const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
     let sheet = ss.getSheetByName(CONFIG.SHEET_CLIENTES);
 
-    const capacidadInstalada = data.capacidad_instalada || 'N/A';
-    const capacidadOperacion = data.capacidad_operacion || 'N/A';
-    const capacidadUnida = `${capacidadInstalada} / ${capacidadOperacion}`;
     const rowData = [
       Utilities.formatDate(new Date(), 'GMT-6', 'dd/MM/yyyy HH:mm:ss'), // 1. Fecha Registro
       data.razon_social || '',                                          // 2. Razón Social
@@ -427,11 +424,16 @@ function fase1_RegistrarCliente(data) {
       data.correo_informe || '',                                        // 9. Email Contacto
       data.giro || '',                                                  // 10. Giro / Actividad
       data.registro_patronal || '',                                     // 11. Registro Patronal
-      capacidadUnida,                                                   // 12. Capacidad Instalada / Operación
-      data.dias_turnos_horarios || '',                                  // 13. Días / Turnos
-      data.aplica_nom020 === 'si' ? 'SÍ' : 'NO',                        // 14. Aplica NOM-020
-      data.requiere_pipc === 'si' ? 'SÍ' : 'NO',                        // 15. Requiere PIPC
-      carpetaCliente.getUrl()                                           // 16. Link Drive (índice 15)
+      data.capacidad_instalada || '',                                   // 12. Capacidad Instalada
+      data.capacidad_operacion || '',                                   // 13. Capacidad Operación
+      data.dias_turnos_horarios || '',                                  // 14. Días / Turnos
+      data.aplica_nom020 === 'si' ? 'SÍ' : 'NO',                        // 15. Aplica NOM-020
+      data.requiere_pipc === 'si' ? 'SÍ' : 'NO',                        // 16. Requiere PIPC
+      data.responsable || '',                                           // 17. Nombre quien Atiende
+      data.telefono_responsable || '',                                  // 18. Teléfono quien Atiende
+      data.nombre_dirigido || '',                                       // 19. A quien se dirige informe
+      data.puesto_dirigido || '',                                       // 20. Puesto a quien se dirige
+      carpetaCliente.getUrl()                                           // 21. Link Drive (índice 20)
     ];
     const allData = sheet.getDataRange().getValues();
     let rowIndex = -1;
@@ -493,7 +495,7 @@ function fase2_BuscarClienteRFC(rfcBuscado) {
           direccion_evaluacion: data[i][5],  // col 6
           giro: data[i][9],                  // col 10
           registro_patronal: data[i][10],    // col 11
-          link_drive_cliente: data[i][15]    // col 16 (índice 15) — nuevo esquema 16 col
+          link_drive_cliente: data[i][20]    // col 21 (índice 20) — esquema 21 col
         });
       }
     }
@@ -528,7 +530,7 @@ function fase2_BuscarClienteNombre(nombreBuscado) {
           direccion_evaluacion: data[i][5],  // col 6
           giro: data[i][9],                  // col 10
           registro_patronal: data[i][10],    // col 11
-          link_drive_cliente: data[i][15]    // col 16 (índice 15) — nuevo esquema 16 col
+          link_drive_cliente: data[i][20]    // col 21 (índice 20) — esquema 21 col
         });
       }
     }
@@ -587,7 +589,7 @@ function fase3_CrearExpediente(payload) {
     if (m2) { try { carpetaSucursal = DriveApp.getFolderById(m2[1]); } catch(e) {} }
   }
   // 3) Buscar en CLIENTES_MAESTRO por RFC + sucursal
-  //    NOTA: nuevo esquema 16 columnas → link Drive en índice [15] (columna 16)
+  //    NOTA: nuevo esquema 21 columnas → link Drive en índice [20] (columna 21)
   if (!carpetaSucursal && info.rfc) {
     try {
       var sheetCli = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_CLIENTES);
@@ -597,7 +599,7 @@ function fase3_CrearExpediente(payload) {
       for (var j = cliData.length - 1; j >= 1; j--) {
         if (String(cliData[j][3]).toUpperCase().trim() === rfcBusc) {
           if (!sucBusc || String(cliData[j][2]).trim() === sucBusc) {
-            var linkCli = cliData[j][15]; // índice 15 = columna 16 (nuevo esquema)
+            var linkCli = cliData[j][20]; // índice 20 = columna 21 (esquema 21 col)
             if (linkCli) {
               var m3 = String(linkCli).match(/folders\/([a-zA-Z0-9_-]+)/);
               if (m3) { try { carpetaSucursal = DriveApp.getFolderById(m3[1]); } catch(e) {} }

@@ -88,7 +88,7 @@ function runE2ETests() {
 // y presiona "Enviar". Verifica que:
 //   - La función devuelve success: true
 //   - Aparece una fila en CLIENTES_MAESTRO con los datos correctos
-//   - El link_drive_cliente (índice 15) no está vacío y apunta a Drive
+//   - El link_drive_cliente (índice 20) no está vacío y apunta a Drive
 //   - La carpeta Drive existe y es accesible
 function runTest_E01() {
   Logger.log('');
@@ -156,8 +156,8 @@ function runTest_E01() {
   _eq_('E01-9: nombre_solicitante en col 8 (índice 7)', fila[7], 'Prueba Automatizada');
   _eq_('E01-10: correo_informe en col 9 (índice 8)',    fila[8], 'test@noenviar.com');
 
-  var linkDrive = String(fila[15] || '');
-  _check_('E01-11: link_drive en col 16 (índice 15) no está vacío', linkDrive !== '');
+  var linkDrive = String(fila[20] || '');
+  _check_('E01-11: link_drive en col 21 (índice 20) no está vacío', linkDrive !== '');
   _check_('E01-12: link_drive contiene "folders/"', linkDrive.indexOf('folders/') !== -1);
 
   // Verificar que la carpeta Drive es accesible
@@ -180,7 +180,7 @@ function runTest_E01() {
 //   1. Usuario escribe el RFC → buscarClienteRFC → obtiene sucursales + link_drive
 //   2. Usuario llena el form de OT y presiona "Registrar OT" → registrarOT
 // Verifica que:
-//   - buscarClienteRFC devuelve found: true con el link correcto (índice 15)
+//   - buscarClienteRFC devuelve found: true con el link correcto (índice 20)
 //   - La OT aparece en ORDENES_TRABAJO con link_drive_cliente en col 14
 function runTest_E02() {
   Logger.log('');
@@ -475,19 +475,20 @@ function runUnitTests() {
   Logger.log('');
   Logger.log('── UNIT TESTS (lógica pura) ──────────────────');
 
-  // Mapeo de índices nuevo esquema 16 columnas
-  var fila16 = [
+  // Mapeo de índices nuevo esquema 21 columnas
+  var fila21 = [
     '08/03/2026','EMPRESA TEST','Planta Norte','TST010101AAA',
     'Rep Legal','Dir Eval','2221234567','Solicitante Test',
-    'sol@test.com','Manufactura','IMSS-01234','500 / 450 ton',
+    'sol@test.com','Manufactura','IMSS-01234','500 ton','450 ton',
     'L-V 08:00-18:00','SÍ','NO',
+    'Ing. Responsable','5551234567','Lic. Dirigido','Gerente General',
     'https://drive.google.com/drive/folders/LINK_CORRECTO'
   ];
-  _eq_('U01: nombre_solicitante en índice [7]', fila16[7], 'Solicitante Test');
-  _eq_('U02: correo_informe en índice [8]',     fila16[8], 'sol@test.com');
-  _eq_('U03: telefono_empresa en índice [6]',   fila16[6], '2221234567');
-  _eq_('U04: link_drive en índice [15]',        fila16[15], 'https://drive.google.com/drive/folders/LINK_CORRECTO');
-  _check_('U05: índice [22] es undefined (esquema antiguo)', fila16[22] === undefined);
+  _eq_('U01: nombre_solicitante en índice [7]',  fila21[7], 'Solicitante Test');
+  _eq_('U02: correo_informe en índice [8]',      fila21[8], 'sol@test.com');
+  _eq_('U03: telefono_empresa en índice [6]',    fila21[6], '2221234567');
+  _eq_('U04: link_drive en índice [20]',         fila21[20], 'https://drive.google.com/drive/folders/LINK_CORRECTO');
+  _check_('U05: índice [21] es undefined (esquema anterior)', fila21[21] === undefined);
 
   // Regex extracción folder ID
   var m = 'https://drive.google.com/drive/folders/ABC123_-XYZ'.match(/folders\/([a-zA-Z0-9_-]+)/);
