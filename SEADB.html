@@ -475,14 +475,18 @@
                 const item = document.createElement('div'); item.className = 'ot-vencida-item';
                 const diasMatch = ot.estatusAuto.match(/\[(\d+)\s+día/);
                 const diasTexto = diasMatch ? `${diasMatch[1]} día${diasMatch[1] !== '1' ? 's' : ''}` : 'Revisar';
-                item.innerHTML = `
-                    <div class="ot-vencida-header"><span class="ot-vencida-numero">${ot.ot}</span><span class="ot-vencida-dias">Vencida hace ${diasTexto}</span></div>
-                    <div class="ot-vencida-info"><strong>Cliente:</strong> ${ot.clienteFinal}</div>
-                    <div class="ot-vencida-info"><strong>NOM:</strong> ${ot.nom}</div>
-                    <div class="ot-vencida-info"><strong>Fecha Visita:</strong> ${ot.fechaVisita}</div>
-                    <div class="ot-vencida-info"><strong>Responsable:</strong> ${ot.personal}</div>
-                    <div class="ot-vencida-info"><strong>Estatus:</strong> ${ot.estatusAuto}</div>
-                `;
+                // Usar textContent para evitar XSS con datos del API
+                const header2 = document.createElement('div'); header2.className = 'ot-vencida-header';
+                const numSpan = document.createElement('span'); numSpan.className = 'ot-vencida-numero'; numSpan.textContent = ot.ot;
+                const diasSpan = document.createElement('span'); diasSpan.className = 'ot-vencida-dias'; diasSpan.textContent = `Vencida hace ${diasTexto}`;
+                header2.appendChild(numSpan); header2.appendChild(diasSpan);
+                const mkInfo = (label, val) => { const d = document.createElement('div'); d.className = 'ot-vencida-info'; const b = document.createElement('strong'); b.textContent = label; d.appendChild(b); d.appendChild(document.createTextNode(' ' + (val || '-'))); return d; };
+                item.appendChild(header2);
+                item.appendChild(mkInfo('Cliente:', ot.clienteFinal));
+                item.appendChild(mkInfo('NOM:', ot.nom));
+                item.appendChild(mkInfo('Fecha Visita:', ot.fechaVisita));
+                item.appendChild(mkInfo('Responsable:', ot.personal));
+                item.appendChild(mkInfo('Estatus:', ot.estatusAuto));
                 body.appendChild(item);
             });
             const footer = document.createElement('div'); footer.className = 'modal-footer';
@@ -499,23 +503,25 @@
         function mostrarDetalleEvento(details, title) {
             const overlay = document.createElement('div'); overlay.className = 'modal-overlay'; overlay.id = 'eventoModal';
             textoEventoActual = `OT: ${details.ot}\nCliente: ${details.cliente}\nNOM: ${details.nom}\nPersonal: ${details.personal}\nTipo: ${title}\nFecha: ${details.fecha}`;
-            overlay.innerHTML = `
-                <div class="modal-content evento-modal-content">
-                    <div class="evento-modal-header"><span style="font-size: 1.3rem;">📅</span><h3>Detalle del Evento</h3></div>
-                    <div class="evento-detalle-body">
-                        <div class="evento-info-item"><span class="evento-info-icon">📋</span><span class="evento-info-label">OT:</span><span class="evento-info-value">${details.ot}</span></div>
-                        <div class="evento-info-item"><span class="evento-info-icon">👤</span><span class="evento-info-label">Cliente:</span><span class="evento-info-value">${details.cliente}</span></div>
-                        <div class="evento-info-item"><span class="evento-info-icon">📄</span><span class="evento-info-label">NOM:</span><span class="evento-info-value">${details.nom}</span></div>
-                        <div class="evento-info-item"><span class="evento-info-icon">👨‍💼</span><span class="evento-info-label">Personal:</span><span class="evento-info-value">${details.personal}</span></div>
-                        <div class="evento-info-item"><span class="evento-info-icon">📅</span><span class="evento-info-label">Tipo:</span><span class="evento-info-value">${title}</span></div>
-                        <div class="evento-info-item"><span class="evento-info-icon">🗓️</span><span class="evento-info-label">Fecha:</span><span class="evento-info-value">${details.fecha}</span></div>
-                    </div>
-                    <div class="evento-modal-footer">
-                        <button class="modal-btn modal-btn-copy" id="btnCopiarEvento"><span>📋</span> Copiar</button>
-                        <button class="modal-btn modal-btn-close" onclick="cerrarEventoModal()">Cerrar</button>
-                    </div>
-                </div>
-            `;
+            // Construir modal con DOM para evitar XSS con datos del API
+            const mc = document.createElement('div'); mc.className = 'modal-content evento-modal-content';
+            mc.innerHTML = '<div class="evento-modal-header"><span style="font-size:1.3rem;">📅</span><h3>Detalle del Evento</h3></div>';
+            const body2 = document.createElement('div'); body2.className = 'evento-detalle-body';
+            const mkRow = (icon, lbl, val) => {
+              const d = document.createElement('div'); d.className = 'evento-info-item';
+              d.innerHTML = `<span class="evento-info-icon">${icon}</span><span class="evento-info-label">${lbl}</span>`;
+              const v = document.createElement('span'); v.className = 'evento-info-value'; v.textContent = val || '-';
+              d.appendChild(v); return d;
+            };
+            body2.appendChild(mkRow('📋','OT:', details.ot));
+            body2.appendChild(mkRow('👤','Cliente:', details.cliente));
+            body2.appendChild(mkRow('📄','NOM:', details.nom));
+            body2.appendChild(mkRow('👨‍💼','Personal:', details.personal));
+            body2.appendChild(mkRow('📅','Tipo:', title));
+            body2.appendChild(mkRow('🗓️','Fecha:', details.fecha));
+            mc.appendChild(body2);
+            mc.innerHTML += '<div class="evento-modal-footer"><button class="modal-btn modal-btn-copy" id="btnCopiarEvento"><span>📋</span> Copiar</button><button class="modal-btn modal-btn-close" onclick="cerrarEventoModal()">Cerrar</button></div>';
+            overlay.appendChild(mc);
             document.body.appendChild(overlay);
             document.getElementById('btnCopiarEvento').addEventListener('click', copiarDetalleEvento);
             overlay.addEventListener('click', function(e) { if (e.target === overlay) { cerrarEventoModal(); } });
@@ -631,13 +637,13 @@
         function createTableRow(row) {
             const tr = document.createElement('tr'); const dias = calcularDiasEntrega(row); const isEntregado = row.entregadoManual.toUpperCase().includes('ENTREGADO');
             tr.innerHTML = `
-                <td><strong>${row.ot}</strong></td><td>${row.referencia}</td><td>${row.clienteInicial}</td><td>${row.clienteFinal}</td><td>${row.nom}</td><td>${row.personal}</td>
-                <td>${row.fechaVisita}</td><td><strong>${row.fechaDigital}</strong></td><td><strong>${row.fechaFisico}</strong></td><td>${dias !== null ? dias : '-'}</td><td>${row.estatusAuto}</td>
+                <td><strong>${escHtml(row.ot)}</strong></td><td>${escHtml(row.referencia)}</td><td>${escHtml(row.clienteInicial)}</td><td>${escHtml(row.clienteFinal)}</td><td>${escHtml(row.nom)}</td><td>${escHtml(row.personal)}</td>
+                <td>${escHtml(row.fechaVisita)}</td><td><strong>${escHtml(row.fechaDigital)}</strong></td><td><strong>${escHtml(row.fechaFisico)}</strong></td><td>${dias !== null ? dias : '-'}</td><td>${escHtml(row.estatusAuto)}</td>
                 <td>
                     <div class="table-action-btns">
                         <button class="action-btn whatsapp" onclick="compartirOT('${escapeQuotes(row.ot)}', '${escapeQuotes(row.nom)}', '${escapeQuotes(row.fechaVisita)}', '${escapeQuotes(row.personal)}', '${escapeQuotes(row.clienteFinal)}')">📤 Compartir</button>
                         ${!isEntregado ? `<button class="action-btn drive" onclick="marcarEntregado('${escapeQuotes(row.ot)}')">✅ Entregado</button>` : `<span style="color: #27ae60; font-size: 0.75rem; font-weight: 600;">✅ Entregado</span>`}
-                        <button class="action-btn copy" onclick="openDrive('${escapeQuotes(row.linkOT)}')">📁 Drive</button>
+                        <button class="action-btn copy" onclick="openDrive('${escapeQuotes(safeDriveUrl(row.linkOT))}')">📁 Drive</button>
                     </div>
                 </td>
             `;
@@ -681,6 +687,12 @@
         }
 
         function escapeQuotes(str) { return str.replace(/'/g, "\\'").replace(/"/g, '\\"'); }
+        function escHtml(s) {
+          return String(s == null ? '' : s)
+            .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+            .replace(/"/g,'&quot;').replace(/'/g,'&#x27;');
+        }
+        function safeDriveUrl(u) { return (typeof u==='string' && u.startsWith('https://')) ? u : '#'; }
         function getNomColor(nom) {
             const nomColors = { 'NOM-001': '#2d5f4f', 'NOM-002': '#3498db', 'NOM-003': '#e67e22', 'NOM-004': '#9b59b6', 'NOM-005': '#e74c3c', 'NOM-006': '#1abc9c', 'NOM-007': '#f39c12', 'NOM-008': '#2ecc71', 'NOM-035': '#3498db', 'NOM-036': '#e67e22', 'NOM-025': '#9b59b6' };
             const nomPrefix = (nom || '').match(/NOM-\d+/i); if (nomPrefix && nomColors[nomPrefix[0].toUpperCase()]) return nomColors[nomPrefix[0].toUpperCase()];
@@ -761,25 +773,26 @@
                     informe.sucursal ? `<span class="inf-tag">${informe.sucursal}</span>` : '',
                     informe.rfc ? `<span class="inf-tag">${informe.rfc}</span>` : ''
                 ].filter(Boolean).join('');
+                const safeLink = safeDriveUrl(informe.link);
                 card.innerHTML = `
                     <div class="inf-card-head">
-                        <span class="inf-nom" style="background:${nomColor}">${informe.nom || 'NOM'}</span>
-                        <span class="inf-fecha">${informe.fecha}</span>
+                        <span class="inf-nom" style="background:${escHtml(nomColor)}">${escHtml(informe.nom || 'NOM')}</span>
+                        <span class="inf-fecha">${escHtml(informe.fecha)}</span>
                     </div>
                     <div class="inf-card-body">
-                        <div class="inf-empresa-name">${informe.empresa}</div>
-                        ${tags ? `<div class="inf-tags">${tags}</div>` : ''}
+                        <div class="inf-empresa-name">${escHtml(informe.empresa)}</div>
+                        ${informe.sucursal || informe.rfc ? `<div class="inf-tags">${informe.sucursal ? `<span class="inf-tag">${escHtml(informe.sucursal)}</span>` : ''}${informe.rfc ? `<span class="inf-tag">${escHtml(informe.rfc)}</span>` : ''}</div>` : ''}
                     </div>
                     <hr class="inf-divider">
                     <div class="inf-card-contacts">
-                        <div class="inf-contact-row"><span class="inf-contact-key">Contacto</span><span class="inf-contact-val">${informe.persona || '—'}</span></div>
-                        <div class="inf-contact-row"><span class="inf-contact-key">Correo</span><span class="inf-contact-val">${informe.correo || '—'}</span></div>
+                        <div class="inf-contact-row"><span class="inf-contact-key">Contacto</span><span class="inf-contact-val">${escHtml(informe.persona || '—')}</span></div>
+                        <div class="inf-contact-row"><span class="inf-contact-key">Correo</span><span class="inf-contact-val">${escHtml(informe.correo || '—')}</span></div>
                     </div>
                     <div class="inf-card-foot">
-                        <button class="inf-btn-drive" onclick="openDrive('${escapeQuotes(informe.link)}')">📁 Ver informe</button>
-                        <button class="inf-btn-icon" title="WhatsApp" onclick="shareWhatsApp('${escapeQuotes(informe.empresa)}', '${escapeQuotes(informe.link)}')">💬</button>
-                        <button class="inf-btn-icon" title="Enviar por email" onclick="shareEmail('${escapeQuotes(informe.empresa)}', '${escapeQuotes(informe.link)}', '${escapeQuotes(informe.correo)}')">✉️</button>
-                        <button class="inf-btn-icon" title="Copiar enlace" onclick="copyLink('${escapeQuotes(informe.link)}')">📋</button>
+                        <button class="inf-btn-drive" onclick="openDrive('${escapeQuotes(safeLink)}')">📁 Ver informe</button>
+                        <button class="inf-btn-icon" title="WhatsApp" onclick="shareWhatsApp('${escapeQuotes(informe.empresa)}', '${escapeQuotes(safeLink)}')">💬</button>
+                        <button class="inf-btn-icon" title="Enviar por email" onclick="shareEmail('${escapeQuotes(informe.empresa)}', '${escapeQuotes(safeLink)}', '${escapeQuotes(informe.correo)}')">✉️</button>
+                        <button class="inf-btn-icon" title="Copiar enlace" onclick="copyLink('${escapeQuotes(safeLink)}')">📋</button>
                     </div>
                 `;
                 grid.appendChild(card);

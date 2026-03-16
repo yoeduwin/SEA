@@ -818,6 +818,14 @@
     validarProgreso();
   }
 
+  // ── Utilidad de seguridad ─────────────────────────────────────────────────
+  function escHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#x27;');
+  }
+  function safeDriveUrl(u) { return (typeof u === 'string' && u.startsWith('https://')) ? u : '#'; }
+
   function calcularDiasVencimiento(fechaEntrega) {
     if (!fechaEntrega) return null;
     const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
@@ -873,37 +881,48 @@
       }
       const cInicial = r.cliente || '-';
       const cFinal = r.sucursal || '-';
+      // Usar data-ot en los selects para evitar attribute injection (B-01)
+      const RESP_OPTS = ['EDUARDO CAMPOS','EDUWIN IVAN','MARTIN LUNA','JIMMY AYALA'];
+      const EST_OPTS  = [
+        {v:'NO INICIADO',l:'No Iniciado'},{v:'EN PROCESO',l:'En Proceso'},
+        {v:'PARA REVISION',l:'En Revisión'},{v:'PARA IMPRESION',l:'Para Impresión'},
+        {v:'FINALIZADO',l:'Finalizado'},{v:'CANCELADO',l:'Cancelado'}
+      ];
+      const mkRespSel = (ot, resp) => {
+        const s = document.createElement('select');
+        s.style.padding = '4px'; s.className = 'sea-cambio-rapido';
+        s.dataset.ot = ot; s.dataset.campo = 'responsable';
+        const o0 = document.createElement('option'); o0.value=''; o0.textContent='-'; if(!resp) o0.selected=true; s.appendChild(o0);
+        RESP_OPTS.forEach(r2=>{const o=document.createElement('option');o.value=r2;o.textContent=r2;if(resp===r2)o.selected=true;s.appendChild(o);});
+        return s.outerHTML;
+      };
+      const mkEstSel = (ot, est) => {
+        const s = document.createElement('select');
+        s.style.padding='4px'; s.className='sea-cambio-rapido';
+        s.dataset.ot=ot; s.dataset.campo='estatus';
+        EST_OPTS.forEach(e2=>{const o=document.createElement('option');o.value=e2.v;o.textContent=e2.l;if(est===e2.v)o.selected=true;s.appendChild(o);});
+        return s.outerHTML;
+      };
       html += `<tr>
-        <td><strong>${r.numInforme || '-'}</strong><br><span style="color:var(--muted); font-size:10px;">${r.ot}</span></td>
-        <td><strong>${r.nom || '-'}</strong><br><span style="color:var(--muted); font-size:10px;">${r.fecha || '-'}</span></td>
-        <td>${cInicial}</td>
-        <td>${cFinal}</td>
-        <td>
-          <select style="padding:4px;" onchange="cambiarDatoRapido('${r.ot}', 'responsable', this.value)">
-            <option value="" ${!r.responsable ? 'selected' : ''}>-</option>
-            <option value="EDUARDO CAMPOS" ${r.responsable==='EDUARDO CAMPOS'?'selected':''}>EDUARDO CAMPOS</option>
-            <option value="EDUWIN IVAN" ${r.responsable==='EDUWIN IVAN'?'selected':''}>EDUWIN IVAN</option>
-            <option value="MARTIN LUNA" ${r.responsable==='MARTIN LUNA'?'selected':''}>MARTIN LUNA</option>
-            <option value="JIMMY AYALA" ${r.responsable==='JIMMY AYALA'?'selected':''}>JIMMY AYALA</option>
-          </select>
-        </td>
-        <td>
-          <select style="padding:4px;" onchange="cambiarDatoRapido('${r.ot}', 'estatus', this.value)">
-            <option value="NO INICIADO" ${estatus==='NO INICIADO'?'selected':''}>No Iniciado</option>
-            <option value="EN PROCESO" ${estatus==='EN PROCESO'?'selected':''}>En Proceso</option>
-            <option value="PARA REVISION" ${estatus==='PARA REVISION'?'selected':''}>En Revisión</option>
-            <option value="PARA IMPRESION" ${estatus==='PARA IMPRESION'?'selected':''}>Para Impresión</option>
-            <option value="FINALIZADO" ${estatus==='FINALIZADO'?'selected':''}>Finalizado</option>
-            <option value="CANCELADO" ${estatus==='CANCELADO'?'selected':''}>Cancelado</option>
-          </select>
-        </td>
+        <td><strong>${escHtml(r.numInforme || '-')}</strong><br><span style="color:var(--muted); font-size:10px;">${escHtml(r.ot)}</span></td>
+        <td><strong>${escHtml(r.nom || '-')}</strong><br><span style="color:var(--muted); font-size:10px;">${escHtml(r.fecha || '-')}</span></td>
+        <td>${escHtml(cInicial)}</td>
+        <td>${escHtml(cFinal)}</td>
+        <td>${mkRespSel(r.ot, r.responsable)}</td>
+        <td>${mkEstSel(r.ot, estatus)}</td>
         <td>${slaChip}</td>
         <td>
-          <a href="${r.linkDrive || '#'}" target="_blank" style="text-decoration:none; background:#1e5a3e; color:white; padding:4px 8px; border-radius:3px; font-size:10px;">📁 Drive</a>
+          <a href="${escHtml(safeDriveUrl(r.linkDrive))}" target="_blank" style="text-decoration:none; background:#1e5a3e; color:white; padding:4px 8px; border-radius:3px; font-size:10px;">📁 Drive</a>
         </td>
       </tr>`;
     });
     box.innerHTML = html;
+    // Event delegation para selects de cambio rápido (evita attribute injection)
+    box.querySelectorAll('select.sea-cambio-rapido').forEach(sel => {
+      sel.addEventListener('change', function() {
+        cambiarDatoRapido(this.dataset.ot, this.dataset.campo, this.value);
+      });
+    });
     document.getElementById('table-count').textContent = data.length;
   }
 

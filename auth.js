@@ -206,8 +206,12 @@ const SEAAuth = (() => {
     // Si hay gasUrl configurado, verificar con GAS antes de abrir la app
     if (_gasUrl) {
       try {
-        const pingUrl = `${_gasUrl}?action=verificarAcceso&id_token=${encodeURIComponent(token)}`;
-        const resp = await fetch(pingUrl);
+        // Usar POST para mantener el token fuera de la URL (B-03)
+        const resp = await fetch(_gasUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'verificarAcceso', id_token: token })
+        });
         const data = await resp.json();
 
         if (!data.success || data.error === 'AUTH_REQUIRED') {
@@ -266,8 +270,8 @@ const SEAAuth = (() => {
   /**
    * Reemplaza fetch() para incluir automáticamente el id_token.
    *
-   * GET:  token como query param &id_token=...
-   * POST: token en el campo id_token del body JSON
+   * Todos los requests autenticados se envían como POST con el token en el body
+   * (no en la URL) para evitar que quede en el historial del navegador y logs.
    *
    * Si el token expiró, recarga la página (fuerza re-login).
    */
@@ -283,9 +287,16 @@ const SEAAuth = (() => {
     const method = (options.method || 'GET').toUpperCase();
 
     if (method === 'GET') {
-      const sep = url.includes('?') ? '&' : '?';
-      url = `${url}${sep}id_token=${encodeURIComponent(token)}`;
-      return fetch(url, options);
+      // Convertir GET a POST para mantener el id_token fuera de la URL (B-03).
+      // Se extraen los query params de la URL y se envían en el body JSON junto al token.
+      const urlObj = new URL(url, location.origin);
+      const body = { id_token: token };
+      urlObj.searchParams.forEach((v, k) => { body[k] = v; });
+      return fetch(urlObj.origin + urlObj.pathname, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(body)
+      });
     } else {
       let body = {};
       try {

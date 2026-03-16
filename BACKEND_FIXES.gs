@@ -157,7 +157,27 @@ function verificarUsuarioAutorizado_(email, modulo) {
       const activo   = data[i][3]; // columna D: Activo
 
       if (rowEmail !== emailLower) continue;
-      if (activo !== true) return false; // usuario desactivado
+      if (activo !== true) {
+        // Alerta de acceso con cuenta desactivada (máximo 1 email/hora por usuario)
+        Logger.log('ALERTA: Usuario desactivado intentó acceder: ' + email + ' [' + new Date().toISOString() + ']');
+        try {
+          const alertKey = 'baja_alerta_' + emailLower.replace(/[^a-z0-9]/g, '').slice(-20);
+          const alertCache = CacheService.getScriptCache();
+          if (!alertCache.get(alertKey)) {
+            GmailApp.sendEmail(
+              CONFIG.EMAIL_TO[0],
+              'ALERTA: Acceso de usuario desactivado — Sistema SEA',
+              'El usuario ' + email + ' intentó acceder al sistema pero su cuenta está marcada como INACTIVA.\n' +
+              'Fecha: ' + new Date().toISOString() + '\n\n' +
+              'Si esta persona ya no trabaja en la empresa, no se requiere acción adicional.\n' +
+              'Si fue un error, activa la cuenta en la hoja USUARIOS_AUTORIZADOS.\n\n' +
+              'Sistema SEA — Ejecutiva Ambiental'
+            );
+            alertCache.put(alertKey, '1', 3600); // silencio de 1 hora para no saturar emails
+          }
+        } catch (e) { /* no interrumpir el flujo de autenticación */ }
+        return false;
+      }
 
       // Si hay columna para este módulo, verificar acceso
       if (moduloCol >= 0) {
@@ -331,18 +351,34 @@ function doPost(e) {
     const authError = verificarAcceso_(action, idToken, rcToken);
     if (authError) return authError;
 
+    // Obtener email del usuario para trazabilidad (cacheado, bajo costo)
+    const _usuario = idToken ? ((verificarIdToken_(idToken) || {}).email || 'desconocido') : 'portal_publico';
+
     switch(action) {
       case 'registrarCliente': return output_(fase1_RegistrarCliente(data));
       case 'registrarOT': return output_(fase2_RegistrarOT(data));
       case 'createExpediente': return output_(fase3_CrearExpediente(data));
       case 'addFilesToExpediente': return output_(fase3_AddFilesToExpediente(data));
-      case 'updateEstatus': return output_(updateEstatusSafe_(data));
-      case 'updateEstatusInforme': return output_(updateEstatusInformeSafe_(data));
-      case 'updateResponsable': return output_(updateResponsableSafe_(data));
+      case 'updateEstatus': return output_(updateEstatusSafe_(data, _usuario));
+      case 'updateEstatusInforme': return output_(updateEstatusInformeSafe_(data, _usuario));
+      case 'updateResponsable': return output_(updateResponsableSafe_(data, _usuario));
+      // Acciones GET migradas a POST para mantener token fuera de la URL (B-03)
+      case 'verificarAcceso': {
+        const u = verificarIdToken_(idToken || '');
+        const mod = data.modulo || '';
+        const ok = u && verificarUsuarioAutorizado_(u.email, mod);
+        return output_({ success: !!ok, email: u ? u.email : '' });
+      }
+      case 'buscarClienteRFC': return output_(fase2_BuscarClienteRFC(data.rfc));
+      case 'buscarClienteNombre': return output_(fase2_BuscarClienteNombre(data.nombre));
+      case 'getTablero': return output_(fase4_GetTablero());
+      case 'getOrdenes': return output_(getOrdenesSafe_());
+      case 'getConsecutivo': return output_(getConsecutivoSafe_(data));
       default: return output_({ success: false, error: 'Acción POST no reconocida.' });
     }
   } catch (err) {
-    return output_({ success: false, error: 'Error crítico en Servidor: ' + err.message });
+    Logger.log('ERROR doPost [' + new Date().toISOString() + ']: ' + err.message + '\n' + (err.stack || ''));
+    return output_({ success: false, error: 'Error en el servidor. Código: ERR-' + Date.now() });
   } finally {
     lock.releaseLock();
   }
@@ -373,7 +409,8 @@ function doGet(e) {
       default: return output_({ success: false, error: 'Acción GET no reconocida.' });
     }
   } catch (err) {
-    return output_({ success: false, error: 'Error GET: ' + err.message });
+    Logger.log('ERROR doGet [' + new Date().toISOString() + ']: ' + err.message);
+    return output_({ success: false, error: 'Error en el servidor. Código: ERR-' + Date.now() });
   }
 }
 // =========================================================================
@@ -384,8 +421,16 @@ function fase1_RegistrarCliente(data) {
   function addLog(message) { logEntries.push(`[${new Date().toISOString()}] ${message}`); Logger.log(message); }
   try {
     addLog('=== INICIO PROCESO MULTI-SUCURSAL ===');
+    // Validar campos requeridos
+    if (!data.razon_social || !String(data.razon_social).trim()) {
+      return { success: false, error: 'El campo Razón Social es obligatorio.' };
+    }
     const folderRaiz = DriveApp.getFolderById(CONFIG.FOLDER_ID);
     const rfcClean = (data.rfc || 'SIN_RFC').toUpperCase().trim();
+    // Validar formato de RFC
+    if (!validarRFC_(rfcClean)) {
+      return { success: false, error: 'RFC inválido: "' + rfcClean + '". Formato requerido: 12 o 13 caracteres alfanuméricos (ej: XAXX010101000).' };
+    }
     const companyClean = cleanCompanyName(data.razon_social || 'Cliente');
     const branchClean = sanitizeFileName(data.sucursal || 'Matriz');
     const timestamp = Utilities.formatDate(new Date(), 'GMT-6', 'yyMMdd');
@@ -635,8 +680,10 @@ function fase3_CrearExpediente(payload) {
   files.forEach(function(file) {
     if (!file || !file.content) return;
     try {
+      var v = validarArchivo_(file.content, file.type || '', file.name || 'archivo');
+      if (!v.valid) { Logger.log('Archivo rechazado: ' + v.error); return; }
       var decoded = Utilities.base64Decode(file.content);
-      var blob = Utilities.newBlob(decoded, file.type, file.name);
+      var blob = Utilities.newBlob(decoded, file.type, sanitizeFileName(file.name || 'archivo'));
       var targetFolder = folders[file.category] || carpetaOT;
       targetFolder.createFile(blob);
     } catch (err) { Logger.log('Error archivo: ' + err.message); }
@@ -670,11 +717,13 @@ function fase3_AddFilesToExpediente(payload) {
   files.forEach(file => {
     if (!file || !file.content) return;
     try {
+      const v = validarArchivo_(file.content, file.type || '', file.name || 'archivo');
+      if (!v.valid) { Logger.log('Archivo rechazado en addFiles: ' + v.error); return; }
       const decoded = Utilities.base64Decode(file.content);
-      const blob = Utilities.newBlob(decoded, file.type, file.name);
+      const blob = Utilities.newBlob(decoded, file.type, sanitizeFileName(file.name || 'archivo'));
       const targetFolder = folders[file.category] || expedienteFolder;
       targetFolder.createFile(blob);
-    } catch (err) {}
+    } catch (err) { Logger.log('Error archivo addFiles: ' + err.message); }
   });
   return { success: true };
 }
@@ -725,15 +774,19 @@ function getConsecutivoSafe_(params) {
   const siguiente = String(maxConsecutivo + 1).padStart(4, '0');
   return { success: true, numeroInforme: `EA-${params.anio}${params.mes}-${params.nom}-${siguiente}` };
 }
-function updateEstatusSafe_(data) {
+function updateEstatusSafe_(data, usuario) {
+  if (!data || !data.ot || !data.estatus) return { success: false, error: 'Faltan campos requeridos: ot, estatus.' };
   const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
   const values = sheet.getDataRange().getValues();
   for (let i = 1; i < values.length; i++) {
     if (String(values[i][1]).trim() === String(data.ot).trim()) {
-      sheet.getRange(i + 1, 13).setValue(data.estatus.toUpperCase());
-      if(data.estatus.toUpperCase() === 'ENTREGADO' || data.estatus.toUpperCase() === 'FINALIZADO') {
+      const valorAnterior = String(values[i][12]);
+      const nuevoEstatus = data.estatus.toUpperCase();
+      sheet.getRange(i + 1, 13).setValue(nuevoEstatus);
+      if(nuevoEstatus === 'ENTREGADO' || nuevoEstatus === 'FINALIZADO') {
          sheet.getRange(i + 1, 12).setValue(Utilities.formatDate(new Date(), "GMT-6", "dd/MM/yyyy"));
       }
+      registrarAuditoria_(usuario || 'desconocido', 'UPDATE_ESTATUS_EXTERNO', data.ot, 'estatus_externo', valorAnterior, nuevoEstatus);
       return { success: true, message: 'Actualizado' };
     }
   }
@@ -741,23 +794,30 @@ function updateEstatusSafe_(data) {
 }
 // Actualiza SOLO el estatus interno del dpto. de informes (col 16).
 // NO toca col 13 (estatus externo que lee SEADB) ni la fecha real de entrega.
-function updateEstatusInformeSafe_(data) {
+function updateEstatusInformeSafe_(data, usuario) {
+  if (!data || !data.ot || !data.estatus) return { success: false, error: 'Faltan campos requeridos: ot, estatus.' };
   const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
   const values = sheet.getDataRange().getValues();
   for (let i = 1; i < values.length; i++) {
     if (String(values[i][1]).trim() === String(data.ot).trim()) {
-      sheet.getRange(i + 1, 16).setValue(data.estatus.toUpperCase()); // col 16 = Estatus Informe (interno)
+      const valorAnterior = String(values[i][15]);
+      const nuevoEstatus = data.estatus.toUpperCase();
+      sheet.getRange(i + 1, 16).setValue(nuevoEstatus); // col 16 = Estatus Informe (interno)
+      registrarAuditoria_(usuario || 'desconocido', 'UPDATE_ESTATUS_INFORME', data.ot, 'estatus_informe', valorAnterior, nuevoEstatus);
       return { success: true, message: 'Estatus informe actualizado' };
     }
   }
   return { success: false, error: 'OT no encontrada' };
 }
-function updateResponsableSafe_(data) {
+function updateResponsableSafe_(data, usuario) {
+  if (!data || !data.ot || data.responsable === undefined) return { success: false, error: 'Faltan campos requeridos: ot, responsable.' };
   const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
   const values = sheet.getDataRange().getValues();
   for (let i = 1; i < values.length; i++) {
     if (String(values[i][1]).trim() === String(data.ot).trim()) {
+      const valorAnterior = String(values[i][8]);
       sheet.getRange(i + 1, 9).setValue(data.responsable);
+      registrarAuditoria_(usuario || 'desconocido', 'UPDATE_RESPONSABLE', data.ot, 'personal_asignado', valorAnterior, data.responsable);
       return { success: true };
     }
   }
@@ -802,8 +862,14 @@ function guardarArchivos(data, carpetaCliente, addLog) {
     const fileData = data[field.key]; const fileName = data[field.key + '_filename'];
     if (fileData && fileName && typeof fileData === 'string' && fileData.startsWith('data:')) {
       try {
-        const parts = fileData.split(','); const mimeType = parts[0].match(/:(.*?);/)[1];
-        const blob = Utilities.newBlob(Utilities.base64Decode(parts[1]), mimeType, fileName);
+        const parts = fileData.split(',');
+        const mimeMatch = parts[0].match(/:(.*?);/);
+        if (!mimeMatch) { if (addLog) addLog('⚠️ MIME inválido en: ' + fileName); return; }
+        const mimeType = mimeMatch[1];
+        // Validar tamaño y tipo antes de decodificar
+        const validacion = validarArchivo_(parts[1] || '', mimeType, fileName);
+        if (!validacion.valid) { if (addLog) addLog('⚠️ Archivo rechazado: ' + validacion.error); return; }
+        const blob = Utilities.newBlob(Utilities.base64Decode(parts[1]), mimeType, sanitizeFileName(fileName));
         const file = carpetaCliente.createFile(blob);
         files.push({ name: fileName, label: field.label, url: file.getUrl(), size: data[field.key + '_size'] || 0 });
         if (addLog) addLog(`  - Archivo guardado: ${fileName}`);
@@ -904,6 +970,78 @@ function guardarLogEnDrive(carpetaCliente, logEntries, data) {
   try { const blob = Utilities.newBlob(logEntries.join('\n'), 'text/plain', `LOG_${Utilities.formatDate(new Date(), 'GMT-6', 'yyyyMMdd_HHmmss')}.txt`); carpetaCliente.createFile(blob); } catch (e) {}
 }
 function output_(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
+
+// ── registrarAuditoria_ ──────────────────────────────────────────────────
+/**
+ * Registra cada mutación de datos en la hoja AUDITORIA del Spreadsheet.
+ * Si la hoja no existe, la crea con encabezados automáticamente.
+ *
+ * @param {string} usuario       Email del operador que realizó el cambio
+ * @param {string} accion        Identificador de la operación (ej: 'UPDATE_ESTATUS_EXTERNO')
+ * @param {string} ot            Folio de la OT afectada
+ * @param {string} campo         Nombre del campo modificado
+ * @param {string} valorAnterior Valor antes del cambio
+ * @param {string} valorNuevo    Valor después del cambio
+ */
+function registrarAuditoria_(usuario, accion, ot, campo, valorAnterior, valorNuevo) {
+  try {
+    const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+    let sheet = ss.getSheetByName('AUDITORIA');
+    if (!sheet) {
+      sheet = ss.insertSheet('AUDITORIA');
+      const headers = ['Timestamp', 'Usuario', 'Accion', 'OT', 'Campo', 'Valor_Anterior', 'Valor_Nuevo'];
+      sheet.appendRow(headers);
+      sheet.getRange(1, 1, 1, headers.length)
+           .setFontWeight('bold').setBackground('#1a73e8').setFontColor('#ffffff');
+      sheet.setFrozenRows(1);
+      sheet.setColumnWidth(1, 180); sheet.setColumnWidth(2, 220);
+      Logger.log('Hoja AUDITORIA creada automáticamente.');
+    }
+    sheet.appendRow([
+      new Date(), usuario || 'desconocido', accion, ot, campo,
+      valorAnterior !== undefined ? String(valorAnterior) : '',
+      valorNuevo    !== undefined ? String(valorNuevo)    : ''
+    ]);
+  } catch (e) {
+    Logger.log('registrarAuditoria_ error: ' + e.message);
+  }
+}
+
+// ── validarRFC_ ───────────────────────────────────────────────────────────
+/**
+ * Valida el formato de un RFC mexicano (personas morales 12 chars, físicas 13).
+ * Acepta la cadena especial 'SIN_RFC' para casos donde no aplica.
+ */
+function validarRFC_(rfc) {
+  if (rfc === 'SIN_RFC') return true;
+  return /^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/.test(rfc);
+}
+
+// ── validarArchivo_ ───────────────────────────────────────────────────────
+/**
+ * Valida tamaño (desde longitud base64) y tipo MIME de un archivo.
+ * Tamaño máximo: 50 MB. Solo tipos de negocio permitidos.
+ */
+function validarArchivo_(content, mimeType, fileName) {
+  const MAX_BYTES = 50 * 1024 * 1024; // 50 MB
+  const ALLOWED_MIMES = [
+    'application/pdf',
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  ];
+  // Estimación de bytes a partir de longitud base64 (evita decode costoso)
+  const estimatedBytes = Math.ceil((content || '').length * 0.75);
+  if (estimatedBytes > MAX_BYTES) {
+    return { valid: false, error: 'Archivo "' + fileName + '" supera el límite de 50 MB.' };
+  }
+  if (!ALLOWED_MIMES.includes(mimeType)) {
+    return { valid: false, error: 'Tipo de archivo no permitido: "' + mimeType + '". Solo PDF, imágenes y Office.' };
+  }
+  return { valid: true };
+}
 function autorizarPermisos() {
   var tempFolder = DriveApp.createFolder("Test_Permisos_EA");
   tempFolder.setTrashed(true);
