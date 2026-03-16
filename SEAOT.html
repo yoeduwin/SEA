@@ -313,6 +313,13 @@
     'workSchedule':'D23','reportRecipientName':'D26','reportEmail':'D30','reportRecipientPosition':'D28'
   };
 
+  // ── Utilidad de seguridad: escapa caracteres HTML para evitar XSS ──────────
+  function escHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
+  }
+
   // ================== BÚSQUEDA BD MULTI-SUCURSAL ==================
   function openDbSearchModal() {
     document.getElementById('dbSearchModal').style.display = 'flex';
@@ -335,19 +342,37 @@
 
       if(data.found && data.resultados && data.resultados.length > 0) {
         window._returningClientBranches = data.resultados;
-        let optionsHtml = '<option value="">-- Seleccione empresa + sucursal --</option>';
+        // Construir selector con DOM para evitar XSS en razon_social / sucursal
+        resultDiv.innerHTML = '';
+        const countEl = document.createElement('strong');
+        countEl.textContent = `Se encontraron ${data.resultados.length} resultado(s):`;
+        resultDiv.appendChild(countEl);
+        resultDiv.appendChild(document.createElement('br'));
+        resultDiv.appendChild(document.createElement('br'));
+        const lbl = document.createElement('label');
+        lbl.style.cssText = 'font-size:11px; font-weight:bold; color:#1e5a3e;';
+        lbl.textContent = 'Seleccione empresa + sucursal para la OT:';
+        resultDiv.appendChild(lbl);
+        const sel = document.createElement('select');
+        sel.id = 'branchSelectModal';
+        sel.style.cssText = 'width:100%; padding:8px; margin-top:5px; margin-bottom:15px; border:1px solid #ccc; border-radius:4px;';
+        const defaultOpt = document.createElement('option');
+        defaultOpt.value = ''; defaultOpt.textContent = '-- Seleccione empresa + sucursal --';
+        sel.appendChild(defaultOpt);
         data.resultados.forEach((item, idx) => {
           const label = item.sucursal ? `${item.razon_social} - ${item.sucursal}` : `${item.razon_social} (Matriz)`;
-          optionsHtml += `<option value="${idx}">🏢 ${label}</option>`;
+          const opt = document.createElement('option');
+          opt.value = idx;
+          opt.textContent = `🏢 ${label}`;  // textContent es seguro
+          sel.appendChild(opt);
         });
-        resultDiv.innerHTML = `
-          <strong>Se encontraron ${data.resultados.length} resultado(s):</strong><br><br>
-          <label style="font-size:11px; font-weight:bold; color:#1e5a3e;">Seleccione empresa + sucursal para la OT:</label>
-          <select id="branchSelectModal" style="width:100%; padding:8px; margin-top:5px; margin-bottom:15px; border:1px solid #ccc; border-radius:4px;">
-            ${optionsHtml}
-          </select>
-          <button type="button" onclick="applyClientData()" style="background:#1e5a3e; color:#fff; border:none; padding:10px 25px; border-radius:5px; font-size:13px; font-weight:600; cursor:pointer; width:100%;">Cargar Datos</button>
-        `;
+        resultDiv.appendChild(sel);
+        const btn2 = document.createElement('button');
+        btn2.type = 'button';
+        btn2.textContent = 'Cargar Datos';
+        btn2.style.cssText = 'background:#1e5a3e; color:#fff; border:none; padding:10px 25px; border-radius:5px; font-size:13px; font-weight:600; cursor:pointer; width:100%;';
+        btn2.onclick = applyClientData;
+        resultDiv.appendChild(btn2);
       } else {
         resultDiv.innerHTML = '<span style="color:#856404; background:#fff3cd; padding:5px; border-radius:3px;">No se encontraron clientes con ese nombre. Puedes cargar el Excel.</span>';
       }
