@@ -84,7 +84,7 @@ const SEAAuth = (() => {
         <h2 style="margin:0 0 8px;font-size:22px;color:#202124;font-weight:500;">
           Ejecutiva Ambiental
         </h2>
-        <p style="margin:0 0 4px;color:#5f6368;font-size:13px;">Sistema de Gestión Interno</p>
+        <p style="margin:0 0 4px;color:#5f6368;font-size:13px;">SISTEMA DE GESTIÓN EJECUTIVA</p>
         <p style="margin:0 0 28px;color:#5f6368;font-size:13px;">
           Inicia sesión con tu cuenta Google autorizada.
         </p>
