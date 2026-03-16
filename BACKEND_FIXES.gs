@@ -33,7 +33,7 @@ const CONFIG = {
 //   EITHER    → acepta id_token (Google) o recaptcha_token
 //
 // Páginas internas con Google Auth: SEADB, SEAOT, SEAINF
-// Portales públicos con reCAPTCHA:  paic.html, SEAPD.html (registro de clientes)
+// Portales públicos con reCAPTCHA:  PAIC.html, SEAPD.html (registro de clientes)
 //
 // Módulos para control por columna en USUARIOS_AUTORIZADOS:
 //   SEADB → Dashboard / control de entregas
@@ -47,7 +47,7 @@ const AUTH_MODE = {
   updateEstatus:          'GOOGLE',
   updateResponsable:      'GOOGLE',
   // SEAOT
-  buscarClienteRFC:       'EITHER',   // SEAOT usa Google Auth; paic/SEAPD (públicos) usan reCAPTCHA
+  buscarClienteRFC:       'EITHER',   // SEAOT usa Google Auth; PAIC/SEAPD (públicos) usan reCAPTCHA
   buscarClienteNombre:    'EITHER',   // igual que buscarClienteRFC
   registrarOT:            'GOOGLE',
   // SEAINF
@@ -57,7 +57,7 @@ const AUTH_MODE = {
   addFilesToExpediente:   'GOOGLE',
   updateEstatusInforme:   'GOOGLE',
   // ── Requiere reCAPTCHA (portales públicos de registro de clientes) ────────
-  // paic.html y SEAPD.html son portales donde los CLIENTES se registran
+  // PAIC.html y SEAPD.html son portales donde los CLIENTES se registran
   registrarCliente:       'RECAPTCHA',
   // ── Ping de verificación previo a la carga de la app ────────────────────
   // auth.js llama esto ANTES de mostrar la UI, para bloquear no autorizados
@@ -359,7 +359,12 @@ function doGet(e) {
 
   try {
     switch(action) {
-      case 'verificarAcceso': return output_({ success: true, email: (function(){ const u = verificarIdToken_(e.parameter.id_token||''); return u ? u.email : ''; })() });
+      case 'verificarAcceso': {
+        const u = verificarIdToken_(e.parameter.id_token || '');
+        const mod = e.parameter.modulo || '';
+        const ok = u && verificarUsuarioAutorizado_(u.email, mod);
+        return output_({ success: !!ok, email: u ? u.email : '' });
+      }
       case 'buscarClienteRFC': return output_(fase2_BuscarClienteRFC(e.parameter.rfc));
       case 'buscarClienteNombre': return output_(fase2_BuscarClienteNombre(e.parameter.nombre));
       case 'getTablero': return output_(fase4_GetTablero());

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema Interno - Ejecutiva Ambiental</title>
+  <link rel="icon" href="data:," />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: #f5f7fa;
+      color: #2c3e50;
+      min-height: 100vh;
+    }
+
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, #2d5f4f 0%, #3d7f6a 100%);
+      color: white;
+      padding: 1.2rem 2rem;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .header-title { font-size: 1.3rem; font-weight: 600; }
+    .header-subtitle { font-size: 0.85rem; opacity: 0.8; margin-top: 2px; }
+    #sea-user-info { display: flex; align-items: center; gap: 6px; }
+
+    /* Main content */
+    #app { display: none; }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 3rem 1.5rem;
+    }
+    .section-title {
+      text-align: center;
+      font-size: 1.1rem;
+      color: #7f8c8d;
+      margin-bottom: 2.5rem;
+      font-weight: 400;
+    }
+
+    /* Module grid */
+    .modules-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+    }
+    @media (max-width: 700px) {
+      .modules-grid { grid-template-columns: 1fr; }
+    }
+
+    /* Module card */
+    .module-card {
+      background: white;
+      border-radius: 12px;
+      padding: 2rem 1.5rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      text-decoration: none;
+      color: inherit;
+      border: 2px solid transparent;
+      transition: all 0.25s;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      cursor: pointer;
+    }
+    .module-card.active:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 20px rgba(45,95,79,0.18);
+      border-color: #2d5f4f;
+    }
+    .module-card.disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      pointer-events: none;
+      filter: grayscale(0.4);
+    }
+
+    .module-icon {
+      font-size: 2.8rem;
+      margin-bottom: 1rem;
+      line-height: 1;
+    }
+    .module-name {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #2d5f4f;
+      margin-bottom: 0.4rem;
+      letter-spacing: 0.5px;
+    }
+    .module-card.disabled .module-name { color: #95a5a6; }
+    .module-desc {
+      font-size: 0.82rem;
+      color: #7f8c8d;
+      line-height: 1.5;
+    }
+    .module-badge {
+      margin-top: 1.2rem;
+      padding: 0.3rem 0.9rem;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .badge-active {
+      background: #e8f5f0;
+      color: #2d5f4f;
+    }
+    .badge-disabled {
+      background: #f0f0f0;
+      color: #95a5a6;
+    }
+
+    /* Loading state */
+    .loading-modules {
+      text-align: center;
+      padding: 3rem;
+      color: #7f8c8d;
+    }
+    .spinner {
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #2d5f4f;
+      border-radius: 50%;
+      width: 36px;
+      height: 36px;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 1rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div>
+      <div class="header-title">Ejecutiva Ambiental</div>
+      <div class="header-subtitle">Sistema de Gestión Interno</div>
+    </div>
+    <div id="sea-user-info"></div>
+  </div>
+
+  <div id="app">
+    <div class="container">
+      <p class="section-title">Selecciona el módulo al que deseas acceder</p>
+
+      <div id="modules-loading" class="loading-modules">
+        <div class="spinner"></div>
+        <p>Verificando accesos...</p>
+      </div>
+
+      <div id="modules-grid" class="modules-grid" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- Google Identity Services -->
+  <script src="https://accounts.google.com/gsi/client" async defer
+          onload="window.onGISLoaded && window.onGISLoaded()"></script>
+  <script src="auth.js"></script>
+  <script>
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby8t7Py-cilePxLiGa-Lq7Df73XaRlmkRYV_kXbTs79HFydaJyub8muA0PBLRkPevUuXg/exec';
+
+    const MODULES = [
+      {
+        id: 'SEAOT',
+        icon: '📋',
+        name: 'SEAOT',
+        title: 'Órdenes de Trabajo',
+        desc: 'Registro y generación de órdenes de trabajo para clientes',
+        url: 'SEAOT.html'
+      },
+      {
+        id: 'SEADB',
+        icon: '📊',
+        name: 'SEADB',
+        title: 'Panel de Control',
+        desc: 'Tablero de seguimiento y estatus de entregas',
+        url: 'SEADB.html'
+      },
+      {
+        id: 'SEAINF',
+        icon: '📁',
+        name: 'SEAINF',
+        title: 'Expedientes e Informes',
+        desc: 'Gestión de expedientes y registros de informes',
+        url: 'SEAINF.html'
+      }
+    ];
+
+    async function verificarPermisos(token) {
+      document.getElementById('app').style.display = 'block';
+
+      try {
+        const checks = await Promise.all(
+          MODULES.map(mod =>
+            fetch(`${SCRIPT_URL}?action=verificarAcceso&id_token=${encodeURIComponent(token)}&modulo=${mod.id}`)
+              .then(r => r.json())
+              .catch(() => ({ success: false }))
+          )
+        );
+
+        renderModules(checks);
+      } catch (_) {
+        renderModules(MODULES.map(() => ({ success: false })));
+      }
+    }
+
+    function renderModules(checks) {
+      document.getElementById('modules-loading').style.display = 'none';
+      const grid = document.getElementById('modules-grid');
+      grid.style.display = 'grid';
+
+      grid.innerHTML = MODULES.map((mod, i) => {
+        const hasAccess = checks[i] && checks[i].success;
+        if (hasAccess) {
+          return `
+            <a class="module-card active" href="${mod.url}">
+              <div class="module-icon">${mod.icon}</div>
+              <div class="module-name">${mod.name}</div>
+              <div class="module-desc">${mod.desc}</div>
+              <span class="module-badge badge-active">Acceso permitido</span>
+            </a>`;
+        } else {
+          return `
+            <div class="module-card disabled">
+              <div class="module-icon">${mod.icon}</div>
+              <div class="module-name">${mod.name}</div>
+              <div class="module-desc">${mod.desc}</div>
+              <span class="module-badge badge-disabled">Sin acceso</span>
+            </div>`;
+        }
+      }).join('');
+    }
+
+    SEAAuth.init(function(token, payload) {
+      verificarPermisos(token);
+    }, { gasUrl: SCRIPT_URL });
+  </script>
+</body>
+</html>
