@@ -1027,11 +1027,14 @@ function fase4_GetTablero() {
       nom:              row[CO.NOM],
       cliente:          row[CO.CLIENTE],
       sucursal:         row[CO.SUCURSAL],
+      rfc:              rfc,
+      tipo_orden:       row[CO.TIPO],
       personal:         row[CO.PERSONAL],
       fecha_visita:     row[CO.FECHA_VISITA],
       fechaEntrega:     row[CO.FECHA_ENTREGA],
       fechaRealEntrega: row[CO.FECHA_REAL],
       estatus:          row[CO.ESTATUS_EXTERNO],
+      estatus_informe:  row[CO.ESTATUS_INFORME],
       link_drive:       row[CO.LINK_DRIVE],
       asesor_consultor: asesorMap[rfc + '|' + suc] || ''
     };
