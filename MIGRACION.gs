@@ -1,24 +1,24 @@
 // =========================================================================
 //  MIGRACIÓN DE DATOS ANTERIORES — Ejecutiva Ambiental
-//  Archivo independiente. NO modifica BACKEND_FIXES.gs.
+//  Lee del sistema SEAINF anterior (hoja "Informes") y escribe en el nuevo
+//  sistema SEA v3.0 (ORDENES_TRABAJO + CLIENTES_MAESTRO).
 //
-//  ANTES DE EJECUTAR:
-//  1. Reemplaza SOURCE_SPREADSHEET_ID con el ID de tu Sheet anterior
-//     (está en la URL: docs.google.com/spreadsheets/d/ESTE_ES_EL_ID/edit)
-//  2. Reemplaza SOURCE_SHEET_NAME con el nombre exacto de la pestaña
-//  3. Reemplaza DEST_SPREADSHEET_ID con el ID del Spreadsheet del sistema
-//  4. Ejecuta migrarDatosAnteriores() desde el editor GAS
-//  5. Revisa el Logger (Ver → Registros) para el resumen
+//  PARA EJECUTAR:
+//  1. Copia este archivo en el editor de Google Apps Script del proyecto SEA v3.0
+//  2. Ejecuta migrarDatosAnteriores() desde el editor
+//  3. Revisa Ver → Registros para el resumen
 //
-//  Columnas asumidas en el Sheet origen (fila 1 = encabezados):
-//  A=# | B=OrdenTrabajo | C=Cotización | D=CLIENTE INICIAL | E=CLIENTE FINAL
-//  F=NOM | G=Proveedor | H=Personal | I=FECHA VISITA | ... | N=FECHA INFORME DIGITAL
-//  O=FECHA INFORME FÍSICO | P=ESTATUS
+//  Estructura origen — hoja "Informes" (17 columnas A-Q):
+//  A[0]=Timestamp  B[1]=NumInforme  C[2]=TipoOrden  D[3]=OT
+//  E[4]=NOM  F[5]=Cliente  G[6]=Solicitante  H[7]=RFC
+//  I[8]=Telefono  J[9]=Direccion  K[10]=FechaServicio  L[11]=FechaEntrega
+//  M[12]=EsCapacitacion  N[13]=Estatus  O[14]=LinkDrive
+//  P[15]=Responsable  Q[16]=Sucursal
 // =========================================================================
 
-var SOURCE_SPREADSHEET_ID = 'REEMPLAZA_CON_ID_SHEET_ANTERIOR';
-var SOURCE_SHEET_NAME     = 'REEMPLAZA_CON_NOMBRE_PESTANA';    // ej. 'PANEL'
-var DEST_SPREADSHEET_ID   = 'REEMPLAZA_CON_ID_SHEET_SISTEMA';  // el mismo que CONFIG.SPREADSHEET_ID
+var SOURCE_SPREADSHEET_ID = '1aa2uX6gqHINUP_h-HcNsxJzlwSI1OnSVzqMaFaI_8NE';
+var SOURCE_SHEET_NAME     = 'Informes';
+var DEST_SPREADSHEET_ID   = '1MoScea4CYg0NCjvPjHqZwV0cKhrd2nxfW8LYhz_4pDo';
 
 function migrarDatosAnteriores() {
 
@@ -46,82 +46,119 @@ function migrarDatosAnteriores() {
   var skipped  = 0;
   var migradas = 0;
 
+  // Fila 1 = encabezados, se omite (i empieza en 1)
   for (var i = 1; i < srcData.length; i++) {
     var row = srcData[i];
 
-    // Ignorar filas vacías o con errores (#REF!)
-    var folio = String(row[1] || '').trim();
-    if (!folio || folio.indexOf('#') === 0) { skipped++; continue; }
+    // Ignorar filas con OT vacía o con errores (#REF!, #N/A, etc.)
+    var ot = String(row[3] || '').trim();
+    if (!ot || ot.indexOf('#') === 0) { skipped++; continue; }
 
     // ── Mapeo de columnas origen ─────────────────────────────────────────
-    var cotizacion     = String(row[2]  || '').trim();   // C — Cotización
-    var empresa        = String(row[3]  || '').trim();   // D — CLIENTE INICIAL = Razón Social
-    var sucursal       = String(row[4]  || '').trim();   // E — CLIENTE FINAL   = Sucursal
-    var nomServicio    = String(row[5]  || '').trim();   // F — NOM
-    // row[6] = Proveedor — no se migra
-    var personal       = String(row[7]  || '').trim();   // H — Personal
-    var fechaVisita    = row[8]  || '';                  // I — Fecha Visita
-    // row[9..12] = SignatarioReal, Equipos, Informe, col-O — ignorar
-    var fechaEntrega   = row[13] || '';                  // N — Fecha Informe Digital
-    var fechaFisicoRaw = row[14];                        // O — Fecha Informe Físico
-    var fechaFisico    = fechaFisicoRaw
-      ? Utilities.formatDate(new Date(fechaFisicoRaw), Session.getScriptTimeZone(), 'dd/MM/yyyy')
-      : '';
-    var estatusRaw     = row[15] || '';                  // P — Estatus
+    var timestamp    = row[0]  || hoy;
+    var numInforme   = String(row[1]  || '').trim();
+    var tipoOrden    = String(row[2]  || 'OT').trim().toUpperCase();
+    // ot ya está leído arriba
+    var nom          = String(row[4]  || '').trim();
+    var cliente      = String(row[5]  || '').trim();
+    var solicitante  = String(row[6]  || '').trim();
+    var rfc          = String(row[7]  || '').trim();
+    var telefono     = String(row[8]  || '').trim();
+    var direccion    = String(row[9]  || '').trim();
+    var fechaVisita  = row[10] || '';
+    var fechaEntrega = row[11] || '';
+    var esCapac      = String(row[12] || '').trim().toUpperCase();
+    var estatusRaw   = String(row[13] || '').trim().toUpperCase();
+    var linkDrive    = String(row[14] || '').trim();
+    var responsable  = String(row[15] || '').trim();
+    var sucursal     = String(row[16] || '').trim();
 
-    // ── Tipo Orden desde el folio (OTB25-xx → OTB, resto → OT) ─────────
-    var tipoOrden = folio.toUpperCase().indexOf('OTB') === 0 ? 'OTB' : 'OT';
+    // ── Normalizar TipoOrden ─────────────────────────────────────────────
+    if (tipoOrden !== 'OTB') tipoOrden = 'OT';
 
-    // ── Normalizar Estatus ───────────────────────────────────────────────
-    var estatusNorm = 'NO INICIADO';
-    var estatusStr  = String(estatusRaw).toUpperCase().trim();
-    if (estatusStr === 'TRUE' || estatusStr === 'ENTREGADO' || estatusStr === 'ENTREGADA') {
-      estatusNorm = 'ENTREGADO';
-    } else if (estatusStr === 'EN PROCESO' || estatusStr === 'EN PROGRESO') {
-      estatusNorm = 'EN PROCESO';
+    // ── Normalizar Estatus Externo (visible al cliente) ──────────────────
+    var estatusExterno;
+    if (estatusRaw === 'FINALIZADO' || estatusRaw === 'TRUE' ||
+        estatusRaw === 'ENTREGADO' || estatusRaw === 'ENTREGADA') {
+      estatusExterno = 'ENTREGADO';
+    } else if (estatusRaw === 'EN PROCESO' || estatusRaw === 'EN PROGRESO' ||
+               estatusRaw === 'PARA REVISION' || estatusRaw === 'PARA IMPRESION') {
+      estatusExterno = 'EN PROCESO';
+    } else if (estatusRaw === 'CANCELADO') {
+      estatusExterno = 'CANCELADO';
+    } else {
+      estatusExterno = 'NO INICIADO';
     }
 
-    // ── Observaciones: Cotización + Fecha Informe Físico ────────────────
-    var obs = cotizacion;
-    if (fechaFisico) obs += (obs ? ' | Físico: ' : 'Físico: ') + fechaFisico;
+    // ── Normalizar Estatus Informe (seguimiento interno) ─────────────────
+    var estatusInforme;
+    if (estatusRaw === 'FINALIZADO' || estatusRaw === 'TRUE' ||
+        estatusRaw === 'ENTREGADO' || estatusRaw === 'ENTREGADA') {
+      estatusInforme = 'FINALIZADO';
+    } else if (estatusRaw === 'EN PROCESO' || estatusRaw === 'EN PROGRESO') {
+      estatusInforme = 'EN PROCESO';
+    } else if (estatusRaw === 'PARA REVISION') {
+      estatusInforme = 'PARA REVISION';
+    } else if (estatusRaw === 'PARA IMPRESION') {
+      estatusInforme = 'PARA IMPRESION';
+    } else if (estatusRaw === 'CANCELADO') {
+      estatusInforme = 'CANCELADO';
+    } else {
+      estatusInforme = 'NO INICIADO';
+    }
 
-    // ── Fila destino ORDENES_TRABAJO (16 columnas) ──────────────────────
+    // ── Observaciones: Solicitante + Teléfono + Dirección + Capacitación ─
+    var obs = [];
+    if (solicitante) obs.push('Solicitante: ' + solicitante);
+    if (telefono)    obs.push('Tel: ' + telefono);
+    if (direccion)   obs.push('Dir: ' + direccion);
+    if (esCapac === 'SI') obs.push('Capacitación: SÍ');
+    var observaciones = obs.join(' | ');
+
+    // ── Fila destino ORDENES_TRABAJO (16 columnas, índices 0-15) ─────────
     otRows.push([
-      hoy,           // Col 1  — Fecha Registro
-      folio,         // Col 2  — OT Folio
-      tipoOrden,     // Col 3  — Tipo Orden
-      '',            // Col 4  — Num Informe (vacío)
-      nomServicio,   // Col 5  — Nom Servicio
-      empresa,       // Col 6  — Cliente Razón Social
-      sucursal,      // Col 7  — Sucursal
-      '',            // Col 8  — RFC (pendiente — llenar en Sheets después)
-      personal,      // Col 9  — Personal Asignado
-      fechaVisita,   // Col 10 — Fecha Visita
-      fechaEntrega,  // Col 11 — Fecha Entrega Límite
-      '',            // Col 12 — (vacío)
-      estatusNorm,   // Col 13 — Estatus Externo
-      '',            // Col 14 — Link Drive (no disponible)
-      obs,           // Col 15 — Observaciones
-      'NO INICIADO'  // Col 16 — Estatus Informe (no existía antes)
+      timestamp,      // [0]  FECHA_REGISTRO
+      ot,             // [1]  OT
+      tipoOrden,      // [2]  TIPO
+      numInforme,     // [3]  NUM_INFORME
+      nom,            // [4]  NOM
+      cliente,        // [5]  CLIENTE (Razón Social)
+      sucursal,       // [6]  SUCURSAL
+      rfc,            // [7]  RFC
+      responsable,    // [8]  PERSONAL
+      fechaVisita,    // [9]  FECHA_VISITA
+      fechaEntrega,   // [10] FECHA_ENTREGA
+      '',             // [11] FECHA_REAL (no existía)
+      estatusExterno, // [12] ESTATUS_EXTERNO
+      linkDrive,      // [13] LINK_DRIVE
+      observaciones,  // [14] OBSERVACIONES
+      estatusInforme  // [15] ESTATUS_INFORME
     ]);
     migradas++;
 
-    // ── Acumular clientes únicos para CLIENTES_MAESTRO ──────────────────
-    if (empresa) {
-      var clave = empresa + '||' + sucursal;
+    // ── Acumular clientes únicos para CLIENTES_MAESTRO ───────────────────
+    if (cliente) {
+      var clave = cliente + '||' + sucursal;
       if (!clientesMap[clave]) {
-        clientesMap[clave] = { empresa: empresa, sucursal: sucursal };
+        clientesMap[clave] = {
+          empresa:    cliente,
+          sucursal:   sucursal,
+          rfc:        rfc,
+          direccion:  direccion,
+          telefono:   telefono,
+          solicitante:solicitante
+        };
       }
     }
   }
 
-  // ── Escribir ORDENES_TRABAJO de golpe ────────────────────────────────────
+  // ── Escribir ORDENES_TRABAJO de golpe ─────────────────────────────────
   if (otRows.length > 0) {
     destOT.getRange(destOT.getLastRow() + 1, 1, otRows.length, 16).setValues(otRows);
   }
   Logger.log('✅ ' + migradas + ' órdenes migradas a ORDENES_TRABAJO');
 
-  // ── Escribir CLIENTES_MAESTRO (sin duplicar) ─────────────────────────────
+  // ── Escribir CLIENTES_MAESTRO (sin duplicar) ──────────────────────────
   var clientesExistentes = destClientes.getDataRange().getValues();
   var yaExisten = {};
   for (var j = 1; j < clientesExistentes.length; j++) {
@@ -134,9 +171,18 @@ function migrarDatosAnteriores() {
   for (var cl in clientesMap) {
     if (yaExisten[cl]) continue;
     var c = clientesMap[cl];
+    // 22 columnas: FECHA, RAZON_SOCIAL, SUCURSAL, RFC, REPRESENTANTE,
+    //              DIRECCION, TELEFONO, SOLICITANTE, + 14 vacías
     destClientes.appendRow([
-      hoy, c.empresa, c.sucursal,
-      '', '', '', '', '', '', '', '', '', '', '', '', ''  // 16 columnas
+      hoy,          // [0]  FECHA_REGISTRO
+      c.empresa,    // [1]  RAZON_SOCIAL
+      c.sucursal,   // [2]  SUCURSAL
+      c.rfc,        // [3]  RFC
+      '',           // [4]  REPRESENTANTE
+      c.direccion,  // [5]  DIRECCION
+      c.telefono,   // [6]  TELEFONO
+      c.solicitante,// [7]  SOLICITANTE
+      '', '', '', '', '', '', '', '', '', '', '', '', '', '' // [8-21] vacíos
     ]);
     clientesNuevos++;
   }
@@ -144,6 +190,6 @@ function migrarDatosAnteriores() {
   Logger.log('✅ ' + clientesNuevos + ' clientes nuevos en CLIENTES_MAESTRO');
   Logger.log('⚠️  ' + skipped + ' filas ignoradas (vacías o con errores)');
   Logger.log('──────────────────────────────────────────────────────────────');
-  Logger.log('PENDIENTE: Llenar columna RFC (col D) en CLIENTES_MAESTRO');
-  Logger.log('           para habilitar búsqueda por RFC en SEAOT.');
+  Logger.log('PENDIENTE: Revisar columna RFC en CLIENTES_MAESTRO si algún');
+  Logger.log('           cliente quedó sin RFC para habilitar búsqueda en SEAOT.');
 }
