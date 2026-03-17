@@ -25,7 +25,7 @@
 // =========================================================================
 
 // ─── Datos de prueba ──────────────────────────────────────────────────────
-var TEST_RFC      = 'XTEST000000TST';
+var TEST_RFC      = 'XTES000000TST';
 var TEST_FOLIO    = 'TEST-E2E-001';
 var TEST_FOLIO_B  = 'TEST-E2E-002';
 var TEST_SUCURSAL = 'Sucursal Test E2E';
@@ -739,7 +739,7 @@ function runTest_Email() {
     nombre_solicitante:   'Prueba Automatizada',
     razon_social:         'EMPRESA TEST E2E SA DE CV',
     sucursal:             'Sucursal Test Email',
-    rfc:                  'XTEST000000TST',
+    rfc:                  'XTES000000TST',
     telefono_empresa:     '2220000000',
     representante_legal:  'Rep Legal Test',
     correo_informe:       Session.getActiveUser().getEmail(), // llega a tu propia cuenta
@@ -858,7 +858,7 @@ function runUnitTests() {
 
   // ── Validación de RFC (formato México: 13 chars alfanuméricos) ─────────
   var rfcRegex = /^[A-Z&Ñ]{3,4}[0-9]{6}[A-Z0-9]{3}$/;
-  _check_('U42: RFC persona moral válido XTEST000000TST',    rfcRegex.test(TEST_RFC));
+  _check_('U42: RFC persona física válido XTES000000TST',    rfcRegex.test(TEST_RFC));
   _check_('U43: RFC persona moral válido EMP010101AAA',      rfcRegex.test('EMP010101AAA'));
   _check_('U44: RFC persona física válido GACJ800101H12',    rfcRegex.test('GACJ800101H12'));
   _check_('U45: RFC inválido rechazado (muy corto)',          !rfcRegex.test('EMP01'));

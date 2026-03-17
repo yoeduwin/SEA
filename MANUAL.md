@@ -407,7 +407,7 @@ Registro automático de todos los cambios de estatus. Se crea automáticamente a
 
 ```
 /SEA_ROOT/
-  /XTEST000000TST — EMPRESA EJEMPLO SA DE CV/   ← una por RFC único
+  /XTES000000TST — EMPRESA EJEMPLO SA DE CV/   ← una por RFC único
     /Matriz/                                      ← una por sucursal
       /01_Cliente/                                ← datos del cliente
       /02_Expediente_0001_EA-001_NOM035/          ← por OT+informe
@@ -874,7 +874,7 @@ Cambiar la celda `Activo` de `TRUE` a `FALSE`. El sistema bloqueará el acceso e
 
 | Dato | Valor |
 |---|---|
-| RFC de prueba | `XTEST000000TST` |
+| RFC de prueba | `XTES000000TST` |
 | Folio OT principal | `TEST-E2E-001` |
 | Folio OT secundario | `TEST-E2E-002` |
 | Sucursal | `Sucursal Test E2E` |
@@ -963,7 +963,7 @@ CacheService.getScriptCache().removeAll([]);
 
 **Causa:** La carpeta de prueba en Drive ya fue eliminada en una ejecución anterior.
 
-**Solución:** Es un error no crítico. El test de limpieza intenta borrar lo que puede. Si persiste, buscar y eliminar manualmente carpetas con `XTEST000000TST` en el nombre dentro de la carpeta raíz de Drive.
+**Solución:** Es un error no crítico. El test de limpieza intenta borrar lo que puede. Si persiste, buscar y eliminar manualmente carpetas con `XTES000000TST` en el nombre dentro de la carpeta raíz de Drive.
 
 ---
 
