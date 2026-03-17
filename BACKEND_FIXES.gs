@@ -913,10 +913,9 @@ function getOrdenesSafe_() {
   const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
   const values = sheet.getDataRange().getDisplayValues();
   const ordenes = values.slice(1).filter(row => {
-    // Filtra por estatus INTERNO (col 16, índice 15): excluye informes ya finalizados/cancelados internamente
-    // col 13 (estatus externo) lo gestiona SEADB de forma independiente
-    const estatusInforme = String(row[CO.ESTATUS_INFORME] || '').trim().toUpperCase();
-    return estatusInforme !== 'FINALIZADO' && estatusInforme !== 'CANCELADO';
+    // Filtra por estatus externo (col M, índice 12): excluye informes ya entregados/finalizados/cancelados
+    const estatusExterno = String(row[CO.ESTATUS_EXTERNO] || '').trim().toUpperCase();
+    return estatusExterno !== 'ENTREGADO' && estatusExterno !== 'FINALIZADO' && estatusExterno !== 'CANCELADO';
   }).map(row => ({
     ot:             row[CO.OT],
     tipo_orden:     row[CO.TIPO],
@@ -978,10 +977,10 @@ function updateEstatusInformeSafe_(data, usuario) {
   const values = sheet.getDataRange().getValues();
   for (let i = 1; i < values.length; i++) {
     if (String(values[i][CO.OT]).trim() === String(data.ot).trim()) {
-      const valorAnterior = String(values[i][CO.ESTATUS_INFORME]);
+      const valorAnterior = String(values[i][CO.ESTATUS_EXTERNO]);
       const nuevoEstatus = data.estatus.toUpperCase();
-      sheet.getRange(i + 1, CO.ESTATUS_INFORME + 1).setValue(nuevoEstatus);
-      registrarAuditoria_(usuario || 'desconocido', 'UPDATE_ESTATUS_INFORME', data.ot, 'estatus_informe', valorAnterior, nuevoEstatus);
+      sheet.getRange(i + 1, CO.ESTATUS_EXTERNO + 1).setValue(nuevoEstatus);
+      registrarAuditoria_(usuario || 'desconocido', 'UPDATE_ESTATUS_INFORME', data.ot, 'estatus_externo', valorAnterior, nuevoEstatus);
       return { success: true, message: 'Estatus informe actualizado' };
     }
   }
