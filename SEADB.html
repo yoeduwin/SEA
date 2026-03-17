@@ -244,6 +244,7 @@
                     <div class="filter-group"><label>Cliente Inicial</label><input type="text" id="filter-cliente-inicial" placeholder="Buscar cliente..."></div>
                     <div class="filter-group"><label>Cliente Final</label><input type="text" id="filter-cliente-final" placeholder="Buscar cliente..."></div>
                     <div class="filter-group"><label>NOM</label><input type="text" id="filter-nom" placeholder="Buscar NOM..."></div>
+                    <div class="filter-group"><label>Asesor / Consultor</label><input type="text" id="filter-asesor" placeholder="Buscar asesor o consultor..."></div>
                     <div class="filter-group"><label>Personal Ejecutiva</label><select id="filter-personal"><option value="">Todos</option></select></div>
                     <div class="filter-group">
                         <label>Estatus</label>
@@ -268,11 +269,11 @@
                                 <th onclick="sortTable(0)">OT</th><th onclick="sortTable(1)">Referencia</th><th onclick="sortTable(2)">Cliente Inicial</th>
                                 <th onclick="sortTable(3)">Cliente Final</th><th onclick="sortTable(4)">NOM</th><th onclick="sortTable(5)">Personal</th>
                                 <th onclick="sortTable(6)">F. Visita</th><th onclick="sortTable(7)">F. Digital (+20d)</th><th onclick="sortTable(8)">F. Físico (+25d)</th>
-                                <th onclick="sortTable(9)">Días</th><th onclick="sortTable(10)">Estatus</th><th>Acciones</th>
+                                <th onclick="sortTable(9)">Días</th><th onclick="sortTable(10)">Estatus</th><th>Asesor/Consultor</th><th>Acciones</th>
                             </tr>
                         </thead>
                         <tbody id="tableBody">
-                            <tr><td colspan="12"><div class="loading"><div class="spinner"></div>Cargando datos...</div></td></tr>
+                            <tr><td colspan="13"><div class="loading"><div class="spinner"></div>Cargando datos...</div></td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -441,6 +442,7 @@
                             estatusAuto: estatusAuto,
                             entregadoManual: isEntregado ? 'ENTREGADO' : '',
                             fechaRealEntrega: row.fechaRealEntrega || row.fecha_real_entrega || '',
+                            asesorConsultor: row.asesor_consultor || '',
                             linkOT: linkDriveRaw,
                             rawRow: row
                         };
@@ -595,10 +597,12 @@
             const filterOT = document.getElementById('filter-ot').value.toLowerCase(); const filterClienteInicial = document.getElementById('filter-cliente-inicial').value.toLowerCase();
             const filterClienteFinal = document.getElementById('filter-cliente-final').value.toLowerCase(); const filterNOM = document.getElementById('filter-nom').value.toLowerCase();
             const filterPersonal = document.getElementById('filter-personal').value; const filterEstatus = document.getElementById('filter-estatus').value;
+            const filterAsesor = document.getElementById('filter-asesor').value.toLowerCase();
             filteredData = allData.filter(row => {
                 if (filterOT && !row.ot.toLowerCase().includes(filterOT)) return false; if (filterClienteInicial && !row.clienteInicial.toLowerCase().includes(filterClienteInicial)) return false;
                 if (filterClienteFinal && !row.clienteFinal.toLowerCase().includes(filterClienteFinal)) return false; if (filterNOM && !row.nom.toLowerCase().includes(filterNOM)) return false;
                 if (filterPersonal && row.personal !== filterPersonal) return false; if (filterEstatus && getStatusCategory(row) !== filterEstatus) return false;
+                if (filterAsesor && !row.asesorConsultor.toLowerCase().includes(filterAsesor)) return false;
                 return true;
             });
             updateKPIs(); updateCharts(); updateTable();
@@ -639,7 +643,7 @@
             const tr = document.createElement('tr'); const dias = calcularDiasEntrega(row); const isEntregado = row.entregadoManual.toUpperCase().includes('ENTREGADO');
             tr.innerHTML = `
                 <td><strong>${escHtml(row.ot)}</strong></td><td>${escHtml(row.referencia)}</td><td>${escHtml(row.clienteInicial)}</td><td>${escHtml(row.clienteFinal)}</td><td>${escHtml(row.nom)}</td><td>${escHtml(row.personal)}</td>
-                <td>${escHtml(row.fechaVisita)}</td><td><strong>${escHtml(row.fechaDigital)}</strong></td><td><strong>${escHtml(row.fechaFisico)}</strong></td><td>${dias !== null ? dias : '-'}</td><td>${escHtml(row.estatusAuto)}</td>
+                <td>${escHtml(row.fechaVisita)}</td><td><strong>${escHtml(row.fechaDigital)}</strong></td><td><strong>${escHtml(row.fechaFisico)}</strong></td><td>${dias !== null ? dias : '-'}</td><td>${escHtml(row.estatusAuto)}</td><td>${escHtml(row.asesorConsultor)}</td>
                 <td>
                     <div class="table-action-btns">
                         <button class="action-btn whatsapp" onclick="compartirOT('${escapeQuotes(row.ot)}', '${escapeQuotes(row.nom)}', '${escapeQuotes(row.fechaVisita)}', '${escapeQuotes(row.personal)}', '${escapeQuotes(row.clienteFinal)}')">📤 Compartir</button>
@@ -668,8 +672,8 @@
         }
 
         function exportToCSV() {
-            const headers = ['OT', 'Referencia', 'Cliente Inicial', 'Cliente Final', 'NOM', 'Personal', 'F. Visita', 'F. Digital (+15d)', 'F. Físico (+25d)', 'Días', 'Estatus'];
-            const rows = filteredData.map(row => [row.ot, row.referencia, row.clienteInicial, row.clienteFinal, row.nom, row.personal, row.fechaVisita, row.fechaDigital, row.fechaFisico, calcularDiasEntrega(row) || '', row.estatusAuto]);
+            const headers = ['OT', 'Referencia', 'Cliente Inicial', 'Cliente Final', 'NOM', 'Personal', 'F. Visita', 'F. Digital (+15d)', 'F. Físico (+25d)', 'Días', 'Estatus', 'Asesor/Consultor'];
+            const rows = filteredData.map(row => [row.ot, row.referencia, row.clienteInicial, row.clienteFinal, row.nom, row.personal, row.fechaVisita, row.fechaDigital, row.fechaFisico, calcularDiasEntrega(row) || '', row.estatusAuto, row.asesorConsultor]);
             const csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `ejecutiva_ambiental_${new Date().toISOString().split('T')[0]}.csv`; link.click();
         }
