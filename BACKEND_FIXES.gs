@@ -22,7 +22,7 @@ const CONFIG = {
   SHEET_AUDITORIA:'AUDITORIA',
 
   // ── Zona horaria ─────────────────────────────────────────────────────────
-  TIMEZONE: CONFIG.TIMEZONE,
+  TIMEZONE: 'GMT-6',
 
   // ── Correos de notificación interna ──────────────────────────────────────
   EMAIL_TO: [
