@@ -11,19 +11,101 @@
 //      (sin rfc, SEAINF nunca podía buscar carpeta por RFC → expediente caía en raíz)
 // =========================================================================
 const CONFIG = {
+  // ── Spreadsheet y Drive ─────────────────────────────────────────────────
   SPREADSHEET_ID: '1MoScea4CYg0NCjvPjHqZwV0cKhrd2nxfW8LYhz_4pDo',
+  FOLDER_ID:      '1nHd-70uUeciClDm_3_pgbmqGF7II1lfQ',
+
+  // ── Nombres de hojas ─────────────────────────────────────────────────────
   SHEET_CLIENTES: 'CLIENTES_MAESTRO',
-  SHEET_OT: 'ORDENES_TRABAJO',
-  FOLDER_ID: '1nHd-70uUeciClDm_3_pgbmqGF7II1lfQ',
+  SHEET_OT:       'ORDENES_TRABAJO',
+  SHEET_USUARIOS: 'USUARIOS_AUTORIZADOS',
+  SHEET_AUDITORIA:'AUDITORIA',
+
+  // ── Zona horaria ─────────────────────────────────────────────────────────
+  TIMEZONE: CONFIG.TIMEZONE,
+
+  // ── Correos de notificación interna ──────────────────────────────────────
   EMAIL_TO: [
     'direccion.general@ejecutivambiental.com',
     'operaciones@ejecutivambiental.com',
     'aclientes@ejecutivambiental.com'
   ],
+
+  // ── Datos de contacto de soporte (aparecen en correos al cliente) ─────────
+  SUPPORT_EMAIL: 'aclientes@ejecutivambiental.com',
+  SUPPORT_PHONE: '222 941 7295',
+
+  // ── Identidad de la empresa ───────────────────────────────────────────────
   COMPANY_NAME: 'Ejecutiva Ambiental',
+
+  // ── Reintentos de correo ──────────────────────────────────────────────────
   EMAIL_RETRY_ATTEMPTS: 3,
-  EMAIL_RETRY_DELAY_MS: 2000
+  EMAIL_RETRY_DELAY_MS: 2000,
+
+  // ── Estructura de subcarpetas en cada expediente Drive ────────────────────
+  FOLDER_STRUCTURE: {
+    ORDEN_TRABAJO: '1. ORDEN_TRABAJO',
+    HOJAS_CAMPO:   '2. HDC',
+    CROQUIS:       '3. CROQUIS',
+    FOTOS:         '4. FOTOS'
+  },
+
+  // ── Índices de columna (0-based) por hoja ────────────────────────────────
+  COLUMNS: {
+    CLIENTES: {
+      FECHA_REGISTRO:   0,
+      RAZON_SOCIAL:     1,
+      SUCURSAL:         2,
+      RFC:              3,
+      REPRESENTANTE:    4,
+      DIRECCION:        5,
+      TELEFONO:         6,
+      SOLICITANTE:      7,
+      CORREO:           8,
+      GIRO:             9,
+      REGISTRO_PATRONAL:10,
+      CAP_INSTALADA:    11,
+      CAP_OPERACION:    12,
+      DIAS_TURNOS:      13,
+      APLICA_NOM020:    14,
+      REQUIERE_PIPC:    15,
+      RESPONSABLE:      16,
+      TEL_RESPONSABLE:  17,
+      NOMBRE_DIRIGIDO:  18,
+      PUESTO_DIRIGIDO:  19,
+      LINK_DRIVE:       20,
+      ASESOR_CONSULTOR: 21
+    },
+    ORDENES: {
+      FECHA:            0,
+      OT:               1,
+      TIPO:             2,
+      NUM_INFORME:      3,
+      NOM:              4,
+      CLIENTE:          5,
+      SUCURSAL:         6,
+      RFC:              7,
+      PERSONAL:         8,
+      FECHA_VISITA:     9,
+      FECHA_ENTREGA:    10,
+      FECHA_REAL:       11,
+      ESTATUS_EXTERNO:  12,
+      LINK_DRIVE:       13,
+      OBSERVACIONES:    14,
+      ESTATUS_INFORME:  15
+    },
+    USUARIOS: {
+      EMAIL:  0,
+      NOMBRE: 1,
+      ROL:    2,
+      ACTIVO: 3
+    }
+  }
 };
+// Shorthands de columnas para legibilidad en funciones
+const CL = CONFIG.COLUMNS.CLIENTES;
+const CO = CONFIG.COLUMNS.ORDENES;
+const CU = CONFIG.COLUMNS.USUARIOS;
 // =========================================================================
 // MÓDULO DE SEGURIDAD — Autenticación Google OAuth + reCAPTCHA v3
 // =========================================================================
@@ -138,10 +220,10 @@ function verificarUsuarioAutorizado_(email, modulo) {
 
   try {
     const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-    const sheet = ss.getSheetByName('USUARIOS_AUTORIZADOS');
+    const sheet = ss.getSheetByName(CONFIG.SHEET_USUARIOS);
 
     if (!sheet) {
-      Logger.log('Hoja USUARIOS_AUTORIZADOS no existe. Ejecuta crearHojaUsuarios() desde el editor GAS.');
+      Logger.log('Hoja ' + CONFIG.SHEET_USUARIOS + ' no existe. Ejecuta setupSheets() desde el editor GAS.');
       return false;
     }
 
@@ -153,8 +235,8 @@ function verificarUsuarioAutorizado_(email, modulo) {
     const moduloCol = modulo ? headers.indexOf(modulo.toUpperCase()) : -1;
 
     for (let i = 1; i < data.length; i++) {
-      const rowEmail = String(data[i][0]).toLowerCase().trim();
-      const activo   = data[i][3]; // columna D: Activo
+      const rowEmail = String(data[i][CU.EMAIL]).toLowerCase().trim();
+      const activo   = data[i][CU.ACTIVO];
 
       if (rowEmail !== emailLower) continue;
       if (activo !== true) {
@@ -205,14 +287,14 @@ function crearHojaUsuarios() {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
 
   // Eliminar hoja existente si hay
-  const existing = ss.getSheetByName('USUARIOS_AUTORIZADOS');
+  const existing = ss.getSheetByName(CONFIG.SHEET_USUARIOS);
   if (existing) {
     ss.deleteSheet(existing);
     Logger.log('Hoja anterior eliminada.');
   }
 
   // Crear nueva hoja
-  const sheet = ss.insertSheet('USUARIOS_AUTORIZADOS');
+  const sheet = ss.insertSheet(CONFIG.SHEET_USUARIOS);
 
   // Encabezados — SEADB | SEAOT | SEAINF controlan acceso por módulo
   const headers = ['Email', 'Nombre', 'Rol', 'Activo (TRUE/FALSE)', 'Fecha Alta', 'SEADB', 'SEAOT', 'SEAINF', 'Notas'];
@@ -235,10 +317,104 @@ function crearHojaUsuarios() {
   sheet.setColumnWidth(2, 200); // Nombre
   sheet.setColumnWidth(5, 120); // Fecha Alta
 
-  Logger.log('✅ Hoja USUARIOS_AUTORIZADOS creada con 4 usuarios.');
+  Logger.log('✅ Hoja ' + CONFIG.SHEET_USUARIOS + ' creada con 4 usuarios.');
   Logger.log('   Para agregar/desactivar usuarios: edita directamente la hoja.');
   Logger.log('   Columnas SEADB/SEAOT/SEAINF: TRUE = acceso permitido, FALSE = bloqueado.');
   Logger.log('   El GAS refresca permisos en máximo 10 minutos (cache).');
+}
+
+// =========================================================================
+// SETUP — Inicialización del Spreadsheet
+// =========================================================================
+/**
+ * setupSheets()
+ *
+ * Crea todas las hojas necesarias para el sistema SEA si no existen.
+ * Ejecutar UNA VEZ desde el editor de GAS (menú Ejecutar → setupSheets)
+ * al desplegar el sistema en un Spreadsheet nuevo.
+ *
+ * Hojas que crea / verifica:
+ *   1. CLIENTES_MAESTRO   — registro maestro de clientes y sucursales
+ *   2. ORDENES_TRABAJO    — órdenes de trabajo (OTs)
+ *   3. USUARIOS_AUTORIZADOS — control de acceso por módulo
+ *   4. AUDITORIA          — log de cambios (se auto-crea al primer cambio,
+ *                           pero aquí se puede precrear con formato)
+ *
+ * Las hojas ya existentes NO se tocan ni se eliminan.
+ */
+function setupSheets() {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const headerStyle = (range) => range
+    .setFontWeight('bold')
+    .setBackground(CONFIG.COLUMNS ? '#1e5a3e' : '#1a73e8') // verde corporativo
+    .setFontColor('#ffffff')
+    .setFrozenRows(1);
+
+  // ── 1. CLIENTES_MAESTRO ────────────────────────────────────────────────
+  if (!ss.getSheetByName(CONFIG.SHEET_CLIENTES)) {
+    const s = ss.insertSheet(CONFIG.SHEET_CLIENTES);
+    const headers = [
+      'Fecha Registro', 'Razón Social', 'Sucursal', 'RFC',
+      'Representante Legal', 'Dirección Evaluación', 'Teléfono Empresa',
+      'Contacto (Solicitante)', 'Email Contacto', 'Giro / Actividad',
+      'Registro Patronal', 'Capacidad Instalada', 'Capacidad Operación',
+      'Días / Turnos', 'Aplica NOM-020', 'Requiere PIPC',
+      'Nombre quien Atiende', 'Teléfono quien Atiende',
+      'A quien se dirige informe', 'Puesto a quien se dirige',
+      'Link Drive', 'Asesor / Consultor'
+    ];
+    s.appendRow(headers);
+    headerStyle(s.getRange(1, 1, 1, headers.length));
+    s.setColumnWidth(2, 220); s.setColumnWidth(3, 160); s.setColumnWidth(4, 140);
+    s.setColumnWidth(5, 200); s.setColumnWidth(6, 260); s.setColumnWidth(9, 220);
+    Logger.log('✅ Hoja ' + CONFIG.SHEET_CLIENTES + ' creada.');
+  } else {
+    Logger.log('ℹ️  Hoja ' + CONFIG.SHEET_CLIENTES + ' ya existe — sin cambios.');
+  }
+
+  // ── 2. ORDENES_TRABAJO ─────────────────────────────────────────────────
+  if (!ss.getSheetByName(CONFIG.SHEET_OT)) {
+    const s = ss.insertSheet(CONFIG.SHEET_OT);
+    const headers = [
+      'Fecha Alta', 'OT Folio', 'Tipo Orden', 'Num Informe', 'NOM / Servicio',
+      'Cliente Inicial (Razón Social)', 'Cliente Final (Sucursal)', 'RFC',
+      'Personal Asignado', 'Fecha Visita', 'Fecha Entrega Límite',
+      'Fecha Real Entrega', 'Estatus (Externo SEADB)', 'Link Drive',
+      'Observaciones', 'Estatus Informe (Interno SEAINF)'
+    ];
+    s.appendRow(headers);
+    headerStyle(s.getRange(1, 1, 1, headers.length));
+    s.setColumnWidth(2, 130); s.setColumnWidth(6, 220); s.setColumnWidth(7, 180);
+    s.setColumnWidth(9, 160); s.setColumnWidth(14, 280);
+    Logger.log('✅ Hoja ' + CONFIG.SHEET_OT + ' creada.');
+  } else {
+    Logger.log('ℹ️  Hoja ' + CONFIG.SHEET_OT + ' ya existe — sin cambios.');
+  }
+
+  // ── 3. USUARIOS_AUTORIZADOS ────────────────────────────────────────────
+  if (!ss.getSheetByName(CONFIG.SHEET_USUARIOS)) {
+    crearHojaUsuarios(); // reutiliza la función existente que ya tiene usuarios iniciales
+  } else {
+    Logger.log('ℹ️  Hoja ' + CONFIG.SHEET_USUARIOS + ' ya existe — sin cambios.');
+  }
+
+  // ── 4. AUDITORIA ───────────────────────────────────────────────────────
+  if (!ss.getSheetByName(CONFIG.SHEET_AUDITORIA)) {
+    const s = ss.insertSheet(CONFIG.SHEET_AUDITORIA);
+    const headers = ['Timestamp', 'Usuario', 'Accion', 'OT', 'Campo', 'Valor_Anterior', 'Valor_Nuevo'];
+    s.appendRow(headers);
+    const auditHeaderRange = s.getRange(1, 1, 1, headers.length);
+    auditHeaderRange.setFontWeight('bold').setBackground('#1a73e8').setFontColor('#ffffff');
+    s.setFrozenRows(1);
+    s.setColumnWidth(1, 180); s.setColumnWidth(2, 220);
+    Logger.log('✅ Hoja ' + CONFIG.SHEET_AUDITORIA + ' creada.');
+  } else {
+    Logger.log('ℹ️  Hoja ' + CONFIG.SHEET_AUDITORIA + ' ya existe — sin cambios.');
+  }
+
+  Logger.log('');
+  Logger.log('=== setupSheets() completado ===');
+  Logger.log('Hojas verificadas: ' + [CONFIG.SHEET_CLIENTES, CONFIG.SHEET_OT, CONFIG.SHEET_USUARIOS, CONFIG.SHEET_AUDITORIA].join(', '));
 }
 
 // ── verificarRecaptcha_ ───────────────────────────────────────────────────
@@ -433,7 +609,7 @@ function fase1_RegistrarCliente(data) {
     }
     const companyClean = cleanCompanyName(data.razon_social || 'Cliente');
     const branchClean = sanitizeFileName(data.sucursal || 'Matriz');
-    const timestamp = Utilities.formatDate(new Date(), 'GMT-6', 'yyMMdd');
+    const timestamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'yyMMdd');
     // 1. LÓGICA DE CARPETA PADRE (Empresa)
     const parentFolderName = `${rfcClean} - ${companyClean}`;
     let parentFolder;
@@ -463,7 +639,7 @@ function fase1_RegistrarCliente(data) {
     let sheet = ss.getSheetByName(CONFIG.SHEET_CLIENTES);
 
     const rowData = [
-      Utilities.formatDate(new Date(), 'GMT-6', 'dd/MM/yyyy HH:mm:ss'), // 1. Fecha Registro
+      Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'dd/MM/yyyy HH:mm:ss'), // 1. Fecha Registro
       data.razon_social || '',                                          // 2. Razón Social
       data.sucursal || '',                                              // 3. Sucursal
       data.rfc || '',                                                   // 4. RFC
@@ -529,24 +705,24 @@ function fase2_BuscarClienteRFC(rfcBuscado) {
   let razonSocialFija = "";
   let setSucursalesUnicas = new Set();
   for (let i = data.length - 1; i >= 1; i--) {
-    const rfcFila = String(data[i][3]).toUpperCase().trim();
+    const rfcFila = String(data[i][CL.RFC]).toUpperCase().trim();
     if (rfcFila === rfcBuscado.toUpperCase().trim()) {
-      const nombreSucursal = String(data[i][2]).trim() || 'Matriz';
+      const nombreSucursal = String(data[i][CL.SUCURSAL]).trim() || 'Matriz';
       if (!setSucursalesUnicas.has(nombreSucursal)) {
         setSucursalesUnicas.add(nombreSucursal);
-        if (!razonSocialFija) razonSocialFija = data[i][1];
+        if (!razonSocialFija) razonSocialFija = data[i][CL.RAZON_SOCIAL];
         sucursalesEncontradas.push({
-          razon_social: data[i][1],
-          sucursal: nombreSucursal,
-          rfc: data[i][3],
-          nombre_solicitante: data[i][7],   // col 8
-          correo_informe: data[i][8],        // col 9
-          telefono_empresa: data[i][6],      // col 7
-          representante_legal: data[i][4],   // col 5
-          direccion_evaluacion: data[i][5],  // col 6
-          giro: data[i][9],                  // col 10
-          registro_patronal: data[i][10],    // col 11
-          link_drive_cliente: data[i][20]    // col 21 (índice 20) — esquema 21 col
+          razon_social:        data[i][CL.RAZON_SOCIAL],
+          sucursal:            nombreSucursal,
+          rfc:                 data[i][CL.RFC],
+          nombre_solicitante:  data[i][CL.SOLICITANTE],
+          correo_informe:      data[i][CL.CORREO],
+          telefono_empresa:    data[i][CL.TELEFONO],
+          representante_legal: data[i][CL.REPRESENTANTE],
+          direccion_evaluacion:data[i][CL.DIRECCION],
+          giro:                data[i][CL.GIRO],
+          registro_patronal:   data[i][CL.REGISTRO_PATRONAL],
+          link_drive_cliente:  data[i][CL.LINK_DRIVE]
         });
       }
     }
@@ -564,24 +740,24 @@ function fase2_BuscarClienteNombre(nombreBuscado) {
   var setUnicos = new Set();
   var termino = nombreBuscado.toUpperCase().trim();
   for (var i = data.length - 1; i >= 1; i--) {
-    var razonSocial = String(data[i][1]).toUpperCase().trim();
+    var razonSocial = String(data[i][CL.RAZON_SOCIAL]).toUpperCase().trim();
     if (razonSocial.indexOf(termino) !== -1) {
-      var nombreSucursal = String(data[i][2]).trim() || 'Matriz';
+      var nombreSucursal = String(data[i][CL.SUCURSAL]).trim() || 'Matriz';
       var clave = razonSocial + '||' + nombreSucursal;
       if (!setUnicos.has(clave)) {
         setUnicos.add(clave);
         resultados.push({
-          razon_social: data[i][1],
-          sucursal: nombreSucursal,
-          rfc: data[i][3],
-          nombre_solicitante: data[i][7],   // col 8
-          correo_informe: data[i][8],        // col 9
-          telefono_empresa: data[i][6],      // col 7
-          representante_legal: data[i][4],   // col 5
-          direccion_evaluacion: data[i][5],  // col 6
-          giro: data[i][9],                  // col 10
-          registro_patronal: data[i][10],    // col 11
-          link_drive_cliente: data[i][20]    // col 21 (índice 20) — esquema 21 col
+          razon_social:        data[i][CL.RAZON_SOCIAL],
+          sucursal:            nombreSucursal,
+          rfc:                 data[i][CL.RFC],
+          nombre_solicitante:  data[i][CL.SOLICITANTE],
+          correo_informe:      data[i][CL.CORREO],
+          telefono_empresa:    data[i][CL.TELEFONO],
+          representante_legal: data[i][CL.REPRESENTANTE],
+          direccion_evaluacion:data[i][CL.DIRECCION],
+          giro:                data[i][CL.GIRO],
+          registro_patronal:   data[i][CL.REGISTRO_PATRONAL],
+          link_drive_cliente:  data[i][CL.LINK_DRIVE]
         });
       }
     }
@@ -620,9 +796,9 @@ function fase3_CrearExpediente(payload) {
   // Búsqueda backward → actualiza la fila más reciente, igual que el test,
   // evitando desalineación cuando hay filas residuales de TEST_FOLIO.
   for (let i = values.length - 1; i >= 1; i--) {
-    if (String(values[i][1]).trim() === String(info.ot).trim()) {
+    if (String(values[i][CO.OT]).trim() === String(info.ot).trim()) {
       filaOT = i + 1;
-      linkCarpetaSucursal = values[i][13];
+      linkCarpetaSucursal = values[i][CO.LINK_DRIVE];
       break;
     }
   }
@@ -648,9 +824,9 @@ function fase3_CrearExpediente(payload) {
       var rfcBusc = String(info.rfc).toUpperCase().trim();
       var sucBusc = String(info.sucursal || '').trim();
       for (var j = cliData.length - 1; j >= 1; j--) {
-        if (String(cliData[j][3]).toUpperCase().trim() === rfcBusc) {
-          if (!sucBusc || String(cliData[j][2]).trim() === sucBusc) {
-            var linkCli = cliData[j][20]; // índice 20 = columna 21 (esquema 21 col)
+        if (String(cliData[j][CL.RFC]).toUpperCase().trim() === rfcBusc) {
+          if (!sucBusc || String(cliData[j][CL.SUCURSAL]).trim() === sucBusc) {
+            var linkCli = cliData[j][CL.LINK_DRIVE];
             if (linkCli) {
               var m3 = String(linkCli).match(/folders\/([a-zA-Z0-9_-]+)/);
               if (m3) { try { carpetaSucursal = DriveApp.getFolderById(m3[1]); } catch(e) {} }
@@ -672,11 +848,12 @@ function fase3_CrearExpediente(payload) {
   var consecutivoPrefix = consecutivoMatch ? consecutivoMatch[1] : '0000';
   var nombreCarpetaOT = '02_Expediente_' + consecutivoPrefix + '_' + info.ot + '_' + info.nom;
   var carpetaOT = carpetaSucursal.createFolder(nombreCarpetaOT);
+  const FS = CONFIG.FOLDER_STRUCTURE;
   var folders = {
-    ORDEN_TRABAJO: carpetaOT.createFolder('1. ORDEN_TRABAJO'),
-    HOJAS_CAMPO:   carpetaOT.createFolder('2. HDC'),
-    CROQUIS:       carpetaOT.createFolder('3. CROQUIS'),
-    FOTOS:         carpetaOT.createFolder('4. FOTOS')
+    ORDEN_TRABAJO: carpetaOT.createFolder(FS.ORDEN_TRABAJO),
+    HOJAS_CAMPO:   carpetaOT.createFolder(FS.HOJAS_CAMPO),
+    CROQUIS:       carpetaOT.createFolder(FS.CROQUIS),
+    FOTOS:         carpetaOT.createFolder(FS.FOTOS)
   };
   files.forEach(function(file) {
     if (!file || !file.content) return;
@@ -702,12 +879,12 @@ function fase3_AddFilesToExpediente(payload) {
   const data = sheet.getDataRange().getValues();
   let driveLink = null;
   for (let i = 1; i < data.length; i++) {
-    if (String(data[i][1]).trim() === String(ot).trim()) { driveLink = data[i][13]; break; }
+    if (String(data[i][CO.OT]).trim() === String(ot).trim()) { driveLink = data[i][CO.LINK_DRIVE]; break; }
   }
   if (!driveLink) return { success: false, error: 'No se encontró el expediente' };
   const folderIdMatch = driveLink.match(/folders\/([a-zA-Z0-9_-]+)/);
   const expedienteFolder = DriveApp.getFolderById(folderIdMatch[1]);
-  const subfolderNames = { ORDEN_TRABAJO: '1. ORDEN_TRABAJO', HOJAS_CAMPO: '2. HDC', CROQUIS: '3. CROQUIS', FOTOS: '4. FOTOS' };
+  const subfolderNames = CONFIG.FOLDER_STRUCTURE;
   const folders = {};
   const existingFolders = expedienteFolder.getFolders();
   while (existingFolders.hasNext()) {
@@ -738,21 +915,21 @@ function getOrdenesSafe_() {
   const ordenes = values.slice(1).filter(row => {
     // Filtra por estatus INTERNO (col 16, índice 15): excluye informes ya finalizados/cancelados internamente
     // col 13 (estatus externo) lo gestiona SEADB de forma independiente
-    const estatusInforme = String(row[15] || '').trim().toUpperCase();
+    const estatusInforme = String(row[CO.ESTATUS_INFORME] || '').trim().toUpperCase();
     return estatusInforme !== 'FINALIZADO' && estatusInforme !== 'CANCELADO';
   }).map(row => ({
-    ot: row[1],
-    tipo_orden: row[2],
-    nom_servicio: row[4],
-    clienteInicial: row[5],
-    clienteFinal: row[6],
-    cliente: row[5],
-    sucursal: row[6],
-    rfc: row[7],
-    personal: row[8],
-    fecha_visita: row[9],
-    link_drive: row[13],
-    estatus_informe: row[15] || 'NO INICIADO'  // estado interno del dpto. informes
+    ot:             row[CO.OT],
+    tipo_orden:     row[CO.TIPO],
+    nom_servicio:   row[CO.NOM],
+    clienteInicial: row[CO.CLIENTE],
+    clienteFinal:   row[CO.SUCURSAL],
+    cliente:        row[CO.CLIENTE],
+    sucursal:       row[CO.SUCURSAL],
+    rfc:            row[CO.RFC],
+    personal:       row[CO.PERSONAL],
+    fecha_visita:   row[CO.FECHA_VISITA],
+    link_drive:     row[CO.LINK_DRIVE],
+    estatus_informe:row[CO.ESTATUS_INFORME] || 'NO INICIADO'
   })).filter(orden => orden.ot && orden.ot.trim() !== '');
   return { success: true, data: ordenes };
 }
@@ -762,8 +939,8 @@ function getConsecutivoSafe_(params) {
   const regex = /^EA-\d{4}-.+-(\d{4})$/;
   let maxConsecutivo = 0;
   dataRange.forEach(row => {
-    const valNum = row[3];
-    const valTipo = String(row[2] || '').trim().toUpperCase();
+    const valNum = row[CO.NUM_INFORME];
+    const valTipo = String(row[CO.TIPO] || '').trim().toUpperCase();
     if (valTipo === (params.tipo || 'OTA').toUpperCase()) {
       const match = String(valNum || '').trim().match(regex);
       if (match) {
@@ -780,12 +957,12 @@ function updateEstatusSafe_(data, usuario) {
   const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
   const values = sheet.getDataRange().getValues();
   for (let i = 1; i < values.length; i++) {
-    if (String(values[i][1]).trim() === String(data.ot).trim()) {
-      const valorAnterior = String(values[i][12]);
+    if (String(values[i][CO.OT]).trim() === String(data.ot).trim()) {
+      const valorAnterior = String(values[i][CO.ESTATUS_EXTERNO]);
       const nuevoEstatus = data.estatus.toUpperCase();
-      sheet.getRange(i + 1, 13).setValue(nuevoEstatus);
+      sheet.getRange(i + 1, CO.ESTATUS_EXTERNO + 1).setValue(nuevoEstatus);
       if(nuevoEstatus === 'ENTREGADO' || nuevoEstatus === 'FINALIZADO') {
-         sheet.getRange(i + 1, 12).setValue(Utilities.formatDate(new Date(), "GMT-6", "dd/MM/yyyy"));
+         sheet.getRange(i + 1, CO.FECHA_REAL + 1).setValue(Utilities.formatDate(new Date(), CONFIG.TIMEZONE, "dd/MM/yyyy"));
       }
       registrarAuditoria_(usuario || 'desconocido', 'UPDATE_ESTATUS_EXTERNO', data.ot, 'estatus_externo', valorAnterior, nuevoEstatus);
       return { success: true, message: 'Actualizado' };
@@ -800,10 +977,10 @@ function updateEstatusInformeSafe_(data, usuario) {
   const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
   const values = sheet.getDataRange().getValues();
   for (let i = 1; i < values.length; i++) {
-    if (String(values[i][1]).trim() === String(data.ot).trim()) {
-      const valorAnterior = String(values[i][15]);
+    if (String(values[i][CO.OT]).trim() === String(data.ot).trim()) {
+      const valorAnterior = String(values[i][CO.ESTATUS_INFORME]);
       const nuevoEstatus = data.estatus.toUpperCase();
-      sheet.getRange(i + 1, 16).setValue(nuevoEstatus); // col 16 = Estatus Informe (interno)
+      sheet.getRange(i + 1, CO.ESTATUS_INFORME + 1).setValue(nuevoEstatus);
       registrarAuditoria_(usuario || 'desconocido', 'UPDATE_ESTATUS_INFORME', data.ot, 'estatus_informe', valorAnterior, nuevoEstatus);
       return { success: true, message: 'Estatus informe actualizado' };
     }
@@ -815,9 +992,9 @@ function updateResponsableSafe_(data, usuario) {
   const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
   const values = sheet.getDataRange().getValues();
   for (let i = 1; i < values.length; i++) {
-    if (String(values[i][1]).trim() === String(data.ot).trim()) {
-      const valorAnterior = String(values[i][8]);
-      sheet.getRange(i + 1, 9).setValue(data.responsable);
+    if (String(values[i][CO.OT]).trim() === String(data.ot).trim()) {
+      const valorAnterior = String(values[i][CO.PERSONAL]);
+      sheet.getRange(i + 1, CO.PERSONAL + 1).setValue(data.responsable);
       registrarAuditoria_(usuario || 'desconocido', 'UPDATE_RESPONSABLE', data.ot, 'personal_asignado', valorAnterior, data.responsable);
       return { success: true };
     }
@@ -836,18 +1013,26 @@ function fase4_GetTablero() {
   const clientesData = clientesSheet.getDataRange().getDisplayValues();
   const asesorMap = {};
   clientesData.slice(1).forEach(row => {
-    const rfc = String(row[3] || '').toUpperCase().trim();
-    const suc = String(row[2] || '').trim();
-    const asesor = String(row[21] || '').trim(); // col 22, índice 21
+    const rfc = String(row[CL.RFC] || '').toUpperCase().trim();
+    const suc = String(row[CL.SUCURSAL] || '').trim();
+    const asesor = String(row[CL.ASESOR_CONSULTOR] || '').trim();
     if (rfc && suc) asesorMap[rfc + '|' + suc] = asesor;
   });
   const registros = data.slice(1).map(row => {
-    const rfc = String(row[7] || '').toUpperCase().trim();
-    const suc = String(row[6] || '').trim();
+    const rfc = String(row[CO.RFC] || '').toUpperCase().trim();
+    const suc = String(row[CO.SUCURSAL] || '').trim();
     return {
-      ot: row[1], numInforme: row[3], nom: row[4], cliente: row[5], sucursal: row[6],
-      personal: row[8], fecha_visita: row[9], fechaEntrega: row[10], fechaRealEntrega: row[11],
-      estatus: row[12], link_drive: row[13],
+      ot:               row[CO.OT],
+      numInforme:       row[CO.NUM_INFORME],
+      nom:              row[CO.NOM],
+      cliente:          row[CO.CLIENTE],
+      sucursal:         row[CO.SUCURSAL],
+      personal:         row[CO.PERSONAL],
+      fecha_visita:     row[CO.FECHA_VISITA],
+      fechaEntrega:     row[CO.FECHA_ENTREGA],
+      fechaRealEntrega: row[CO.FECHA_REAL],
+      estatus:          row[CO.ESTATUS_EXTERNO],
+      link_drive:       row[CO.LINK_DRIVE],
       asesor_consultor: asesorMap[rfc + '|' + suc] || ''
     };
   }).reverse();
@@ -952,7 +1137,7 @@ function enviarNotificacionRobusta(data, files, carpetaCliente, sheetUrl, addLog
   catch (fallbackError) { return { success: false, error: fallbackError.toString() }; }
 }
 function enviarNotificacionEquipo(data, files, carpetaCliente, sheetUrl) {
-  const timestamp = Utilities.formatDate(new Date(), 'GMT-6', 'dd/MM/yyyy HH:mm');
+  const timestamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'dd/MM/yyyy HH:mm');
   let filesListHTML = '';
   if (files.length > 0) {
     files.forEach(f => { filesListHTML += `<tr><td style="padding: 8px 0; border-bottom: 1px solid #eee;"><a href="${f.url}" style="color:#1e5a3e; text-decoration:none; font-weight:600;">${f.label}</a></td><td style="padding: 8px 0; border-bottom: 1px solid #eee; text-align:right; color:#777; font-size:12px;">${formatFileSize(f.size)}</td></tr>`; });
@@ -965,7 +1150,7 @@ function enviarNotificacionEquipo(data, files, carpetaCliente, sheetUrl) {
 function enviarConfirmacionCliente(data, carpetaCliente) {
   const emailCliente = data.correo_informe;
   if (!emailCliente || emailCliente.trim() === '') return;
-  const htmlCliente = `<!DOCTYPE html><html><body style="margin:0; padding:0; background-color:#f4f6f8; font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;"><table width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color:#f4f6f8; padding:20px;"><tr><td align="center"><table width="600" border="0" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 4px 15px rgba(0,0,0,0.05);"><tr><td style="background-color:#1e5a3e; padding:30px; text-align:center;"><h1 style="color:#ffffff; margin:0; font-size:24px; font-weight:700;">¡Información Recibida!</h1><p style="color:#a8e6cf; margin:8px 0 0 0; font-size:14px;">Ejecutiva Ambiental</p></td></tr><tr><td style="padding:30px;"><p style="font-size:16px; color:#333; line-height:1.6; margin-top:0;">Estimado(a) <strong>${data.nombre_solicitante || 'Cliente'}</strong>,</p><p style="font-size:15px; color:#333; line-height:1.8;">Hemos recibido correctamente su <strong>Perfil de Datos</strong> para:</p><div style="background-color:#e8f5e9; border-left:4px solid #4caf50; padding:15px; margin:20px 0; border-radius:4px;"><p style="margin:0; font-size:14px; color:#2e7d32; line-height:1.6;"><strong>Empresa:</strong> ${data.razon_social}<br><strong>Sucursal:</strong> ${data.sucursal || 'N/A'}<br><strong>RFC:</strong> ${data.rfc || 'N/A'}</p></div><p style="font-size:15px; color:#333; line-height:1.8;">Nuestro equipo de <strong>Atención a Clientes</strong> revisará la información y se comunicará con usted en las próximas <strong>24 horas</strong> para coordinar los detalles del servicio.</p><div style="background-color:#fff3cd; border-left:4px solid #ffc107; padding:15px; margin:25px 0; border-radius:4px;"><p style="margin:0; font-size:13px; color:#856404; line-height:1.6;"><strong>¿Necesita realizar algún cambio?</strong><br>Por favor comuníquese con nosotros:<br><br><strong>222 941 7295</strong><br><strong>aclientes@ejecutivambiental.com</strong></p></div><p style="font-size:14px; color:#666; line-height:1.6;">Gracias por su confianza en <strong>Ejecutiva Ambiental</strong>.</p><p style="font-size:14px; color:#666; margin-bottom:0;">Atentamente,<br><strong style="color:#1e5a3e;">Equipo de Ejecutiva Ambiental</strong></p></td></tr><tr><td style="background-color:#f8f9fa; padding:15px; text-align:center; border-top:1px solid #eee; font-size:11px; color:#888;">Sistema de Registro Automático - ${CONFIG.COMPANY_NAME}<br>Este es un mensaje automático, por favor no responder a este correo.</td></tr></table></td></tr></table></body></html>`;
+  const htmlCliente = `<!DOCTYPE html><html><body style="margin:0; padding:0; background-color:#f4f6f8; font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;"><table width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color:#f4f6f8; padding:20px;"><tr><td align="center"><table width="600" border="0" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 4px 15px rgba(0,0,0,0.05);"><tr><td style="background-color:#1e5a3e; padding:30px; text-align:center;"><h1 style="color:#ffffff; margin:0; font-size:24px; font-weight:700;">¡Información Recibida!</h1><p style="color:#a8e6cf; margin:8px 0 0 0; font-size:14px;">Ejecutiva Ambiental</p></td></tr><tr><td style="padding:30px;"><p style="font-size:16px; color:#333; line-height:1.6; margin-top:0;">Estimado(a) <strong>${data.nombre_solicitante || 'Cliente'}</strong>,</p><p style="font-size:15px; color:#333; line-height:1.8;">Hemos recibido correctamente su <strong>Perfil de Datos</strong> para:</p><div style="background-color:#e8f5e9; border-left:4px solid #4caf50; padding:15px; margin:20px 0; border-radius:4px;"><p style="margin:0; font-size:14px; color:#2e7d32; line-height:1.6;"><strong>Empresa:</strong> ${data.razon_social}<br><strong>Sucursal:</strong> ${data.sucursal || 'N/A'}<br><strong>RFC:</strong> ${data.rfc || 'N/A'}</p></div><p style="font-size:15px; color:#333; line-height:1.8;">Nuestro equipo de <strong>Atención a Clientes</strong> revisará la información y se comunicará con usted en las próximas <strong>24 horas</strong> para coordinar los detalles del servicio.</p><div style="background-color:#fff3cd; border-left:4px solid #ffc107; padding:15px; margin:25px 0; border-radius:4px;"><p style="margin:0; font-size:13px; color:#856404; line-height:1.6;"><strong>¿Necesita realizar algún cambio?</strong><br>Por favor comuníquese con nosotros:<br><br><strong>${CONFIG.SUPPORT_PHONE}</strong><br><strong>${CONFIG.SUPPORT_EMAIL}</strong></p></div><p style="font-size:14px; color:#666; line-height:1.6;">Gracias por su confianza en <strong>Ejecutiva Ambiental</strong>.</p><p style="font-size:14px; color:#666; margin-bottom:0;">Atentamente,<br><strong style="color:#1e5a3e;">Equipo de Ejecutiva Ambiental</strong></p></td></tr><tr><td style="background-color:#f8f9fa; padding:15px; text-align:center; border-top:1px solid #eee; font-size:11px; color:#888;">Sistema de Registro Automático - ${CONFIG.COMPANY_NAME}<br>Este es un mensaje automático, por favor no responder a este correo.</td></tr></table></td></tr></table></body></html>`;
   GmailApp.sendEmail(emailCliente, '✓ Información Recibida - Ejecutiva Ambiental', 'Su cliente de correo no soporta HTML.', { htmlBody: htmlCliente, name: CONFIG.COMPANY_NAME });
 }
 function enviarEmailSimpleFallback(data, carpetaCliente, sheetUrl) {
@@ -984,7 +1169,7 @@ function formatFileSize(bytes) {
 function cleanCompanyName(name) { return sanitizeFileName((name || 'Cliente').replace(/ S\.A\. DE C\.V\.| SA DE CV| S\.A\.| S\.C\./gi, '').trim()); }
 function sanitizeFileName(name) { return String(name || 'Sin_nombre').replace(/[^a-z0-9áéíóúñü ]/gi, '_').substring(0, 50); }
 function guardarLogEnDrive(carpetaCliente, logEntries, data) {
-  try { const blob = Utilities.newBlob(logEntries.join('\n'), 'text/plain', `LOG_${Utilities.formatDate(new Date(), 'GMT-6', 'yyyyMMdd_HHmmss')}.txt`); carpetaCliente.createFile(blob); } catch (e) {}
+  try { const blob = Utilities.newBlob(logEntries.join('\n'), 'text/plain', `LOG_${Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'yyyyMMdd_HHmmss')}.txt`); carpetaCliente.createFile(blob); } catch (e) {}
 }
 function output_(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
 
@@ -1003,9 +1188,9 @@ function output_(obj) { return ContentService.createTextOutput(JSON.stringify(ob
 function registrarAuditoria_(usuario, accion, ot, campo, valorAnterior, valorNuevo) {
   try {
     const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-    let sheet = ss.getSheetByName('AUDITORIA');
+    let sheet = ss.getSheetByName(CONFIG.SHEET_AUDITORIA);
     if (!sheet) {
-      sheet = ss.insertSheet('AUDITORIA');
+      sheet = ss.insertSheet(CONFIG.SHEET_AUDITORIA);
       const headers = ['Timestamp', 'Usuario', 'Accion', 'OT', 'Campo', 'Valor_Anterior', 'Valor_Nuevo'];
       sheet.appendRow(headers);
       sheet.getRange(1, 1, 1, headers.length)
