@@ -5,7 +5,7 @@
 // CAMBIOS aplicados sobre el backend actual:
 //   1. fase1_RegistrarCliente()  → NO envía correo al registrar; sí crea carpeta
 //   2. fase2_BuscarClienteRFC/Nombre() → corregido índice link_drive_cliente [22]→[20]
-//      (nuevo esquema CLIENTES_MAESTRO tiene 21 columnas; Drive link en col 21, índice 20)
+//      (nuevo esquema CLIENTES_MAESTRO tiene 22 columnas; Drive link en col 21 índice 20, Asesor/Consultor en col 22 índice 21)
 //   3. fase3_CrearExpediente()   → fallback #3 corregido índice [22]→[20]
 //   4. getOrdenesSafe_()         → ahora devuelve rfc, sucursal, personal, nom, fecha_visita
 //      (sin rfc, SEAINF nunca podía buscar carpeta por RFC → expediente caía en raíz)
@@ -458,7 +458,7 @@ function fase1_RegistrarCliente(data) {
     // 3. Guardar archivos y Excel
     const processedFiles = guardarArchivos(data, carpetaCliente, addLog);
     const sheetUrl = generarPerfilSheet(data, carpetaCliente, companyClean, branchClean, timestamp, addLog);
-    // 4. REGISTRAR O ACTUALIZAR EN CLIENTES_MAESTRO (21 Columnas exactas)
+    // 4. REGISTRAR O ACTUALIZAR EN CLIENTES_MAESTRO (22 Columnas)
     const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
     let sheet = ss.getSheetByName(CONFIG.SHEET_CLIENTES);
 
@@ -483,7 +483,8 @@ function fase1_RegistrarCliente(data) {
       data.telefono_responsable || '',                                  // 18. Teléfono quien Atiende
       data.nombre_dirigido || '',                                       // 19. A quien se dirige informe
       data.puesto_dirigido || '',                                       // 20. Puesto a quien se dirige
-      carpetaCliente.getUrl()                                           // 21. Link Drive (índice 20)
+      carpetaCliente.getUrl(),                                          // 21. Link Drive (índice 20)
+      data.asesor_consultor || ''                                       // 22. Asesor / Consultor (índice 21)
     ];
     const allData = sheet.getDataRange().getValues();
     let rowIndex = -1;
@@ -827,13 +828,29 @@ function updateResponsableSafe_(data, usuario) {
 // FASE 4: TABLERO / DASHBOARD
 // =========================================================================
 function fase4_GetTablero() {
-  const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = ss.getSheetByName(CONFIG.SHEET_OT);
   const data = sheet.getDataRange().getDisplayValues();
-  const registros = data.slice(1).map(row => ({
-    ot: row[1], numInforme: row[3], nom: row[4], cliente: row[5], sucursal: row[6],
-    personal: row[8], fecha_visita: row[9], fechaEntrega: row[10], fechaRealEntrega: row[11],
-    estatus: row[12], link_drive: row[13]
-  })).reverse();
+  // Construir mapa RFC+Sucursal → asesor_consultor desde CLIENTES_MAESTRO
+  const clientesSheet = ss.getSheetByName(CONFIG.SHEET_CLIENTES);
+  const clientesData = clientesSheet.getDataRange().getDisplayValues();
+  const asesorMap = {};
+  clientesData.slice(1).forEach(row => {
+    const rfc = String(row[3] || '').toUpperCase().trim();
+    const suc = String(row[2] || '').trim();
+    const asesor = String(row[21] || '').trim(); // col 22, índice 21
+    if (rfc && suc) asesorMap[rfc + '|' + suc] = asesor;
+  });
+  const registros = data.slice(1).map(row => {
+    const rfc = String(row[7] || '').toUpperCase().trim();
+    const suc = String(row[6] || '').trim();
+    return {
+      ot: row[1], numInforme: row[3], nom: row[4], cliente: row[5], sucursal: row[6],
+      personal: row[8], fecha_visita: row[9], fechaEntrega: row[10], fechaRealEntrega: row[11],
+      estatus: row[12], link_drive: row[13],
+      asesor_consultor: asesorMap[rfc + '|' + suc] || ''
+    };
+  }).reverse();
   return { success: true, data: registros };
 }
 // =========================================================================
