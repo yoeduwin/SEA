@@ -38,6 +38,11 @@
     .form-group{display:flex;flex-direction:column}
     .form-group.full-width{grid-column:1 / -1}
     label{font-weight:bold;color:#333;margin-bottom:3px;font-size:10px;text-transform:uppercase}
+    /* TOOLTIPS */
+    .tt{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;background:#1e5a3e;color:#fff;border-radius:50%;font-size:9px;font-weight:bold;cursor:default;margin-left:5px;position:relative;vertical-align:middle;text-transform:none;font-style:normal;flex-shrink:0;user-select:none;}
+    .tt::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 7px);left:50%;transform:translateX(-50%);background:#2c3e50;color:#fff;padding:8px 12px;border-radius:5px;font-size:11px;font-weight:normal;text-transform:none;letter-spacing:0;white-space:normal;width:240px;line-height:1.5;box-shadow:0 3px 12px rgba(0,0,0,.3);opacity:0;pointer-events:none;transition:opacity .2s;z-index:9999;}
+    .tt::before{content:'';position:absolute;bottom:calc(100% + 2px);left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:#2c3e50;opacity:0;pointer-events:none;transition:opacity .2s;z-index:9999;}
+    .tt:hover::after,.tt:hover::before,.tt:focus::after,.tt:focus::before{opacity:1;outline:none;}
     input[type="text"],input[type="date"],input[type="tel"],input[type="email"],textarea,select{border:1px solid #ccc;padding:6px 8px;font-size:11px;border-radius:3px;background:#f9f9f9}
     input:focus,textarea:focus,select:focus{outline:0;border-color:#1e5a3e;background:#fff}
     textarea{resize:vertical;min-height:60px}
@@ -140,17 +145,17 @@
           <div class="form-group"><label>Nombre y puesto solicitante</label><input type="text" id="requestorName" onchange="syncData()"></div>
           <div class="form-group"><label>Teléfono</label><input type="tel" id="requestorPhone" onchange="syncData()"></div>
           <div class="form-group full-width"><label>Denominación/Razón Social</label><input type="text" id="companyName" onchange="syncData()"></div>
-          <div class="form-group"><label>RFC</label><input type="text" id="rfc" onchange="syncData()"></div>
+          <div class="form-group"><label>RFC<span class="tt" tabindex="0" data-tip="Registro Federal de Contribuyentes: clave fiscal asignada por el SAT. Persona moral (empresa): 12 caracteres. Persona física: 13 caracteres.">i</span></label><input type="text" id="rfc" onchange="syncData()"></div>
           <div class="form-group"><label>Sucursal</label><input type="text" id="branch" onchange="syncData()"></div>
           <div class="form-group full-width"><label>Representante Legal</label><input type="text" id="legalRep" onchange="syncData()"></div>
           <div class="form-group full-width"><label>Dirección donde se evaluará</label><textarea id="evaluationAddress" onchange="syncData()"></textarea></div>
           <div class="form-group"><label>Responsable de atendernos</label><input type="text" id="contactPerson" onchange="syncData()"></div>
           <div class="form-group"><label>Teléfono</label><input type="tel" id="contactPhone" onchange="syncData()"></div>
-          <div class="form-group full-width"><label>Giro</label><input type="text" id="businessType" onchange="syncData()"></div>
+          <div class="form-group full-width"><label>Giro<span class="tt" tabindex="0" data-tip="Actividad económica principal según el SAT. Ej: Comercio al por menor, Manufactura, Servicios profesionales de consultoría.">i</span></label><input type="text" id="businessType" onchange="syncData()"></div>
           <div class="form-group full-width"><label>Actividad Principal</label><textarea id="mainActivity" onchange="syncData()"></textarea></div>
-          <div class="form-group"><label>Registro Patronal</label><input type="text" id="patronalRegistry" onchange="syncData()"></div>
-          <div class="form-group"><label>Capacidad de Operación</label><input type="text" id="operationCapacity" onchange="syncData()"></div>
-          <div class="form-group"><label>Capacidad Instalada</label><input type="text" id="installedCapacity" onchange="syncData()"></div>
+          <div class="form-group"><label>Registro Patronal<span class="tt" tabindex="0" data-tip="Número asignado por el IMSS al registrar empleados. Formato: XX-XXXXXXXX-XX-X. Si no tienen trabajadores registrados ante el IMSS, puede dejarse en blanco.">i</span></label><input type="text" id="patronalRegistry" onchange="syncData()"></div>
+          <div class="form-group"><label>Capacidad de Operación<span class="tt" tabindex="0" data-tip="Producción real en condiciones normales. Ej: 300 piezas/día (60% de la cap. instalada). Refleja el nivel habitual de actividad.">i</span></label><input type="text" id="operationCapacity" onchange="syncData()"></div>
+          <div class="form-group"><label>Capacidad Instalada<span class="tt" tabindex="0" data-tip="Total de producción posible si la planta opera al 100%. Ej: 500 piezas/día, 3 turnos completos. Refleja el potencial máximo.">i</span></label><input type="text" id="installedCapacity" onchange="syncData()"></div>
           <div class="form-group full-width"><label>Días, turnos y horarios de trabajo</label><textarea id="workSchedule" onchange="syncData()"></textarea></div>
         </div>
       </div>
@@ -198,7 +203,7 @@
       <div class="section-content">
         <div class="form-grid">
           <div class="form-group full-width no-print">
-            <label>Serie de Orden (Operativo)</label>
+            <label>Serie de Orden (Operativo)<span class="tt" tabindex="0" data-tip="OT = Orden estándar para servicios de laboratorio e higiene. OTB = Orden tipo B para servicios adicionales de seguridad industrial. El folio se asigna automáticamente según la serie.">i</span></label>
             <div class="radio-group">
               <label><input type="radio" name="orderSeries" value="OT" checked onchange="updateOrderNumber()"> Serie OT</label>
               <label><input type="radio" name="orderSeries" value="OTB" onchange="updateOrderNumber()"> Serie OTB</label>
@@ -207,7 +212,7 @@
           </div>
           <div class="form-group"><label>N° de Orden de Servicio</label><input type="text" id="wo_orderNumber" placeholder="OT2603-1"></div>
           <div class="form-group"><label>Fecha de Emisión</label><input type="date" id="wo_issueDate"></div>
-          <div class="form-group"><label>Referencia de Cotización</label><input type="text" id="wo_quoteRef"></div>
+          <div class="form-group"><label>Referencia de Cotización<span class="tt" tabindex="0" data-tip="Número de folio de la cotización o presupuesto aprobado por el cliente. Sirve para relacionar esta OT con el documento comercial previo.">i</span></label><input type="text" id="wo_quoteRef"></div>
         </div>
       </div>
     </div>
