@@ -33,6 +33,11 @@
     textarea { resize:vertical; min-height:80px; font-family: Arial, sans-serif; }
     input[type="file"] { padding:6px 8px; cursor:pointer; font-size:10px; }
     .helper-text { font-size:10px; color:#666; margin-top:4px; font-style:italic; }
+    /* TOOLTIPS */
+    .tt { display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; background:#1e5a3e; color:#fff; border-radius:50%; font-size:9px; font-weight:bold; cursor:default; margin-left:5px; position:relative; vertical-align:middle; text-transform:none; font-style:normal; flex-shrink:0; user-select:none; }
+    .tt::after { content:attr(data-tip); position:absolute; bottom:calc(100% + 7px); left:50%; transform:translateX(-50%); background:#2c3e50; color:#fff; padding:8px 12px; border-radius:5px; font-size:11px; font-weight:normal; text-transform:none; letter-spacing:0; white-space:normal; width:240px; line-height:1.5; box-shadow:0 3px 12px rgba(0,0,0,.3); opacity:0; pointer-events:none; transition:opacity .2s; z-index:9999; }
+    .tt::before { content:''; position:absolute; bottom:calc(100% + 2px); left:50%; transform:translateX(-50%); border:5px solid transparent; border-top-color:#2c3e50; opacity:0; pointer-events:none; transition:opacity .2s; z-index:9999; }
+    .tt:hover::after, .tt:hover::before, .tt:focus::after, .tt:focus::before { opacity:1; outline:none; }
     .file-preview { margin-top:8px; padding:8px 12px; background:#e8f5e9; border-left:3px solid #4caf50; border-radius:3px; font-size:11px; display:none; }
     .file-preview.active { display:block; }
     .file-preview-content { display:flex; align-items:center; justify-content:space-between; }
@@ -229,7 +234,7 @@
           </div>
           <div class="form-grid">
             <div class="form-group">
-              <label>RFC<span class="required">*</span></label>
+              <label>RFC<span class="required">*</span><span class="tt" tabindex="0" data-tip="Registro Federal de Contribuyentes: clave fiscal asignada por el SAT. Persona moral (empresa): 12 caracteres. Persona física: 13 caracteres.">i</span></label>
               <input type="text" name="rfc" required maxlength="13" style="text-transform: uppercase;">
             </div>
             <div class="form-group">
@@ -261,7 +266,7 @@
           </div>
           <div class="form-grid">
             <div class="form-group full-width">
-              <label>Giro de la empresa<span class="required">*</span></label>
+              <label>Giro de la empresa<span class="required">*</span><span class="tt" tabindex="0" data-tip="Actividad económica principal según el SAT. Ej: Comercio al por menor, Manufactura, Servicios profesionales de consultoría.">i</span></label>
               <input type="text" name="giro" required>
             </div>
           </div>
@@ -273,17 +278,17 @@
           </div>
           <div class="form-grid">
             <div class="form-group">
-              <label>Registro patronal</label>
+              <label>Registro patronal<span class="tt" tabindex="0" data-tip="Número asignado por el IMSS al registrar empleados. Formato: XX-XXXXXXXX-XX-X. Si no tienen trabajadores registrados ante el IMSS, puede dejarse en blanco.">i</span></label>
               <input type="text" name="registro_patronal">
             </div>
             <div class="form-group">
-              <label>Capacidad instalada</label>
+              <label>Capacidad instalada<span class="tt" tabindex="0" data-tip="Total de producción posible si la planta opera al 100%. Ej: 500 piezas/día, 3 turnos completos. Refleja el potencial máximo.">i</span></label>
               <input type="text" name="capacidad_instalada">
             </div>
           </div>
           <div class="form-grid">
             <div class="form-group full-width">
-              <label>Capacidad de operación</label>
+              <label>Capacidad de operación<span class="tt" tabindex="0" data-tip="Producción real en condiciones normales. Ej: 300 piezas/día (60% de la cap. instalada). Refleja el nivel habitual de actividad de la empresa.">i</span></label>
               <input type="text" name="capacidad_operacion">
             </div>
           </div>

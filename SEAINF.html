@@ -120,6 +120,11 @@
     .ea-form-group.full-width { grid-column: 1 / -1; }
     .ea-label { font-weight: bold; color: #333; margin-bottom: 6px; font-size: 11px; text-transform: uppercase; }
     .ea-required { color: #dc3545; margin-left: 3px; font-size: 14px; }
+    /* TOOLTIPS */
+    .tt { display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; background:#1e5a3e; color:#fff; border-radius:50%; font-size:9px; font-weight:bold; cursor:default; margin-left:5px; position:relative; vertical-align:middle; text-transform:none; font-style:normal; flex-shrink:0; user-select:none; }
+    .tt::after { content:attr(data-tip); position:absolute; bottom:calc(100% + 7px); left:50%; transform:translateX(-50%); background:#2c3e50; color:#fff; padding:8px 12px; border-radius:5px; font-size:11px; font-weight:normal; text-transform:none; letter-spacing:0; white-space:normal; width:240px; line-height:1.5; box-shadow:0 3px 12px rgba(0,0,0,.3); opacity:0; pointer-events:none; transition:opacity .2s; z-index:9999; }
+    .tt::before { content:''; position:absolute; bottom:calc(100% + 2px); left:50%; transform:translateX(-50%); border:5px solid transparent; border-top-color:#2c3e50; opacity:0; pointer-events:none; transition:opacity .2s; z-index:9999; }
+    .tt:hover::after, .tt:hover::before, .tt:focus::after, .tt:focus::before { opacity:1; outline:none; }
     .ea-input, .ea-select {
       border: 1px solid #ccc;
       padding: 10px;
@@ -249,14 +254,14 @@
             </div>
             <div class="ea-form-grid">
               <div class="ea-form-group">
-                <label class="ea-label">N° Orden de Trabajo (OT/OTB) <span class="ea-required">*</span></label>
+                <label class="ea-label">N° Orden de Trabajo (OT/OTB) <span class="ea-required">*</span><span class="tt" tabindex="0" data-tip="OT = Orden estándar (lab/higiene). OTB = Orden tipo B (servicios adicionales de seguridad industrial). El tipo se detecta automáticamente al seleccionar el folio.">i</span></label>
                 <select id="field-ot" class="ea-select" required>
                   <option value="">Cargando órdenes...</option>
                 </select>
                 <input type="hidden" id="field-tipo-orden">
               </div>
               <div class="ea-form-group">
-                <label class="ea-label">NOM / Servicio <span class="ea-required">*</span></label>
+                <label class="ea-label">NOM / Servicio <span class="ea-required">*</span><span class="tt" tabindex="0" data-tip="Norma Oficial Mexicana del estudio. Ej: NOM-035-STPS (riesgo psicosocial), NOM-025-STPS (iluminación). El número de informe se genera a partir de este campo.">i</span></label>
                 <input type="text" id="field-nom" class="ea-input" list="nom-list" required placeholder="Escribe o selecciona..." autocomplete="off">
                 <datalist id="nom-list"></datalist>
               </div>
@@ -264,7 +269,7 @@
             
             <div class="ea-form-grid">
               <div class="ea-form-group full-width">
-                <label class="ea-label" style="color: var(--primary);">N° DE INFORME (AUTO-GENERADO / EDITABLE)</label>
+                <label class="ea-label" style="color: var(--primary);">N° DE INFORME (AUTO-GENERADO / EDITABLE)<span class="tt" tabindex="0" data-tip="Formato: EA-AAMM-NOM-XXXX. Se genera al seleccionar OT y NOM. Puedes editarlo si necesitas ajustar el consecutivo o la clave NOM.">i</span></label>
                 <input type="text" id="field-num-informe" class="ea-input" placeholder="Se generará al completar OT y NOM (Puedes editarlo si es necesario)" style="font-size: 16px; text-align: center; border: 2px solid #1e5a3e; background: #fff; font-weight: bold; color: #1e5a3e;">
               </div>
             </div>
@@ -275,11 +280,11 @@
             <div style="border-top: 1px dashed var(--border); margin: 25px 0;"></div>
             <div class="ea-form-grid">
               <div class="ea-form-group">
-                <label class="ea-label">Cliente Inicial <span class="ea-required">*</span></label>
+                <label class="ea-label">Cliente Inicial <span class="ea-required">*</span><span class="tt" tabindex="0" data-tip="Empresa que contrató el servicio originalmente (puede ser un despacho o intermediario). Se toma directamente de la Orden de Trabajo.">i</span></label>
                 <input type="text" id="field-cliente-inicial" class="ea-input" required placeholder="Razón Social Origen">
               </div>
               <div class="ea-form-group">
-                <label class="ea-label">Cliente Final / Sucursal <span class="ea-required">*</span></label>
+                <label class="ea-label">Cliente Final / Sucursal <span class="ea-required">*</span><span class="tt" tabindex="0" data-tip="Empresa o sucursal donde se realizó físicamente la visita. Puede coincidir con el Cliente Inicial si no hay intermediarios.">i</span></label>
                 <input type="text" id="field-cliente-final" class="ea-input" required placeholder="Sucursal o Empresa Destino">
               </div>
             </div>
@@ -307,7 +312,7 @@
                 <input type="date" id="field-fecha" class="ea-input" required>
               </div>
               <div class="ea-form-group">
-                <label class="ea-label">Fecha Compromiso (+15 días)</label>
+                <label class="ea-label">Fecha Compromiso (+15 días)<span class="tt" tabindex="0" data-tip="Se calcula automáticamente como 15 días a partir de la fecha de emisión de la OT. Es la fecha límite de entrega del informe al cliente.">i</span></label>
                 <input type="date" id="field-entrega" class="ea-input" readonly>
               </div>
               <div class="ea-form-group full-width">
@@ -332,7 +337,7 @@
                 <div class="ea-file-zone"><input type="file" id="up-ot" accept=".pdf"></div>
               </div>
               <div class="ea-form-group">
-                <label class="ea-label">2. HDC (Hojas de Campo)</label>
+                <label class="ea-label">2. HDC (Hojas de Campo)<span class="tt" tabindex="0" data-tip="Hojas de Campo: registros llenados en sitio durante la visita (formularios escaneados o archivos digitales del estudio de medición).">i</span></label>
                 <div class="ea-file-zone"><input type="file" id="up-campo" multiple accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls"></div>
               </div>
               <div class="ea-form-group">
