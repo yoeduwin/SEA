@@ -404,7 +404,7 @@
                         if (dVisita) {
                             const d1 = dEntrega ? new Date(dEntrega) : (() => { const d = new Date(dVisita); d.setDate(d.getDate() + 20); return d; })();
                             fDigital = formatearFechaSLA(d1);
-                            const d2 = new Date(dVisita); d2.setDate(d2.getDate() + 25); fFisico = formatearFechaSLA(d2);
+                            const d2 = new Date(d1); d2.setDate(d2.getDate() + 5); fFisico = formatearFechaSLA(d2);
                         }
 
                         const isEntregado = estatusRaw === 'ENTREGADO' || estatusRaw === 'FINALIZADO';
