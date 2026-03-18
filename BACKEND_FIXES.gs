@@ -1047,7 +1047,7 @@ function fase4_GetTablero() {
       fechaEntrega:     row[CO.FECHA_ENTREGA],
       fechaRealEntrega: row[CO.FECHA_REAL],
       estatus:          row[CO.ESTATUS_EXTERNO],
-      estatus_informe:  row[CO.ESTATUS_INFORME] || row[CO.ESTATUS_EXTERNO] || '',
+      estatus_informe:  row[CO.ESTATUS_INFORME] || '',
       link_drive:       row[CO.LINK_DRIVE],
       asesor_consultor: asesorMap[rfc + '|' + suc] || ''
     };
