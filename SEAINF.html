@@ -424,6 +424,7 @@
           <h3 style="color: var(--primary); margin:0;">📋 Base de Datos de Informes (<span id="table-count">0</span>)</h3>
           <div>
             <button onclick="limpiarFiltros()" style="padding: 6px 12px; border: 1px solid #ccc; background: white; border-radius: 4px; cursor: pointer;">🔄 Limpiar</button>
+            <button onclick="actualizarDatos()" id="btn-actualizar" style="padding: 6px 12px; border: none; background: #2d7a4f; color: white; border-radius: 4px; cursor: pointer;">↻ Actualizar Datos</button>
             <button onclick="exportarTablero()" style="padding: 6px 12px; border: none; background: var(--primary); color: white; border-radius: 4px; cursor: pointer;">📥 Excel</button>
           </div>
         </div>
@@ -1063,6 +1064,15 @@
       card2.classList.add('step-locked');
       btn.disabled = true;
     }
+  }
+
+  async function actualizarDatos() {
+    const btn = document.getElementById('btn-actualizar');
+    btn.disabled = true;
+    btn.textContent = 'Actualizando...';
+    await Promise.all([cargarTablero(), cargarOrdenesDisponibles()]);
+    btn.disabled = false;
+    btn.textContent = '↻ Actualizar Datos';
   }
 
   function iniciarApp() {
