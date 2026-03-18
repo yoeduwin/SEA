@@ -836,7 +836,13 @@
   function calcularDiasVencimiento(fechaEntrega) {
     if (!fechaEntrega) return null;
     const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-    const entrega = new Date(fechaEntrega); entrega.setHours(0, 0, 0, 0);
+    // Sheets puede entregar DD/MM/YYYY (formato mexicano); new Date() no lo parsea.
+    // Normalizar a YYYY-MM-DD si viene en ese formato.
+    let fe = String(fechaEntrega).trim();
+    const dmy = fe.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (dmy) fe = `${dmy[3]}-${dmy[2].padStart(2,'0')}-${dmy[1].padStart(2,'0')}`;
+    const entrega = new Date(fe); entrega.setHours(0, 0, 0, 0);
+    if (isNaN(entrega.getTime())) return null;
     return Math.ceil((entrega - hoy) / 86400000);
   }
 
