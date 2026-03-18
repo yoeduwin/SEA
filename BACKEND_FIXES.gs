@@ -1108,6 +1108,7 @@ function updateResponsableInformeSafe_(data, usuario) {
     if (normalizeOtForSeainf_(values[i][CI.OT]) === normalizedOt) {
       const valorAnterior = String(values[i][CI.RESPONSABLE]);
       sheet.getRange(i + 1, CI.RESPONSABLE + 1).setValue(data.responsable);
+      SpreadsheetApp.flush();
       registrarAuditoria_(usuario || 'desconocido', 'UPDATE_RESPONSABLE_INFORME',
         data.ot, 'responsable', valorAnterior, data.responsable);
       return { success: true };
