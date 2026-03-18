@@ -266,10 +266,10 @@
                     <table id="dataTable">
                         <thead>
                             <tr>
-                                <th onclick="sortTable(0)">OT</th><th onclick="sortTable(1)">Referencia</th><th onclick="sortTable(2)">Cliente Inicial</th>
-                                <th onclick="sortTable(3)">Cliente Final</th><th onclick="sortTable(4)">NOM</th><th onclick="sortTable(5)">Personal</th>
-                                <th onclick="sortTable(6)">F. Visita</th><th onclick="sortTable(7)">F. Digital (+20d)</th><th onclick="sortTable(8)">F. Físico (+25d)</th>
-                                <th onclick="sortTable(9)">Días</th><th onclick="sortTable(10)">Estatus</th><th>Asesor/Consultor</th><th>Acciones</th>
+                                <th onclick="sortTable(0)">OT</th><th onclick="sortTable(1)">Cliente Inicial</th>
+                                <th onclick="sortTable(2)">Cliente Final</th><th onclick="sortTable(3)">NOM</th><th onclick="sortTable(4)">Personal</th>
+                                <th onclick="sortTable(5)">F. Visita</th><th onclick="sortTable(6)">F. Digital (+20d)</th><th onclick="sortTable(7)">F. Físico (+25d)</th>
+                                <th onclick="sortTable(8)">Días</th><th onclick="sortTable(9)">Estatus</th><th>Asesor/Consultor</th><th>Acciones</th>
                             </tr>
                         </thead>
                         <tbody id="tableBody">
@@ -434,7 +434,6 @@
 
                         return {
                             ot: row.ot || '',
-                            referencia: row.numInforme || '',
                             clienteInicial: clienteRaw,
                             clienteFinal: row.sucursal || '',
                             nom: nomRaw,
@@ -646,7 +645,7 @@
         function createTableRow(row) {
             const tr = document.createElement('tr'); const dias = calcularDiasEntrega(row); const isEntregado = row.entregadoManual.toUpperCase().includes('ENTREGADO');
             tr.innerHTML = `
-                <td><strong>${escHtml(row.ot)}</strong></td><td>${escHtml(row.referencia)}</td><td>${escHtml(row.clienteInicial)}</td><td>${escHtml(row.clienteFinal)}</td><td>${escHtml(row.nom)}</td><td>${escHtml(row.personal)}</td>
+                <td><strong>${escHtml(row.ot)}</strong></td><td>${escHtml(row.clienteInicial)}</td><td>${escHtml(row.clienteFinal)}</td><td>${escHtml(row.nom)}</td><td>${escHtml(row.personal)}</td>
                 <td>${escHtml(row.fechaVisita)}</td><td><strong>${escHtml(row.fechaDigital)}</strong></td><td><strong>${escHtml(row.fechaFisico)}</strong></td><td>${dias !== null ? dias : '-'}</td><td>${escHtml(row.estatusAuto)}</td><td>${escHtml(row.asesorConsultor)}</td>
                 <td>
                     <div class="table-action-btns">
@@ -662,7 +661,7 @@
         let sortColumn = -1; let sortAscending = true;
         function sortTable(column) {
             if (sortColumn === column) { sortAscending = !sortAscending; } else { sortColumn = column; sortAscending = true; }
-            const keys = ['ot', 'referencia', 'clienteInicial', 'clienteFinal', 'nom', 'personal', 'fechaVisita', 'fechaDigital', 'fechaFisico', 'dias', 'estatusAuto'];
+            const keys = ['ot', 'clienteInicial', 'clienteFinal', 'nom', 'personal', 'fechaVisita', 'fechaDigital', 'fechaFisico', 'dias', 'estatusAuto'];
             const key = keys[column];
             filteredData.sort((a, b) => {
                 let valA = a[key] || ''; let valB = b[key] || '';
@@ -676,8 +675,8 @@
         }
 
         function exportToCSV() {
-            const headers = ['OT', 'Referencia', 'Cliente Inicial', 'Cliente Final', 'NOM', 'Personal', 'F. Visita', 'F. Digital (+15d)', 'F. Físico (+25d)', 'Días', 'Estatus', 'Asesor/Consultor'];
-            const rows = filteredData.map(row => [row.ot, row.referencia, row.clienteInicial, row.clienteFinal, row.nom, row.personal, row.fechaVisita, row.fechaDigital, row.fechaFisico, calcularDiasEntrega(row) || '', row.estatusAuto, row.asesorConsultor]);
+            const headers = ['OT', 'Cliente Inicial', 'Cliente Final', 'NOM', 'Personal', 'F. Visita', 'F. Digital (+15d)', 'F. Físico (+25d)', 'Días', 'Estatus', 'Asesor/Consultor'];
+            const rows = filteredData.map(row => [row.ot, row.clienteInicial, row.clienteFinal, row.nom, row.personal, row.fechaVisita, row.fechaDigital, row.fechaFisico, calcularDiasEntrega(row) || '', row.estatusAuto, row.asesorConsultor]);
             const csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `ejecutiva_ambiental_${new Date().toISOString().split('T')[0]}.csv`; link.click();
         }
