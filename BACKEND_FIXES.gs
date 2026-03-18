@@ -106,6 +106,22 @@ const CONFIG = {
 const CL = CONFIG.COLUMNS.CLIENTES;
 const CO = CONFIG.COLUMNS.ORDENES;
 const CU = CONFIG.COLUMNS.USUARIOS;
+
+const ESTATUS_INFORME_VALIDOS_ = ['NO INICIADO', 'EN PROCESO', 'PARA REVISION', 'PARA IMPRESION', 'FINALIZADO', 'CANCELADO'];
+const ESTATUS_INFORME_TERMINALES_ = ['FINALIZADO', 'CANCELADO'];
+
+function normalizarEstatusInforme_(estatusInforme, estatusExterno) {
+  const interno = String(estatusInforme || '').trim().toUpperCase();
+  if (ESTATUS_INFORME_VALIDOS_.indexOf(interno) !== -1) return interno;
+
+  const externo = String(estatusExterno || '').trim().toUpperCase();
+  if (externo === 'FINALIZADO' || externo === 'ENTREGADO' || externo === 'ENTREGADA' || externo === 'TRUE') return 'FINALIZADO';
+  if (externo === 'EN PROCESO' || externo === 'EN PROGRESO') return 'EN PROCESO';
+  if (externo === 'PARA REVISION') return 'PARA REVISION';
+  if (externo === 'PARA IMPRESION') return 'PARA IMPRESION';
+  if (externo === 'CANCELADO') return 'CANCELADO';
+  return 'NO INICIADO';
+}
 // =========================================================================
 // MÓDULO DE SEGURIDAD — Autenticación Google OAuth + reCAPTCHA v3
 // =========================================================================
@@ -940,36 +956,23 @@ function fase3_AddFilesToExpediente(payload) {
 function getOrdenesSafe_() {
   const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
   const values = sheet.getDataRange().getDisplayValues();
-  const latestRowsByOt = {};
-
-  for (let i = values.length - 1; i >= 1; i--) {
-    const row = values[i];
-    const normalizedOt = normalizeOtForSeainf_(row[CO.OT]);
-    if (!normalizedOt || latestRowsByOt[normalizedOt]) continue;
-    latestRowsByOt[normalizedOt] = row;
-  }
-
-  const ordenes = Object.keys(latestRowsByOt).map(normalizedOt => {
-    const row = latestRowsByOt[normalizedOt];
+  const ordenes = values.slice(1).map(row => {
+    const estatusInforme = normalizarEstatusInforme_(row[CO.ESTATUS_INFORME], row[CO.ESTATUS_EXTERNO]);
     return {
-      ot:             row[CO.OT],
-      tipo_orden:     row[CO.TIPO],
-      nom_servicio:   row[CO.NOM],
-      clienteInicial: row[CO.CLIENTE],
-      clienteFinal:   row[CO.SUCURSAL],
-      cliente:        row[CO.CLIENTE],
-      sucursal:       row[CO.SUCURSAL],
-      rfc:            row[CO.RFC],
-      personal:       row[CO.PERSONAL],
-      fecha_visita:   row[CO.FECHA_VISITA],
-      link_drive:     row[CO.LINK_DRIVE],
-      estatus_informe:row[CO.ESTATUS_INFORME] || 'NO INICIADO'
+      ot:              row[CO.OT],
+      tipo_orden:      row[CO.TIPO],
+      nom_servicio:    row[CO.NOM],
+      clienteInicial:  row[CO.CLIENTE],
+      clienteFinal:    row[CO.SUCURSAL],
+      cliente:         row[CO.CLIENTE],
+      sucursal:        row[CO.SUCURSAL],
+      rfc:             row[CO.RFC],
+      personal:        row[CO.PERSONAL],
+      fecha_visita:    row[CO.FECHA_VISITA],
+      link_drive:      row[CO.LINK_DRIVE],
+      estatus_informe: estatusInforme
     };
-  }).filter(orden => {
-    const estatusInforme = String(orden.estatus_informe || '').trim().toUpperCase();
-    return orden.ot && String(orden.ot).trim() !== '' && estatusInforme !== 'FINALIZADO' && estatusInforme !== 'CANCELADO';
-  });
-
+  }).filter(orden => orden.ot && orden.ot.trim() !== '' && ESTATUS_INFORME_TERMINALES_.indexOf(orden.estatus_informe) === -1);
   return { success: true, data: ordenes };
 }
 function getConsecutivoSafe_(params) {
@@ -1083,7 +1086,7 @@ function fase4_GetTablero() {
       fechaEntrega:     row[CO.FECHA_ENTREGA],
       fechaRealEntrega: row[CO.FECHA_REAL],
       estatus:          row[CO.ESTATUS_EXTERNO],
-      estatus_informe:  row[CO.ESTATUS_INFORME] || '',
+      estatus_informe:  normalizarEstatusInforme_(row[CO.ESTATUS_INFORME], row[CO.ESTATUS_EXTERNO]),
       link_drive:       row[CO.LINK_DRIVE],
       asesor_consultor: asesorMap[rfc + '|' + suc] || ''
     };
