@@ -867,7 +867,7 @@
           rfc: r.rfc || '',
           telefono: r.telefono || r.telefono_empresa || '',
           direccion: r.direccion || r.direccion_evaluacion || '',
-          responsable: r.responsable || r.personal || r.personal_asignado || '',
+          responsable: (r.responsable || r.personal || r.personal_asignado || '').toUpperCase().trim(),
           estatus: r.estatus_informe || 'NO INICIADO',
           linkDrive: r.linkDrive || r.link_drive || r.link_drive_cliente || '',
           tipoOrden: r.tipoOrden || r.tipo_orden || ''
