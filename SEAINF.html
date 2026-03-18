@@ -848,7 +848,7 @@
 
   async function cargarTablero() {
     try {
-      const response = await SEAAuth.wrapFetch(`${SCRIPT_URL}?action=getTableroInf`);
+      const response = await SEAAuth.wrapFetch(`${SCRIPT_URL}?action=getTableroInf&_t=${Date.now()}`);
       const result = await response.json();
       if (result && result.success) {
         if (result.data && result.data.length > 0) {
