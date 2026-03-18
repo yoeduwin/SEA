@@ -840,7 +840,7 @@
 
   async function cargarTablero() {
     try {
-      const response = await SEAAuth.wrapFetch(`${SCRIPT_URL}?action=getTablero`);
+      const response = await SEAAuth.wrapFetch(`${SCRIPT_URL}?action=getTableroInf`);
       const result = await response.json();
       if (result && result.success) {
         allTableroData = (result.data || []).map(r => ({
@@ -1023,7 +1023,7 @@
     if (!ot || !valor) return;
     // 'updateEstatusInforme' escribe en col 16 (proceso interno SEAINF).
     // 'updateEstatus' queda EXCLUSIVO para SEADB (entrega externa al cliente).
-    const action = campo === 'estatus' ? 'updateEstatusInforme' : 'updateResponsable';
+    const action = campo === 'estatus' ? 'updateEstatusInforme' : 'updateRespInf';
     const payload = { action, ot };
     if (campo === 'estatus') payload.estatus = valor;
     else payload.responsable = valor;
