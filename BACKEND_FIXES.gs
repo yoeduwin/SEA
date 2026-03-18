@@ -793,23 +793,44 @@ function fase2_RegistrarOT(data) {
 //   2) Payload del frontend (linkDrive enviado por SEAINF)
 //   3) Buscar en CLIENTES_MAESTRO por RFC + sucursal (índice [15], esquema 16 col)
 //   4) Último recurso: carpeta raíz
+
+function normalizeOtForSeainf_(ot) {
+  return String(ot == null ? '' : ot).trim().toUpperCase();
+}
+/**
+ * Busca la fila vigente de ORDENES_TRABAJO para una OT, recorriendo de abajo hacia arriba.
+ * @param {Array<Array<*>>} sheetValues Valores de getDataRange().getValues()/getDisplayValues().
+ * @param {string} ot OT a buscar.
+ * @param {{minSheetRow:number}} options Opciones de búsqueda.
+ * @returns {{arrayIndex:number, sheetRow:number}|null}
+ */
+function findOtRowForSeainf_(sheetValues, ot, options) {
+  const values = Array.isArray(sheetValues) ? sheetValues : [];
+  const normalizedOt = normalizeOtForSeainf_(ot);
+  if (!normalizedOt || values.length < 2) return null;
+
+  const opts = options || {};
+  const minSheetRow = Math.max(2, Number(opts.minSheetRow) || 2);
+  const startIndex = Math.max(1, minSheetRow - 1);
+
+  for (let i = values.length - 1; i >= startIndex; i--) {
+    if (normalizeOtForSeainf_(values[i][CO.OT]) === normalizedOt) {
+      return { arrayIndex: i, sheetRow: i + 1 };
+    }
+  }
+  return null;
+}
+
 function fase3_CrearExpediente(payload) {
   const info = payload.data || {};
   const files = payload.files || [];
   const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
   const values = sheet.getDataRange().getValues();
-  let filaOT = -1;
-  let linkCarpetaSucursal = '';
-  // Búsqueda backward → actualiza la fila más reciente, igual que el test,
-  // evitando desalineación cuando hay filas residuales de TEST_FOLIO.
-  for (let i = values.length - 1; i >= 1; i--) {
-    if (String(values[i][CO.OT]).trim() === String(info.ot).trim()) {
-      filaOT = i + 1;
-      linkCarpetaSucursal = values[i][CO.LINK_DRIVE];
-      break;
-    }
-  }
-  if (filaOT === -1) return { success: false, error: 'OT no encontrada.' };
+  const otMatch = findOtRowForSeainf_(values, info.ot, { minSheetRow: 2 });
+  if (!otMatch) return { success: false, error: 'OT no encontrada.' };
+
+  const filaOT = otMatch.sheetRow;
+  const linkCarpetaSucursal = values[otMatch.arrayIndex][CO.LINK_DRIVE];
   // --- Cadena de fallback para encontrar la carpeta correcta ---
   let carpetaSucursal = null;
   // 1) Desde la hoja ORDENES_TRABAJO (columna 14)
@@ -884,10 +905,10 @@ function fase3_AddFilesToExpediente(payload) {
   if (!ot) return { success: false, error: 'Falta OT' };
   const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
   const data = sheet.getDataRange().getValues();
-  let driveLink = null;
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][CO.OT]).trim() === String(ot).trim()) { driveLink = data[i][CO.LINK_DRIVE]; break; }
-  }
+  const otMatch = findOtRowForSeainf_(data, ot, { minSheetRow: 2 });
+  if (!otMatch) return { success: false, error: 'No se encontró el expediente' };
+
+  const driveLink = data[otMatch.arrayIndex][CO.LINK_DRIVE];
   if (!driveLink) return { success: false, error: 'No se encontró el expediente' };
   const folderIdMatch = driveLink.match(/folders\/([a-zA-Z0-9_-]+)/);
   const expedienteFolder = DriveApp.getFolderById(folderIdMatch[1]);
@@ -919,25 +940,36 @@ function fase3_AddFilesToExpediente(payload) {
 function getOrdenesSafe_() {
   const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
   const values = sheet.getDataRange().getDisplayValues();
-  const ordenes = values.slice(1).filter(row => {
-    // Filtra por estatus INTERNO (col 16, índice 15): excluye informes ya finalizados/cancelados internamente
-    // col 13 (estatus externo) lo gestiona SEADB de forma independiente
-    const estatusInforme = String(row[CO.ESTATUS_INFORME] || '').trim().toUpperCase();
-    return estatusInforme !== 'FINALIZADO' && estatusInforme !== 'CANCELADO';
-  }).map(row => ({
-    ot:             row[CO.OT],
-    tipo_orden:     row[CO.TIPO],
-    nom_servicio:   row[CO.NOM],
-    clienteInicial: row[CO.CLIENTE],
-    clienteFinal:   row[CO.SUCURSAL],
-    cliente:        row[CO.CLIENTE],
-    sucursal:       row[CO.SUCURSAL],
-    rfc:            row[CO.RFC],
-    personal:       row[CO.PERSONAL],
-    fecha_visita:   row[CO.FECHA_VISITA],
-    link_drive:     row[CO.LINK_DRIVE],
-    estatus_informe:row[CO.ESTATUS_INFORME] || 'NO INICIADO'
-  })).filter(orden => orden.ot && orden.ot.trim() !== '');
+  const latestRowsByOt = {};
+
+  for (let i = values.length - 1; i >= 1; i--) {
+    const row = values[i];
+    const normalizedOt = normalizeOtForSeainf_(row[CO.OT]);
+    if (!normalizedOt || latestRowsByOt[normalizedOt]) continue;
+    latestRowsByOt[normalizedOt] = row;
+  }
+
+  const ordenes = Object.keys(latestRowsByOt).map(normalizedOt => {
+    const row = latestRowsByOt[normalizedOt];
+    return {
+      ot:             row[CO.OT],
+      tipo_orden:     row[CO.TIPO],
+      nom_servicio:   row[CO.NOM],
+      clienteInicial: row[CO.CLIENTE],
+      clienteFinal:   row[CO.SUCURSAL],
+      cliente:        row[CO.CLIENTE],
+      sucursal:       row[CO.SUCURSAL],
+      rfc:            row[CO.RFC],
+      personal:       row[CO.PERSONAL],
+      fecha_visita:   row[CO.FECHA_VISITA],
+      link_drive:     row[CO.LINK_DRIVE],
+      estatus_informe:row[CO.ESTATUS_INFORME] || 'NO INICIADO'
+    };
+  }).filter(orden => {
+    const estatusInforme = String(orden.estatus_informe || '').trim().toUpperCase();
+    return orden.ot && String(orden.ot).trim() !== '' && estatusInforme !== 'FINALIZADO' && estatusInforme !== 'CANCELADO';
+  });
+
   return { success: true, data: ordenes };
 }
 function getConsecutivoSafe_(params) {
@@ -983,36 +1015,32 @@ function updateEstatusInformeSafe_(data, usuario) {
   if (!data || !data.ot || !data.estatus) return { success: false, error: 'Faltan campos requeridos: ot, estatus.' };
   const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
   const values = sheet.getDataRange().getValues();
-  for (let i = 1; i < values.length; i++) {
-    if (String(values[i][CO.OT]).trim() === String(data.ot).trim()) {
-      const valorAnterior = String(values[i][CO.ESTATUS_INFORME]);
-      const nuevoEstatus = data.estatus.toUpperCase();
-      const targetRow = i + 1;
-      const targetCol = CO.ESTATUS_INFORME + 1;
-      Logger.log('[DEBUG] updateEstatusInforme OT=%s fila=%s col=%s valorAnterior="%s" nuevo="%s"', data.ot, targetRow, targetCol, valorAnterior, nuevoEstatus);
-      sheet.getRange(targetRow, targetCol).setValue(nuevoEstatus);
-      SpreadsheetApp.flush();
-      const verificacion = sheet.getRange(targetRow, targetCol).getValue();
-      Logger.log('[DEBUG] Verificacion post-write: "%s"', verificacion);
-      registrarAuditoria_(usuario || 'desconocido', 'UPDATE_ESTATUS_INFORME', data.ot, 'estatus_informe', valorAnterior, nuevoEstatus);
-      return { success: true, message: 'Estatus informe actualizado', _debug: { fila: targetRow, col: targetCol, escrito: nuevoEstatus, verificado: String(verificacion) } };
-    }
-  }
-  return { success: false, error: 'OT no encontrada' };
+  const otMatch = findOtRowForSeainf_(values, data.ot, { minSheetRow: 2 });
+  if (!otMatch) return { success: false, error: 'OT no encontrada' };
+
+  const valorAnterior = String(values[otMatch.arrayIndex][CO.ESTATUS_INFORME]);
+  const nuevoEstatus = String(data.estatus).toUpperCase();
+  const targetRow = otMatch.sheetRow;
+  const targetCol = CO.ESTATUS_INFORME + 1;
+  Logger.log('[DEBUG] updateEstatusInforme OT=%s fila=%s col=%s valorAnterior="%s" nuevo="%s"', data.ot, targetRow, targetCol, valorAnterior, nuevoEstatus);
+  sheet.getRange(targetRow, targetCol).setValue(nuevoEstatus);
+  SpreadsheetApp.flush();
+  const verificacion = sheet.getRange(targetRow, targetCol).getValue();
+  Logger.log('[DEBUG] Verificacion post-write: "%s"', verificacion);
+  registrarAuditoria_(usuario || 'desconocido', 'UPDATE_ESTATUS_INFORME', data.ot, 'estatus_informe', valorAnterior, nuevoEstatus);
+  return { success: true, message: 'Estatus informe actualizado', _debug: { fila: targetRow, col: targetCol, escrito: nuevoEstatus, verificado: String(verificacion) } };
 }
 function updateResponsableSafe_(data, usuario) {
   if (!data || !data.ot || data.responsable === undefined) return { success: false, error: 'Faltan campos requeridos: ot, responsable.' };
   const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
   const values = sheet.getDataRange().getValues();
-  for (let i = 1; i < values.length; i++) {
-    if (String(values[i][CO.OT]).trim() === String(data.ot).trim()) {
-      const valorAnterior = String(values[i][CO.PERSONAL]);
-      sheet.getRange(i + 1, CO.PERSONAL + 1).setValue(data.responsable);
-      registrarAuditoria_(usuario || 'desconocido', 'UPDATE_RESPONSABLE', data.ot, 'personal_asignado', valorAnterior, data.responsable);
-      return { success: true };
-    }
-  }
-  return { success: false, error: 'OT no encontrada' };
+  const otMatch = findOtRowForSeainf_(values, data.ot, { minSheetRow: 2 });
+  if (!otMatch) return { success: false, error: 'OT no encontrada' };
+
+  const valorAnterior = String(values[otMatch.arrayIndex][CO.PERSONAL]);
+  sheet.getRange(otMatch.sheetRow, CO.PERSONAL + 1).setValue(data.responsable);
+  registrarAuditoria_(usuario || 'desconocido', 'UPDATE_RESPONSABLE', data.ot, 'personal_asignado', valorAnterior, data.responsable);
+  return { success: true, _debug: { fila: otMatch.sheetRow } };
 }
 // =========================================================================
 // FASE 4: TABLERO / DASHBOARD
@@ -1031,7 +1059,15 @@ function fase4_GetTablero() {
     const asesor = String(row[CL.ASESOR_CONSULTOR] || '').trim();
     if (rfc && suc) asesorMap[rfc + '|' + suc] = asesor;
   });
-  const registros = data.slice(1).map(row => {
+  const latestRowsByOt = {};
+  for (let i = data.length - 1; i >= 1; i--) {
+    const normalizedOt = normalizeOtForSeainf_(data[i][CO.OT]);
+    if (!normalizedOt || latestRowsByOt[normalizedOt]) continue;
+    latestRowsByOt[normalizedOt] = data[i];
+  }
+
+  const registros = Object.keys(latestRowsByOt).map(normalizedOt => {
+    const row = latestRowsByOt[normalizedOt];
     const rfc = String(row[CO.RFC] || '').toUpperCase().trim();
     const suc = String(row[CO.SUCURSAL] || '').trim();
     return {
@@ -1051,7 +1087,7 @@ function fase4_GetTablero() {
       link_drive:       row[CO.LINK_DRIVE],
       asesor_consultor: asesorMap[rfc + '|' + suc] || ''
     };
-  }).reverse();
+  });
   return { success: true, data: registros };
 }
 // =========================================================================
