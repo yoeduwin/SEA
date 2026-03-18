@@ -987,9 +987,15 @@ function updateEstatusInformeSafe_(data, usuario) {
     if (String(values[i][CO.OT]).trim() === String(data.ot).trim()) {
       const valorAnterior = String(values[i][CO.ESTATUS_INFORME]);
       const nuevoEstatus = data.estatus.toUpperCase();
-      sheet.getRange(i + 1, CO.ESTATUS_INFORME + 1).setValue(nuevoEstatus);
+      const targetRow = i + 1;
+      const targetCol = CO.ESTATUS_INFORME + 1;
+      Logger.log('[DEBUG] updateEstatusInforme OT=%s fila=%s col=%s valorAnterior="%s" nuevo="%s"', data.ot, targetRow, targetCol, valorAnterior, nuevoEstatus);
+      sheet.getRange(targetRow, targetCol).setValue(nuevoEstatus);
+      SpreadsheetApp.flush();
+      const verificacion = sheet.getRange(targetRow, targetCol).getValue();
+      Logger.log('[DEBUG] Verificacion post-write: "%s"', verificacion);
       registrarAuditoria_(usuario || 'desconocido', 'UPDATE_ESTATUS_INFORME', data.ot, 'estatus_informe', valorAnterior, nuevoEstatus);
-      return { success: true, message: 'Estatus informe actualizado' };
+      return { success: true, message: 'Estatus informe actualizado', _debug: { fila: targetRow, col: targetCol, escrito: nuevoEstatus, verificado: String(verificacion) } };
     }
   }
   return { success: false, error: 'OT no encontrada' };
@@ -1047,6 +1053,39 @@ function fase4_GetTablero() {
     };
   }).reverse();
   return { success: true, data: registros };
+}
+// =========================================================================
+// TEST DIAGNÓSTICO — ejecutar manualmente desde el editor GAS
+// =========================================================================
+function testDiagnosticoEstatusInforme() {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = ss.getSheetByName(CONFIG.SHEET_OT);
+  if (!sheet) { Logger.log('ERROR: hoja ORDENES_TRABAJO no encontrada'); return; }
+
+  const values = sheet.getDataRange().getValues();
+  Logger.log('Total filas (con encabezado): ' + values.length);
+  Logger.log('Encabezados: ' + JSON.stringify(values[0]));
+  Logger.log('col[15] del encabezado: "' + values[0][15] + '"');
+
+  // Buscar primera fila con OT
+  const primeraFila = values[1];
+  if (!primeraFila) { Logger.log('No hay filas de datos'); return; }
+  Logger.log('Primera OT encontrada: "' + primeraFila[1] + '"');
+  Logger.log('Valor actual col P (idx15): "' + primeraFila[15] + '"');
+
+  // Intentar escribir TEST en col P de la fila 2
+  sheet.getRange(2, 16).setValue('DIAGNOSTICO_TEST');
+  SpreadsheetApp.flush();
+  const leido = sheet.getRange(2, 16).getValue();
+  Logger.log('Escrito "DIAGNOSTICO_TEST", leído de vuelta: "' + leido + '"');
+  if (leido === 'DIAGNOSTICO_TEST') {
+    Logger.log('✅ WRITE FUNCIONA correctamente en col P');
+    // Limpiar el test
+    sheet.getRange(2, 16).setValue(primeraFila[15]);
+    Logger.log('Valor restaurado a: "' + primeraFila[15] + '"');
+  } else {
+    Logger.log('❌ WRITE FALLÓ — posible protección de celda o rango');
+  }
 }
 // =========================================================================
 // UTILIDADES
