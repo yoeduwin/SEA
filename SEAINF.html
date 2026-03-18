@@ -423,6 +423,7 @@
         <div class="table-header">
           <h3 style="color: var(--primary); margin:0;">📋 Base de Datos de Informes (<span id="table-count">0</span>)</h3>
           <div>
+            <span id="tablero-status" style="font-size:12px; padding:3px 8px; border-radius:4px; display:none;"></span>
             <button onclick="limpiarFiltros()" style="padding: 6px 12px; border: 1px solid #ccc; background: white; border-radius: 4px; cursor: pointer;">🔄 Limpiar</button>
             <button onclick="actualizarDatos()" id="btn-actualizar" style="padding: 6px 12px; border: none; background: #2d7a4f; color: white; border-radius: 4px; cursor: pointer;">↻ Actualizar Datos</button>
             <button onclick="exportarTablero()" style="padding: 6px 12px; border: none; background: var(--primary); color: white; border-radius: 4px; cursor: pointer;">📥 Excel</button>
@@ -844,6 +845,9 @@
       const response = await SEAAuth.wrapFetch(`${SCRIPT_URL}?action=getTableroInf`);
       const result = await response.json();
       if (result && result.success) {
+        if (result.data && result.data.length > 0) {
+          console.log('[SEAINF] Muestra API (1er registro):', JSON.stringify(result.data[0]));
+        }
         allTableroData = (result.data || []).map(r => ({
           ...r,
           numInforme: r.numInforme || r.num_informe || '',
@@ -1022,13 +1026,24 @@
 
   async function cambiarDatoRapido(ot, campo, valor) {
     if (!ot || !valor) return;
-    // 'updateEstatusInforme' escribe en col 16 (proceso interno SEAINF).
+    // 'updateEstatusInforme' escribe en col P (proceso interno SEAINF).
     // 'updateEstatus' queda EXCLUSIVO para SEADB (entrega externa al cliente).
     const action = campo === 'estatus' ? 'updateEstatusInforme' : 'updateRespInf';
     const payload = { action, ot };
     if (campo === 'estatus') payload.estatus = valor;
     else payload.responsable = valor;
-    
+
+    const statusEl = document.getElementById('tablero-status');
+    function showStatus(msg, ok) {
+      if (!statusEl) return;
+      statusEl.textContent = msg;
+      statusEl.style.display = 'inline-block';
+      statusEl.style.background = ok ? '#d4edda' : '#f8d7da';
+      statusEl.style.color = ok ? '#155724' : '#721c24';
+      if (ok) setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
+    }
+
+    showStatus('Guardando...', true);
     try {
       const response = await SEAAuth.wrapFetch(SCRIPT_URL, {
         method: 'POST',
@@ -1036,15 +1051,20 @@
         body: JSON.stringify(payload)
       });
       const result = await response.json();
-      if(result.success) {
+      if (result.success) {
+        showStatus('✓ Guardado', true);
         const item = allTableroData.find(r => String(r.ot).toUpperCase() === ot.toUpperCase());
         if (item) item[campo] = valor;
         aplicarFiltros();
       } else {
-        alert('Error: ' + result.error);
+        showStatus('✗ Error: ' + result.error, false);
+        console.error('[SEAINF] cambiarDatoRapido falló:', result.error, '| OT:', ot, '| campo:', campo, '| valor:', valor);
+        aplicarFiltros(); // revertir select al valor anterior desde allTableroData
       }
     } catch(err) {
-      alert('Error al actualizar: ' + err.message);
+      showStatus('✗ Error de red: ' + err.message, false);
+      console.error('[SEAINF] cambiarDatoRapido excepción:', err);
+      aplicarFiltros(); // revertir
     }
   }
 
