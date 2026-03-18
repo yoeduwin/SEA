@@ -126,7 +126,9 @@ const AUTH_MODE = {
   // ── Requiere Google Auth (herramientas internas) ─────────────────────────
   // SEADB
   getTablero:             'GOOGLE',
+  getTableroInf:          'GOOGLE',
   updateEstatus:          'GOOGLE',
+  updateRespInf:          'GOOGLE',
   updateResponsable:      'GOOGLE',
   // SEAOT
   buscarClienteRFC:       'EITHER',   // SEAOT usa Google Auth; PAIC/SEAPD (públicos) usan reCAPTCHA
@@ -149,8 +151,10 @@ const AUTH_MODE = {
 // Mapeo acción → módulo (para verificar acceso por columna en la hoja)
 const ACTION_MODULE = {
   getTablero:             'SEADB',
+  getTableroInf:          'SEAINF',
   updateEstatus:          'SEADB',
   updateResponsable:      'SEADB',
+  updateRespInf:          'SEAINF',
   buscarClienteRFC:       'SEAOT',
   buscarClienteNombre:    'SEAOT',
   registrarOT:            'SEAOT',
@@ -548,8 +552,10 @@ function doPost(e) {
       case 'buscarClienteRFC': return output_(fase2_BuscarClienteRFC(data.rfc));
       case 'buscarClienteNombre': return output_(fase2_BuscarClienteNombre(data.nombre));
       case 'getTablero': return output_(fase4_GetTablero());
+      case 'getTableroInf': return output_(fase4_GetTablero());
       case 'getOrdenes': return output_(getOrdenesSafe_());
       case 'getConsecutivo': return output_(getConsecutivoSafe_(data));
+      case 'updateRespInf': return output_(updateResponsableSafe_(data, _usuario));
       default: return output_({ success: false, error: 'Acción POST no reconocida.' });
     }
   } catch (err) {
@@ -580,6 +586,7 @@ function doGet(e) {
       case 'buscarClienteRFC': return output_(fase2_BuscarClienteRFC(e.parameter.rfc));
       case 'buscarClienteNombre': return output_(fase2_BuscarClienteNombre(e.parameter.nombre));
       case 'getTablero': return output_(fase4_GetTablero());
+      case 'getTableroInf': return output_(fase4_GetTablero());
       case 'getOrdenes': return output_(getOrdenesSafe_());
       case 'getConsecutivo': return output_(getConsecutivoSafe_(e.parameter));
       default: return output_({ success: false, error: 'Acción GET no reconocida.' });
