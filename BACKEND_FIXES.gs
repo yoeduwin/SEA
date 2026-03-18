@@ -581,7 +581,7 @@ function doPost(e) {
       case 'getOrdenes': return output_(getOrdenesSafe_());
       case 'getInformes': return output_(getInformesSafe_());
       case 'getConsecutivo': return output_(getConsecutivoSafe_(data));
-      case 'updateRespInf': return output_(updateResponsableSafe_(data, _usuario));
+      case 'updateRespInf': return output_(updateResponsableInformeSafe_(data, _usuario));
       default: return output_({ success: false, error: 'Acción POST no reconocida.' });
     }
   } catch (err) {
@@ -1095,6 +1095,25 @@ function updateResponsableSafe_(data, usuario) {
   sheet.getRange(otMatch.sheetRow, CO.PERSONAL + 1).setValue(data.responsable);
   registrarAuditoria_(usuario || 'desconocido', 'UPDATE_RESPONSABLE', data.ot, 'personal_asignado', valorAnterior, data.responsable);
   return { success: true, _debug: { fila: otMatch.sheetRow } };
+}
+// Actualiza Responsable en la hoja INFORMES (col P = CI.RESPONSABLE).
+// Usada por SEAINF via acción updateRespInf. No toca ORDENES_TRABAJO.
+function updateResponsableInformeSafe_(data, usuario) {
+  if (!data || !data.ot || data.responsable === undefined)
+    return { success: false, error: 'Faltan campos requeridos: ot, responsable.' };
+  const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_INFORMES);
+  const values = sheet.getDataRange().getValues();
+  const normalizedOt = normalizeOtForSeainf_(data.ot);
+  for (let i = values.length - 1; i >= 1; i--) {
+    if (normalizeOtForSeainf_(values[i][CI.OT]) === normalizedOt) {
+      const valorAnterior = String(values[i][CI.RESPONSABLE]);
+      sheet.getRange(i + 1, CI.RESPONSABLE + 1).setValue(data.responsable);
+      registrarAuditoria_(usuario || 'desconocido', 'UPDATE_RESPONSABLE_INFORME',
+        data.ot, 'responsable', valorAnterior, data.responsable);
+      return { success: true };
+    }
+  }
+  return { success: false, error: 'Informe no encontrado en INFORMES para OT: ' + data.ot };
 }
 // =========================================================================
 // FASE 4: TABLERO / DASHBOARD
