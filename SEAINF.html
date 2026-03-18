@@ -1031,12 +1031,13 @@
     XLSX.writeFile(wb, `Tablero_Informes_${new Date().toISOString().slice(0,10)}.xlsx`);
   }
 
-  async function cambiarDatoRapido(ot, campo, valor) {
-    if (!ot || !valor) return;
-    // updateEstatusInforme escribe en col P (proceso interno SEAINF)
-    // updateRespInf escribe en col I (personal asignado)
+async function cambiarDatoRapido(ot, campo, valor) {
+    // 1. Cambiamos "!valor" por "valor === undefined" para permitir valores vacíos (ej. desasignar)
+    if (!ot || valor === undefined) return;
+
     const action = campo === 'estatus' ? 'updateEstatusInforme' : 'updateRespInf';
     const payload = { action, ot };
+    
     if (campo === 'estatus') payload.estatus = valor;
     else payload.responsable = valor;
 
@@ -1051,6 +1052,16 @@
     }
 
     showStatus('Guardando...', true);
+
+    // 2. Actualizamos la memoria visual de inmediato para que el selector no haga "efecto rebote"
+    const item = allTableroData.find(r => String(r.ot).toUpperCase() === String(ot).toUpperCase());
+    let valorAnterior = '';
+    
+    if (item) {
+      valorAnterior = item[campo];
+      item[campo] = valor; 
+    }
+
     try {
       const response = await SEAAuth.wrapFetch(SCRIPT_URL, {
         method: 'POST',
@@ -1058,22 +1069,24 @@
         body: JSON.stringify(payload)
       });
       const result = await response.json();
+      
       if (result.success) {
         showStatus('✓ Guardado', true);
-        filtroMetricaActivo = null; // limpiar filtro de métrica para que la fila actualizada sea visible
-        // Actualización optimista inmediata para evitar revert visual
-        const item = allTableroData.find(r => String(r.ot).toUpperCase() === String(ot).toUpperCase());
-        if (item) item[campo] = valor;
-        aplicarFiltros();
+        // 3. ELIMINAMOS la línea que reseteaba el filtro. Solo aplicamos el cambio visual.
+        aplicarFiltros(); 
       } else {
         showStatus('✗ Error: ' + result.error, false);
-        console.error('[SEAINF] cambiarDatoRapido falló:', result.error, '| OT:', ot, '| campo:', campo);
-        aplicarFiltros(); // revertir select al valor anterior
+        console.error('[SEAINF] cambiarDatoRapido falló:', result.error);
+        // Si hay error en backend, devolvemos el selector a su valor original
+        if (item) item[campo] = valorAnterior;
+        aplicarFiltros(); 
       }
     } catch(err) {
-      showStatus('✗ Error de red: ' + err.message, false);
+      showStatus('✗ Error de red', false);
       console.error('[SEAINF] cambiarDatoRapido excepción:', err);
-      aplicarFiltros(); // revertir
+      // Si falla la red, también regresamos el valor
+      if (item) item[campo] = valorAnterior;
+      aplicarFiltros(); 
     }
   }
 
