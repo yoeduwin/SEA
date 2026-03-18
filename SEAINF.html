@@ -905,19 +905,37 @@
         {v:'PARA REVISION',l:'En Revisión'},{v:'PARA IMPRESION',l:'Para Impresión'},
         {v:'FINALIZADO',l:'Finalizado'},{v:'CANCELADO',l:'Cancelado'}
       ];
-      const mkRespSel = (ot, resp) => {
+const mkRespSel = (ot, resp) => {
         const s = document.createElement('select');
         s.style.padding = '4px'; s.className = 'sea-cambio-rapido';
         s.dataset.ot = ot; s.dataset.campo = 'responsable';
-        const o0 = document.createElement('option'); o0.value=''; o0.textContent='-'; if(!resp) o0.selected=true; s.appendChild(o0);
-        RESP_OPTS.forEach(r2=>{const o=document.createElement('option');o.value=r2;o.textContent=r2;if(resp===r2)o.selected=true;s.appendChild(o);});
+        const o0 = document.createElement('option'); o0.value=''; o0.textContent='-'; 
+        // CAMBIO AQUÍ
+        if(!resp) o0.setAttribute('selected', 'selected'); 
+        s.appendChild(o0);
+        RESP_OPTS.forEach(r2=>{
+          const o=document.createElement('option');
+          o.value=r2;
+          o.textContent=r2;
+          // CAMBIO AQUÍ
+          if(resp===r2) o.setAttribute('selected', 'selected'); 
+          s.appendChild(o);
+        });
         return s.outerHTML;
       };
+
       const mkEstSel = (ot, est) => {
         const s = document.createElement('select');
         s.style.padding='4px'; s.className='sea-cambio-rapido';
         s.dataset.ot=ot; s.dataset.campo='estatus';
-        EST_OPTS.forEach(e2=>{const o=document.createElement('option');o.value=e2.v;o.textContent=e2.l;if(est===e2.v)o.selected=true;s.appendChild(o);});
+        EST_OPTS.forEach(e2=>{
+          const o=document.createElement('option');
+          o.value=e2.v;
+          o.textContent=e2.l;
+          // CAMBIO AQUÍ
+          if(est===e2.v) o.setAttribute('selected', 'selected'); 
+          s.appendChild(o);
+        });
         return s.outerHTML;
       };
       html += `<tr>
