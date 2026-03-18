@@ -867,7 +867,7 @@
           rfc: r.rfc || '',
           telefono: r.telefono || r.telefono_empresa || '',
           direccion: r.direccion || r.direccion_evaluacion || '',
-          responsable: (r.responsable || r.personal || r.personal_asignado || '').toUpperCase().trim(),
+          responsable: (r.responsable || '').toUpperCase().trim(),
           estatus: r.estatus_informe || 'NO INICIADO',
           linkDrive: r.linkDrive || r.link_drive || r.link_drive_cliente || '',
           tipoOrden: r.tipoOrden || r.tipo_orden || ''
@@ -1059,9 +1059,8 @@
       const result = await response.json();
       if (result.success) {
         showStatus('✓ Guardado', true);
-        const item = allTableroData.find(r => String(r.ot).toUpperCase() === ot.toUpperCase());
-        if (item) item[campo] = valor;
-        aplicarFiltros();
+        filtroMetricaActivo = null; // limpiar filtro de métrica para que la fila actualizada sea visible
+        await cargarTablero();      // recargar desde Sheets para garantizar sincronía
       } else {
         showStatus('✗ Error: ' + result.error, false);
         console.error('[SEAINF] cambiarDatoRapido falló:', result.error, '| OT:', ot, '| campo:', campo);
