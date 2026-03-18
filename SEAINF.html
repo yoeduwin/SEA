@@ -836,7 +836,13 @@
   function calcularDiasVencimiento(fechaEntrega) {
     if (!fechaEntrega) return null;
     const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-    const entrega = new Date(fechaEntrega); entrega.setHours(0, 0, 0, 0);
+    // Sheets puede entregar DD/MM/YYYY (formato mexicano); new Date() no lo parsea.
+    // Normalizar a YYYY-MM-DD si viene en ese formato.
+    let fe = String(fechaEntrega).trim();
+    const dmy = fe.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (dmy) fe = `${dmy[3]}-${dmy[2].padStart(2,'0')}-${dmy[1].padStart(2,'0')}`;
+    const entrega = new Date(fe); entrega.setHours(0, 0, 0, 0);
+    if (isNaN(entrega.getTime())) return null;
     return Math.ceil((entrega - hoy) / 86400000);
   }
 
@@ -862,7 +868,7 @@
           telefono: r.telefono || r.telefono_empresa || '',
           direccion: r.direccion || r.direccion_evaluacion || '',
           responsable: r.responsable || r.personal || r.personal_asignado || '',
-          estatus: r.estatus_informe || 'NO INICIADO',  // lee col 16 (interno), NO el estatus externo de SEADB
+          estatus: r.estatus_informe || 'NO INICIADO',
           linkDrive: r.linkDrive || r.link_drive || r.link_drive_cliente || '',
           tipoOrden: r.tipoOrden || r.tipo_orden || ''
         }));
@@ -1026,8 +1032,8 @@
 
   async function cambiarDatoRapido(ot, campo, valor) {
     if (!ot || !valor) return;
-    // 'updateEstatusInforme' escribe en col P (proceso interno SEAINF).
-    // 'updateEstatus' queda EXCLUSIVO para SEADB (entrega externa al cliente).
+    // updateEstatusInforme escribe en col P (proceso interno SEAINF)
+    // updateRespInf escribe en col I (personal asignado)
     const action = campo === 'estatus' ? 'updateEstatusInforme' : 'updateRespInf';
     const payload = { action, ot };
     if (campo === 'estatus') payload.estatus = valor;
@@ -1058,8 +1064,8 @@
         aplicarFiltros();
       } else {
         showStatus('✗ Error: ' + result.error, false);
-        console.error('[SEAINF] cambiarDatoRapido falló:', result.error, '| OT:', ot, '| campo:', campo, '| valor:', valor);
-        aplicarFiltros(); // revertir select al valor anterior desde allTableroData
+        console.error('[SEAINF] cambiarDatoRapido falló:', result.error, '| OT:', ot, '| campo:', campo);
+        aplicarFiltros(); // revertir select al valor anterior
       }
     } catch(err) {
       showStatus('✗ Error de red: ' + err.message, false);
