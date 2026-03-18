@@ -16,10 +16,11 @@ const CONFIG = {
   FOLDER_ID:      '1nHd-70uUeciClDm_3_pgbmqGF7II1lfQ',
 
   // ── Nombres de hojas ─────────────────────────────────────────────────────
-  SHEET_CLIENTES: 'CLIENTES_MAESTRO',
-  SHEET_OT:       'ORDENES_TRABAJO',
-  SHEET_USUARIOS: 'USUARIOS_AUTORIZADOS',
-  SHEET_AUDITORIA:'AUDITORIA',
+  SHEET_CLIENTES:  'CLIENTES_MAESTRO',
+  SHEET_OT:        'ORDENES_TRABAJO',
+  SHEET_INFORMES:  'INFORMES',
+  SHEET_USUARIOS:  'USUARIOS_AUTORIZADOS',
+  SHEET_AUDITORIA: 'AUDITORIA',
 
   // ── Zona horaria ─────────────────────────────────────────────────────────
   TIMEZONE: 'GMT-6',
@@ -77,22 +78,39 @@ const CONFIG = {
       ASESOR_CONSULTOR: 21
     },
     ORDENES: {
-      FECHA:            0,
-      OT:               1,
-      TIPO:             2,
-      NUM_INFORME:      3,
-      NOM:              4,
-      CLIENTE:          5,
-      SUCURSAL:         6,
-      RFC:              7,
-      PERSONAL:         8,
-      FECHA_VISITA:     9,
-      FECHA_ENTREGA:    10,
-      FECHA_REAL:       11,
-      ESTATUS_EXTERNO:  12,
-      LINK_DRIVE:       13,
-      OBSERVACIONES:    14,
-      ESTATUS_INFORME:  15
+      FECHA:            0,  // A
+      OT:               1,  // B
+      TIPO:             2,  // C
+      NOM:              3,  // D  (NUM_INFORME eliminado)
+      CLIENTE:          4,  // E
+      SUCURSAL:         5,  // F
+      RFC:              6,  // G
+      PERSONAL:         7,  // H
+      FECHA_VISITA:     8,  // I
+      FECHA_ENTREGA:    9,  // J
+      FECHA_REAL:       10, // K
+      ESTATUS_EXTERNO:  11, // L
+      LINK_DRIVE:       12, // M
+      OBSERVACIONES:    13  // N  (ESTATUS_INFORME eliminado)
+    },
+    INFORMES: {
+      TIMESTAMP:        0,  // A
+      NUM_INFORME:      1,  // B
+      TIPO_ORDEN:       2,  // C
+      OT:               3,  // D
+      NOM:              4,  // E
+      CLIENTE:          5,  // F
+      SOLICITANTE:      6,  // G
+      RFC:              7,  // H
+      TELEFONO:         8,  // I
+      DIRECCION:        9,  // J
+      FECHA_SERVICIO:   10, // K
+      FECHA_ENTREGA:    11, // L
+      ES_CAPACITACION:  12, // M
+      ESTATUS:          13, // N
+      LINK_DRIVE:       14, // O
+      RESPONSABLE:      15, // P
+      SUCURSAL:         16  // Q
     },
     USUARIOS: {
       EMAIL:  0,
@@ -105,23 +123,14 @@ const CONFIG = {
 // Shorthands de columnas para legibilidad en funciones
 const CL = CONFIG.COLUMNS.CLIENTES;
 const CO = CONFIG.COLUMNS.ORDENES;
+const CI = CONFIG.COLUMNS.INFORMES;
 const CU = CONFIG.COLUMNS.USUARIOS;
 
+// Valores válidos para INFORMES.Estatus (hoja INFORMES col N)
 const ESTATUS_INFORME_VALIDOS_ = ['NO INICIADO', 'EN PROCESO', 'PARA REVISION', 'PARA IMPRESION', 'FINALIZADO', 'CANCELADO'];
 const ESTATUS_INFORME_TERMINALES_ = ['FINALIZADO', 'CANCELADO'];
-
-function normalizarEstatusInforme_(estatusInforme, estatusExterno) {
-  const interno = String(estatusInforme || '').trim().toUpperCase();
-  if (ESTATUS_INFORME_VALIDOS_.indexOf(interno) !== -1) return interno;
-
-  const externo = String(estatusExterno || '').trim().toUpperCase();
-  if (externo === 'FINALIZADO' || externo === 'ENTREGADO' || externo === 'ENTREGADA' || externo === 'TRUE') return 'FINALIZADO';
-  if (externo === 'EN PROCESO' || externo === 'EN PROGRESO') return 'EN PROCESO';
-  if (externo === 'PARA REVISION') return 'PARA REVISION';
-  if (externo === 'PARA IMPRESION') return 'PARA IMPRESION';
-  if (externo === 'CANCELADO') return 'CANCELADO';
-  return 'NO INICIADO';
-}
+// Valores válidos para ORDENES_TRABAJO.EstatusExterno (col L)
+const ESTATUS_EXTERNO_TERMINALES_ = ['FINALIZADO', 'CANCELADO'];
 // =========================================================================
 // MÓDULO DE SEGURIDAD — Autenticación Google OAuth + reCAPTCHA v3
 // =========================================================================
@@ -568,8 +577,9 @@ function doPost(e) {
       case 'buscarClienteRFC': return output_(fase2_BuscarClienteRFC(data.rfc));
       case 'buscarClienteNombre': return output_(fase2_BuscarClienteNombre(data.nombre));
       case 'getTablero': return output_(fase4_GetTablero());
-      case 'getTableroInf': return output_(fase4_GetTablero());
+      case 'getTableroInf': return output_(fase4_GetTableroInf());
       case 'getOrdenes': return output_(getOrdenesSafe_());
+      case 'getInformes': return output_(getInformesSafe_());
       case 'getConsecutivo': return output_(getConsecutivoSafe_(data));
       case 'updateRespInf': return output_(updateResponsableSafe_(data, _usuario));
       default: return output_({ success: false, error: 'Acción POST no reconocida.' });
@@ -602,8 +612,9 @@ function doGet(e) {
       case 'buscarClienteRFC': return output_(fase2_BuscarClienteRFC(e.parameter.rfc));
       case 'buscarClienteNombre': return output_(fase2_BuscarClienteNombre(e.parameter.nombre));
       case 'getTablero': return output_(fase4_GetTablero());
-      case 'getTableroInf': return output_(fase4_GetTablero());
+      case 'getTableroInf': return output_(fase4_GetTableroInf());
       case 'getOrdenes': return output_(getOrdenesSafe_());
+      case 'getInformes': return output_(getInformesSafe_());
       case 'getConsecutivo': return output_(getConsecutivoSafe_(e.parameter));
       default: return output_({ success: false, error: 'Acción GET no reconocida.' });
     }
@@ -792,12 +803,23 @@ function fase2_BuscarClienteNombre(nombreBuscado) {
 }
 function fase2_RegistrarOT(data) {
   const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+  // 14 columnas A-N: FECHA, OT, TIPO, NOM, CLIENTE, SUCURSAL, RFC, PERSONAL,
+  //                  FECHA_VISITA, FECHA_ENTREGA, FECHA_REAL, ESTATUS_EXTERNO, LINK_DRIVE, OBSERVACIONES
   sheet.appendRow([
-    new Date(), data.ot_folio || '', data.tipo_orden || 'OTA', '', data.nom_servicio || '',
-    data.cliente_razon_social || '', data.sucursal || '', data.rfc || '', data.personal_asignado || '',
-    data.fecha_visita || '', data.fecha_entrega_limite || '', '', 'NO INICIADO',  // col 13 = estatus externo (SEADB)
-    data.link_drive_cliente || '', data.observaciones || '',
-    'NO INICIADO'  // col 16 = estatus_informe (interno SEAINF)
+    new Date(),
+    data.ot_folio || '',
+    data.tipo_orden || 'OTA',
+    data.nom_servicio || '',
+    data.cliente_razon_social || '',
+    data.sucursal || '',
+    data.rfc || '',
+    data.personal_asignado || '',
+    data.fecha_visita || '',
+    data.fecha_entrega_limite || '',
+    '',               // FECHA_REAL (col K) - vacía al crear
+    'NO INICIADO',    // ESTATUS_EXTERNO (col L)
+    data.link_drive_cliente || '',
+    data.observaciones || ''
   ]);
   return { success: true, message: 'OT Registrada correctamente' };
 }
@@ -910,22 +932,47 @@ function fase3_CrearExpediente(payload) {
       targetFolder.createFile(blob);
     } catch (err) { Logger.log('Error archivo: ' + err.message); }
   });
-  sheet.getRange(filaOT, 4).setValue(info.numInforme);
-  sheet.getRange(filaOT, 13).setValue('EN PROCESO');
-  sheet.getRange(filaOT, 14).setValue(carpetaOT.getUrl());
+  // Escribir nueva fila en INFORMES (nunca tocar ORDENES_TRABAJO para datos de informe)
+  const sheetInf = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_INFORMES);
+  const otRow = values[otMatch.arrayIndex];
+  sheetInf.appendRow([
+    new Date(),                                    // A: Timestamp
+    info.numInforme || '',                         // B: NumInforme
+    otRow[CO.TIPO] || '',                          // C: TipoOrden
+    info.ot || '',                                 // D: OT
+    otRow[CO.NOM] || '',                           // E: NOM
+    otRow[CO.CLIENTE] || '',                       // F: Cliente
+    info.solicitante || '',                        // G: Solicitante
+    otRow[CO.RFC] || '',                           // H: RFC
+    info.telefono || '',                           // I: Telefono
+    info.direccion || '',                          // J: Direccion
+    info.fechaServicio || otRow[CO.FECHA_VISITA] || '', // K: FechaServicio
+    otRow[CO.FECHA_ENTREGA] || '',                 // L: FechaEntrega
+    info.esCapacitacion || 'NO',                   // M: EsCapacitacion
+    'NO INICIADO',                                 // N: Estatus (independiente de ESTATUS_EXTERNO)
+    carpetaOT.getUrl(),                            // O: LinkDrive (carpeta del expediente)
+    otRow[CO.PERSONAL] || '',                      // P: Responsable
+    otRow[CO.SUCURSAL] || ''                       // Q: Sucursal
+  ]);
   return { success: true, url: carpetaOT.getUrl() };
 }
 function fase3_AddFilesToExpediente(payload) {
   const ot = payload.ot;
   const files = payload.files || [];
   if (!ot) return { success: false, error: 'Falta OT' };
-  const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
-  const data = sheet.getDataRange().getValues();
-  const otMatch = findOtRowForSeainf_(data, ot, { minSheetRow: 2 });
-  if (!otMatch) return { success: false, error: 'No se encontró el expediente' };
 
-  const driveLink = data[otMatch.arrayIndex][CO.LINK_DRIVE];
-  if (!driveLink) return { success: false, error: 'No se encontró el expediente' };
+  // Buscar el link del expediente en INFORMES (donde se guarda carpetaOT.getUrl())
+  const sheetInf = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_INFORMES);
+  const infData = sheetInf.getDataRange().getValues();
+  const normalizedOt = normalizeOtForSeainf_(ot);
+  let driveLink = '';
+  for (let i = infData.length - 1; i >= 1; i--) {
+    if (normalizeOtForSeainf_(infData[i][CI.OT]) === normalizedOt) {
+      driveLink = infData[i][CI.LINK_DRIVE];
+      break;
+    }
+  }
+  if (!driveLink) return { success: false, error: 'No se encontró el expediente en INFORMES para OT: ' + ot };
   const folderIdMatch = driveLink.match(/folders\/([a-zA-Z0-9_-]+)/);
   const expedienteFolder = DriveApp.getFolderById(folderIdMatch[1]);
   const subfolderNames = CONFIG.FOLDER_STRUCTURE;
@@ -956,33 +1003,35 @@ function fase3_AddFilesToExpediente(payload) {
 function getOrdenesSafe_() {
   const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
   const values = sheet.getDataRange().getDisplayValues();
-  const ordenes = values.slice(1).map(row => {
-    const estatusInforme = normalizarEstatusInforme_(row[CO.ESTATUS_INFORME], row[CO.ESTATUS_EXTERNO]);
-    return {
-      ot:              row[CO.OT],
-      tipo_orden:      row[CO.TIPO],
-      nom_servicio:    row[CO.NOM],
-      clienteInicial:  row[CO.CLIENTE],
-      clienteFinal:    row[CO.SUCURSAL],
-      cliente:         row[CO.CLIENTE],
-      sucursal:        row[CO.SUCURSAL],
-      rfc:             row[CO.RFC],
-      personal:        row[CO.PERSONAL],
-      fecha_visita:    row[CO.FECHA_VISITA],
-      link_drive:      row[CO.LINK_DRIVE],
-      estatus_informe: estatusInforme
-    };
-  }).filter(orden => orden.ot && orden.ot.trim() !== '' && ESTATUS_INFORME_TERMINALES_.indexOf(orden.estatus_informe) === -1);
+  const ordenes = values.slice(1).map(row => ({
+    ot:             row[CO.OT],
+    tipo_orden:     row[CO.TIPO],
+    nom_servicio:   row[CO.NOM],
+    clienteInicial: row[CO.CLIENTE],
+    clienteFinal:   row[CO.SUCURSAL],
+    cliente:        row[CO.CLIENTE],
+    sucursal:       row[CO.SUCURSAL],
+    rfc:            row[CO.RFC],
+    personal:       row[CO.PERSONAL],
+    fecha_visita:   row[CO.FECHA_VISITA],
+    fecha_entrega:  row[CO.FECHA_ENTREGA],
+    link_drive:     row[CO.LINK_DRIVE],
+    estatus_externo: row[CO.ESTATUS_EXTERNO]
+  })).filter(orden =>
+    orden.ot && orden.ot.trim() !== '' &&
+    ESTATUS_EXTERNO_TERMINALES_.indexOf(String(orden.estatus_externo || '').toUpperCase()) === -1
+  );
   return { success: true, data: ordenes };
 }
 function getConsecutivoSafe_(params) {
-  const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+  // Lee de INFORMES para encontrar el mayor consecutivo registrado
+  const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_INFORMES);
   const dataRange = sheet.getDataRange().getDisplayValues().slice(1);
   const regex = /^EA-\d{4}-.+-(\d{4})$/;
   let maxConsecutivo = 0;
   dataRange.forEach(row => {
-    const valNum = row[CO.NUM_INFORME];
-    const valTipo = String(row[CO.TIPO] || '').trim().toUpperCase();
+    const valNum = row[CI.NUM_INFORME];
+    const valTipo = String(row[CI.TIPO_ORDEN] || '').trim().toUpperCase();
     if (valTipo === (params.tipo || 'OTA').toUpperCase()) {
       const match = String(valNum || '').trim().match(regex);
       if (match) {
@@ -1012,26 +1061,28 @@ function updateEstatusSafe_(data, usuario) {
   }
   return { success: false, error: 'OT no encontrada' };
 }
-// Actualiza SOLO el estatus interno del dpto. de informes (col 16).
-// NO toca col 13 (estatus externo que lee SEADB) ni la fecha real de entrega.
+// Actualiza el estatus interno del informe en la hoja INFORMES (col N).
+// NO toca ORDENES_TRABAJO ni ESTATUS_EXTERNO.
 function updateEstatusInformeSafe_(data, usuario) {
   if (!data || !data.ot || !data.estatus) return { success: false, error: 'Faltan campos requeridos: ot, estatus.' };
-  const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+  const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_INFORMES);
   const values = sheet.getDataRange().getValues();
-  const otMatch = findOtRowForSeainf_(values, data.ot, { minSheetRow: 2 });
-  if (!otMatch) return { success: false, error: 'OT no encontrada' };
+  const normalizedOt = normalizeOtForSeainf_(data.ot);
 
-  const valorAnterior = String(values[otMatch.arrayIndex][CO.ESTATUS_INFORME]);
-  const nuevoEstatus = String(data.estatus).toUpperCase();
-  const targetRow = otMatch.sheetRow;
-  const targetCol = CO.ESTATUS_INFORME + 1;
-  Logger.log('[DEBUG] updateEstatusInforme OT=%s fila=%s col=%s valorAnterior="%s" nuevo="%s"', data.ot, targetRow, targetCol, valorAnterior, nuevoEstatus);
-  sheet.getRange(targetRow, targetCol).setValue(nuevoEstatus);
-  SpreadsheetApp.flush();
-  const verificacion = sheet.getRange(targetRow, targetCol).getValue();
-  Logger.log('[DEBUG] Verificacion post-write: "%s"', verificacion);
-  registrarAuditoria_(usuario || 'desconocido', 'UPDATE_ESTATUS_INFORME', data.ot, 'estatus_informe', valorAnterior, nuevoEstatus);
-  return { success: true, message: 'Estatus informe actualizado', _debug: { fila: targetRow, col: targetCol, escrito: nuevoEstatus, verificado: String(verificacion) } };
+  // Buscar la última fila de INFORMES que coincida con el OT
+  for (let i = values.length - 1; i >= 1; i--) {
+    if (normalizeOtForSeainf_(values[i][CI.OT]) === normalizedOt) {
+      const valorAnterior = String(values[i][CI.ESTATUS]);
+      const nuevoEstatus = String(data.estatus).toUpperCase();
+      const targetRow = i + 1;
+      const targetCol = CI.ESTATUS + 1;
+      sheet.getRange(targetRow, targetCol).setValue(nuevoEstatus);
+      SpreadsheetApp.flush();
+      registrarAuditoria_(usuario || 'desconocido', 'UPDATE_ESTATUS_INFORME', data.ot, 'estatus_informe', valorAnterior, nuevoEstatus);
+      return { success: true, message: 'Estatus informe actualizado' };
+    }
+  }
+  return { success: false, error: 'Informe no encontrado en INFORMES para OT: ' + data.ot };
 }
 function updateResponsableSafe_(data, usuario) {
   if (!data || !data.ot || data.responsable === undefined) return { success: false, error: 'Faltan campos requeridos: ot, responsable.' };
@@ -1075,7 +1126,6 @@ function fase4_GetTablero() {
     const suc = String(row[CO.SUCURSAL] || '').trim();
     return {
       ot:               row[CO.OT],
-      numInforme:       row[CO.NUM_INFORME],
       nom:              row[CO.NOM],
       cliente:          row[CO.CLIENTE],
       sucursal:         row[CO.SUCURSAL],
@@ -1086,12 +1136,40 @@ function fase4_GetTablero() {
       fechaEntrega:     row[CO.FECHA_ENTREGA],
       fechaRealEntrega: row[CO.FECHA_REAL],
       estatus:          row[CO.ESTATUS_EXTERNO],
-      estatus_informe:  normalizarEstatusInforme_(row[CO.ESTATUS_INFORME], row[CO.ESTATUS_EXTERNO]),
       link_drive:       row[CO.LINK_DRIVE],
       asesor_consultor: asesorMap[rfc + '|' + suc] || ''
     };
   });
   return { success: true, data: registros };
+}
+// =========================================================================
+// INFORMES — Lectura y dashboard interno (SEAINF)
+// =========================================================================
+function getInformesSafe_() {
+  const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_INFORMES);
+  const values = sheet.getDataRange().getDisplayValues();
+  const informes = values.slice(1).map(row => ({
+    numInforme:     row[CI.NUM_INFORME],
+    tipoOrden:      row[CI.TIPO_ORDEN],
+    ot:             row[CI.OT],
+    nom:            row[CI.NOM],
+    cliente:        row[CI.CLIENTE],
+    sucursal:       row[CI.SUCURSAL],
+    rfc:            row[CI.RFC],
+    solicitante:    row[CI.SOLICITANTE],
+    telefono:       row[CI.TELEFONO],
+    direccion:      row[CI.DIRECCION],
+    fechaServicio:  row[CI.FECHA_SERVICIO],
+    fechaEntrega:   row[CI.FECHA_ENTREGA],
+    esCapacitacion: row[CI.ES_CAPACITACION],
+    estatus:        row[CI.ESTATUS],
+    link_drive:     row[CI.LINK_DRIVE],
+    responsable:    row[CI.RESPONSABLE]
+  })).filter(inf => inf.ot && inf.ot.trim() !== '');
+  return { success: true, data: informes };
+}
+function fase4_GetTableroInf() {
+  return getInformesSafe_();
 }
 // =========================================================================
 // TEST DIAGNÓSTICO — ejecutar manualmente desde el editor GAS

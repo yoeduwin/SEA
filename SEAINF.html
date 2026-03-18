@@ -741,6 +741,7 @@
           numInforme: document.getElementById('field-num-informe').value,
           cliente: document.getElementById('field-cliente-inicial').value.trim(),
           sucursal: document.getElementById('field-cliente-final').value.trim(),
+          fechaServicio: document.getElementById('field-fecha').value,
           fecha: document.getElementById('field-fecha').value,
           entrega: document.getElementById('field-entrega').value,
           tipoOrden: document.getElementById('field-tipo-orden').value,
@@ -749,7 +750,7 @@
           telefono: document.getElementById('field-tel').value.trim(),
           direccion: document.getElementById('field-dir').value.trim(),
           responsable: document.getElementById('field-responsable').value,
-          estatus: 'NO INICIADO',
+          esCapacitacion: 'NO',
           linkDrive: otData.link_drive || ''
         },
         files: []
@@ -859,7 +860,7 @@
           numInforme: r.numInforme || r.num_informe || '',
           ot: r.ot || '',
           nom: r.nom || r.nom_servicio || '',
-          fecha: r.fecha || r.fecha_visita || '',
+          fecha: r.fechaServicio || r.fecha_servicio || r.fecha || r.fecha_visita || '',
           fechaEntrega: r.fechaEntrega || r.fecha_entrega || r.fecha_entrega_limite || '',
           cliente: r.cliente || r.cliente_razon_social || '',
           sucursal: r.sucursal || '',
@@ -868,7 +869,7 @@
           telefono: r.telefono || r.telefono_empresa || '',
           direccion: r.direccion || r.direccion_evaluacion || '',
           responsable: (r.responsable || '').toUpperCase().trim(),
-          estatus: r.estatus_informe || 'NO INICIADO',
+          estatus: r.estatus || r.estatus_informe || 'NO INICIADO',
           linkDrive: r.linkDrive || r.link_drive || r.link_drive_cliente || '',
           tipoOrden: r.tipoOrden || r.tipo_orden || ''
         }));
