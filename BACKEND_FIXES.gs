@@ -987,9 +987,15 @@ function updateEstatusInformeSafe_(data, usuario) {
     if (String(values[i][CO.OT]).trim() === String(data.ot).trim()) {
       const valorAnterior = String(values[i][CO.ESTATUS_INFORME]);
       const nuevoEstatus = data.estatus.toUpperCase();
-      sheet.getRange(i + 1, CO.ESTATUS_INFORME + 1).setValue(nuevoEstatus);
+      const targetRow = i + 1;
+      const targetCol = CO.ESTATUS_INFORME + 1;
+      Logger.log('[DEBUG] updateEstatusInforme OT=%s fila=%s col=%s valorAnterior="%s" nuevo="%s"', data.ot, targetRow, targetCol, valorAnterior, nuevoEstatus);
+      sheet.getRange(targetRow, targetCol).setValue(nuevoEstatus);
+      SpreadsheetApp.flush();
+      const verificacion = sheet.getRange(targetRow, targetCol).getValue();
+      Logger.log('[DEBUG] Verificacion post-write: "%s"', verificacion);
       registrarAuditoria_(usuario || 'desconocido', 'UPDATE_ESTATUS_INFORME', data.ot, 'estatus_informe', valorAnterior, nuevoEstatus);
-      return { success: true, message: 'Estatus informe actualizado' };
+      return { success: true, message: 'Estatus informe actualizado', _debug: { fila: targetRow, col: targetCol, escrito: nuevoEstatus, verificado: String(verificacion) } };
     }
   }
   return { success: false, error: 'OT no encontrada' };
