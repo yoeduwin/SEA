@@ -869,7 +869,7 @@
           telefono: r.telefono || r.telefono_empresa || '',
           direccion: r.direccion || r.direccion_evaluacion || '',
           responsable: (r.responsable || '').toUpperCase().trim(),
-          estatus: r.estatus || r.estatus_informe || 'NO INICIADO',
+          estatus: (r.estatus || r.estatus_informe || 'NO INICIADO').trim().toUpperCase(),
           linkDrive: r.linkDrive || r.link_drive || r.link_drive_cliente || '',
           tipoOrden: r.tipoOrden || r.tipo_orden || ''
         }));
