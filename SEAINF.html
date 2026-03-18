@@ -1060,7 +1060,12 @@
       if (result.success) {
         showStatus('✓ Guardado', true);
         filtroMetricaActivo = null; // limpiar filtro de métrica para que la fila actualizada sea visible
-        await cargarTablero();      // recargar desde Sheets para garantizar sincronía
+        // Actualización optimista inmediata para evitar revert visual
+        const item = allTableroData.find(r => String(r.ot).toUpperCase() === String(ot).toUpperCase());
+        if (item) item[campo] = valor;
+        aplicarFiltros();
+        // Sync real desde Sheets con delay para evitar lectura stale
+        setTimeout(async () => { try { await cargarTablero(); } catch(e) {} }, 2000);
       } else {
         showStatus('✗ Error: ' + result.error, false);
         console.error('[SEAINF] cambiarDatoRapido falló:', result.error, '| OT:', ot, '| campo:', campo);
