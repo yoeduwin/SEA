@@ -862,7 +862,7 @@
           telefono: r.telefono || r.telefono_empresa || '',
           direccion: r.direccion || r.direccion_evaluacion || '',
           responsable: r.responsable || r.personal || r.personal_asignado || '',
-          estatus: r.estatus_informe || r.estatus_interno || r.estatus || 'NO INICIADO',
+          estatus: r.estatus_informe || 'NO INICIADO',
           linkDrive: r.linkDrive || r.link_drive || r.link_drive_cliente || '',
           tipoOrden: r.tipoOrden || r.tipo_orden || ''
         }));
@@ -1026,10 +1026,12 @@
 
   async function cambiarDatoRapido(ot, campo, valor) {
     if (!ot || !valor) return;
-    // Intentar acción nueva (BACKEND_FIXES.gs); si el GAS desplegado es viejo,
-    // 'updateEstatusInforme' / 'updateRespInf' no existirán → fallback a nombres antiguos.
-    const actionNew = campo === 'estatus' ? 'updateEstatusInforme' : 'updateRespInf';
-    const actionOld = campo === 'estatus' ? 'updateEstatus'        : 'updateResponsable';
+    // updateEstatusInforme escribe en col P (proceso interno SEAINF)
+    // updateRespInf escribe en col I (personal asignado)
+    const action = campo === 'estatus' ? 'updateEstatusInforme' : 'updateRespInf';
+    const payload = { action, ot };
+    if (campo === 'estatus') payload.estatus = valor;
+    else payload.responsable = valor;
 
     const statusEl = document.getElementById('tablero-status');
     function showStatus(msg, ok) {
@@ -1041,26 +1043,14 @@
       if (ok) setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
     }
 
-    async function tryAction(action) {
-      const payload = { action, ot };
-      if (campo === 'estatus') payload.estatus = valor;
-      else payload.responsable = valor;
-      const resp = await SEAAuth.wrapFetch(SCRIPT_URL, {
+    showStatus('Guardando...', true);
+    try {
+      const response = await SEAAuth.wrapFetch(SCRIPT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload)
       });
-      return resp.json();
-    }
-
-    showStatus('Guardando...', true);
-    try {
-      let result = await tryAction(actionNew);
-      // Si el GAS no reconoce la acción nueva, reintenta con el nombre viejo
-      if (!result.success && result.error && /no (soportada|reconocida)/i.test(result.error)) {
-        console.warn('[SEAINF] GAS viejo detectado, reintentando con', actionOld);
-        result = await tryAction(actionOld);
-      }
+      const result = await response.json();
       if (result.success) {
         showStatus('✓ Guardado', true);
         const item = allTableroData.find(r => String(r.ot).toUpperCase() === ot.toUpperCase());
