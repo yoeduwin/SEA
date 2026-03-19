@@ -197,6 +197,7 @@
     .chip-yellow { background: #fff8e1; color: #f39c12; border: 1px solid #ffecb3;}
     .chip-red { background: #fbeeee; color: #c0392b; border: 1px solid #fadbd8;}
     .chip-gray { background: #f0f3f4; color: #7f8c8d; border: 1px solid #dfe6e9;}
+    .table-section-divider { background: #ecf0f1; font-weight: 600; color: #7f8c8d; text-align: center; font-size: 0.8rem; letter-spacing: 1px; text-transform: uppercase; padding: 0.6rem; }
     .filter-bar { display: flex; gap: 1rem; padding: 15px; background: #f8f9fa; border-bottom: 1px solid var(--border); }
     .filter-bar input, .filter-bar select { flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
     .loader { display: none; text-align: center; padding: 30px 20px; }
@@ -885,8 +886,11 @@
     const box = document.getElementById('tablero-box');
     calcularKPIs(data);
     if (!data || data.length === 0) { box.innerHTML = `<tr><td colspan="8" style="text-align:center;">No hay expedientes</td></tr>`; return; }
+    const TERMINALES = ['FINALIZADO', 'CANCELADO'];
+    const activos    = data.filter(r => !TERMINALES.includes((r.estatus || 'NO INICIADO').toUpperCase()));
+    const terminados = data.filter(r =>  TERMINALES.includes((r.estatus || 'NO INICIADO').toUpperCase()));
     let html = '';
-    data.forEach((r) => {
+    const buildRow = (r) => {
       const estatus = (r.estatus || 'NO INICIADO').toUpperCase();
       const dias = calcularDiasVencimiento(r.fechaEntrega);
       let slaChip = `<span class="chip chip-gray">Sin SLA</span>`;
@@ -938,7 +942,7 @@ const mkRespSel = (ot, resp) => {
         });
         return s.outerHTML;
       };
-      html += `<tr>
+      return `<tr>
         <td><strong>${escHtml(r.numInforme || '-')}</strong><br><span style="color:var(--muted); font-size:10px;">${escHtml(r.ot)}</span></td>
         <td><strong>${escHtml(r.nom || '-')}</strong><br><span style="color:var(--muted); font-size:10px;">${escHtml(r.fecha || '-')}</span></td>
         <td>${escHtml(cInicial)}</td>
@@ -950,7 +954,12 @@ const mkRespSel = (ot, resp) => {
           <a href="${escHtml(safeDriveUrl(r.linkDrive))}" target="_blank" style="text-decoration:none; background:#1e5a3e; color:white; padding:4px 8px; border-radius:3px; font-size:10px;">📁 Drive</a>
         </td>
       </tr>`;
-    });
+    };
+    activos.forEach(r => { html += buildRow(r); });
+    if (activos.length > 0 && terminados.length > 0) {
+      html += `<tr><td colspan="8" class="table-section-divider">✅ Finalizados / Cancelados (${terminados.length})</td></tr>`;
+    }
+    terminados.forEach(r => { html += buildRow(r); });
     box.innerHTML = html;
     // Event delegation para selects de cambio rápido (evita attribute injection)
     box.querySelectorAll('select.sea-cambio-rapido').forEach(sel => {
