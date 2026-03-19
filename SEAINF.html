@@ -198,6 +198,21 @@
     .chip-red { background: #fbeeee; color: #c0392b; border: 1px solid #fadbd8;}
     .chip-gray { background: #f0f3f4; color: #7f8c8d; border: 1px solid #dfe6e9;}
     .table-section-divider { background: #ecf0f1; font-weight: 600; color: #7f8c8d; text-align: center; font-size: 0.8rem; letter-spacing: 1px; text-transform: uppercase; padding: 0.6rem; }
+    /* Modal alerta vencidos */
+    .inf-modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:9999; align-items:center; justify-content:center; animation:fadeIn 0.3s ease; }
+    .inf-modal-overlay.show { display:flex; }
+    .inf-modal-content { background:#fff; border-radius:12px; max-width:580px; width:90%; max-height:78vh; overflow-y:auto; box-shadow:0 12px 48px rgba(0,0,0,0.25); }
+    .inf-modal-header { background:linear-gradient(135deg,#e74c3c,#c0392b); color:white; padding:1.4rem 1.5rem; border-radius:12px 12px 0 0; display:flex; align-items:center; gap:1rem; }
+    .inf-modal-body { padding:1.2rem 1.5rem; }
+    .inf-vencido-item { background:#f8f9fa; border-left:4px solid #e74c3c; border-radius:4px; padding:0.75rem 1rem; margin-bottom:0.6rem; display:flex; justify-content:space-between; align-items:center; gap:0.8rem; }
+    .inf-vencido-dias { background:#e74c3c; color:white; padding:0.3rem 0.65rem; border-radius:4px; font-weight:700; font-size:11px; white-space:nowrap; flex-shrink:0; }
+    .inf-modal-footer { padding:1rem 1.5rem; border-top:1px solid var(--border); display:flex; gap:0.8rem; justify-content:flex-end; }
+    .inf-modal-btn { padding:8px 20px; border:none; border-radius:6px; cursor:pointer; font-size:13px; font-weight:600; }
+    .inf-modal-btn-primary { background:#e74c3c; color:white; }
+    .inf-modal-btn-secondary { background:#95a5a6; color:white; }
+    /* Row priority colors */
+    tr.row-vencido    { background:#fff5f5 !important; }
+    tr.row-por-vencer { background:#fffbf0 !important; }
     .filter-bar { display: flex; gap: 1rem; padding: 15px; background: #f8f9fa; border-bottom: 1px solid var(--border); }
     .filter-bar input, .filter-bar select { flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
     .loader { display: none; text-align: center; padding: 30px 20px; }
@@ -875,11 +890,50 @@
           tipoOrden: r.tipoOrden || r.tipo_orden || ''
         }));
         aplicarFiltros();
+        checkInformesVencidos();
       }
     } catch (e) {
       console.error('Error cargando tablero:', e);
       document.getElementById('tablero-box').innerHTML = '<tr><td colspan="8" style="text-align:center; color:#c0392b;">Error al cargar datos. Intente de nuevo.</td></tr>';
     }
+  }
+
+  let alertaInfMostrada = false;
+
+  function checkInformesVencidos() {
+    if (alertaInfMostrada) return;
+    const vencidos = allTableroData.filter(r => {
+      const e = (r.estatus || 'NO INICIADO').toUpperCase();
+      if (e === 'FINALIZADO' || e === 'CANCELADO') return false;
+      const d = calcularDiasVencimiento(r.fechaEntrega);
+      return d !== null && d < 0;
+    });
+    if (vencidos.length === 0) return;
+    alertaInfMostrada = true;
+    const body = document.getElementById('inf-alerta-body');
+    body.innerHTML = vencidos.map(r => {
+      const dias = Math.abs(calcularDiasVencimiento(r.fechaEntrega));
+      return `<div class="inf-vencido-item">
+        <div>
+          <strong>${escHtml(r.numInforme || r.ot)}</strong>
+          <span style="color:var(--muted);font-size:11px;margin-left:8px;">${escHtml(r.ot)}</span><br>
+          <span style="font-size:11px;">${escHtml(r.nom||'-')} · ${escHtml(r.cliente||'-')}</span><br>
+          <span style="font-size:11px;color:#888;">Resp: ${escHtml(r.responsable||'-')}</span>
+        </div>
+        <span class="inf-vencido-dias">${dias}d vencido</span>
+      </div>`;
+    }).join('');
+    document.getElementById('inf-alerta-modal').classList.add('show');
+  }
+
+  function cerrarAlertaInf() {
+    document.getElementById('inf-alerta-modal').classList.remove('show');
+  }
+
+  function filtrarVencidosInf() {
+    cerrarAlertaInf();
+    filtroMetricaActivo = 'vencidos';
+    aplicarFiltros();
   }
 
   function renderTablero(data) {
@@ -889,6 +943,14 @@
     const TERMINALES = ['FINALIZADO', 'CANCELADO'];
     const activos    = data.filter(r => !TERMINALES.includes((r.estatus || 'NO INICIADO').toUpperCase()));
     const terminados = data.filter(r =>  TERMINALES.includes((r.estatus || 'NO INICIADO').toUpperCase()));
+    activos.sort((a, b) => {
+      const dA = calcularDiasVencimiento(a.fechaEntrega);
+      const dB = calcularDiasVencimiento(b.fechaEntrega);
+      if (dA === null && dB === null) return 0;
+      if (dA === null) return 1;
+      if (dB === null) return -1;
+      return dA - dB;
+    });
     let html = '';
     const buildRow = (r) => {
       const estatus = (r.estatus || 'NO INICIADO').toUpperCase();
@@ -942,7 +1004,12 @@ const mkRespSel = (ot, resp) => {
         });
         return s.outerHTML;
       };
-      return `<tr>
+      let rowClass = '';
+      if (!TERMINALES.includes(estatus)) {
+        if (dias !== null && dias < 0)       rowClass = 'row-vencido';
+        else if (dias !== null && dias <= 7) rowClass = 'row-por-vencer';
+      }
+      return `<tr class="${rowClass}">
         <td><strong>${escHtml(r.numInforme || '-')}</strong><br><span style="color:var(--muted); font-size:10px;">${escHtml(r.ot)}</span></td>
         <td><strong>${escHtml(r.nom || '-')}</strong><br><span style="color:var(--muted); font-size:10px;">${escHtml(r.fecha || '-')}</span></td>
         <td>${escHtml(cInicial)}</td>
@@ -1254,6 +1321,23 @@ async function cambiarDatoRapido(ot, campo, valor) {
     iniciarApp();
   }, { gasUrl: SCRIPT_URL });
 </script>
+
+<div class="inf-modal-overlay" id="inf-alerta-modal">
+  <div class="inf-modal-content">
+    <div class="inf-modal-header">
+      <span style="font-size:2rem;">🔴</span>
+      <div>
+        <h2 style="margin:0;font-size:1.1rem;">Informes Vencidos</h2>
+        <p style="margin:0;font-size:0.82rem;opacity:.9;">Superaron su fecha de entrega</p>
+      </div>
+    </div>
+    <div class="inf-modal-body" id="inf-alerta-body"></div>
+    <div class="inf-modal-footer">
+      <button class="inf-modal-btn inf-modal-btn-primary" onclick="filtrarVencidosInf()">🔴 Ver Vencidos</button>
+      <button class="inf-modal-btn inf-modal-btn-secondary" onclick="cerrarAlertaInf()">Cerrar</button>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>
