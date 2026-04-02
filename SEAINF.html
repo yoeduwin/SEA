@@ -680,8 +680,10 @@
   
   document.getElementById('field-fecha').addEventListener('change', function() {
     if (this.value) {
-      const date = new Date(this.value); date.setDate(date.getDate() + 15);
-      document.getElementById('field-entrega').value = date.toISOString().split('T')[0];
+      const [y, m, d] = this.value.split('-').map(Number);
+      const date = new Date(y, m - 1, d + 20); // local time, sin desfase UTC; 20 días SLA
+      document.getElementById('field-entrega').value =
+        `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
     }
     validarProgreso();
   });
@@ -853,14 +855,26 @@
   function calcularDiasVencimiento(fechaEntrega) {
     if (!fechaEntrega) return null;
     const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-    // Sheets puede entregar DD/MM/YYYY (formato mexicano); new Date() no lo parsea.
-    // Normalizar a YYYY-MM-DD si viene en ese formato.
-    let fe = String(fechaEntrega).trim();
-    const dmy = fe.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (dmy) fe = `${dmy[3]}-${dmy[2].padStart(2,'0')}-${dmy[1].padStart(2,'0')}`;
-    const entrega = new Date(fe); entrega.setHours(0, 0, 0, 0);
-    if (isNaN(entrega.getTime())) return null;
-    return Math.ceil((entrega - hoy) / 86400000);
+    const fe = String(fechaEntrega).trim();
+    // DD/MM/YYYY (Sheets, formato mexicano)
+    const dmy_slash = fe.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (dmy_slash) {
+      const entrega = new Date(Number(dmy_slash[3]), Number(dmy_slash[2]) - 1, Number(dmy_slash[1]));
+      return Math.ceil((entrega - hoy) / 86400000);
+    }
+    // DD-MM-YYYY (formato generado por formatearFechaSLA)
+    const dmy_dash = fe.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+    if (dmy_dash) {
+      const entrega = new Date(Number(dmy_dash[3]), Number(dmy_dash[2]) - 1, Number(dmy_dash[1]));
+      return Math.ceil((entrega - hoy) / 86400000);
+    }
+    // YYYY-MM-DD — parsear como fecha local (no UTC) para evitar desfase de timezone
+    const iso = fe.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (iso) {
+      const entrega = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+      return Math.ceil((entrega - hoy) / 86400000);
+    }
+    return null;
   }
 
   async function cargarTablero() {
