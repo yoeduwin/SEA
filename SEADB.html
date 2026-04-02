@@ -242,7 +242,7 @@
                 <div class="filter-grid">
                     <div class="filter-group"><label>Buscar OT</label><input type="text" id="filter-ot" placeholder="Ej: OT2603-001"></div>
                     <div class="filter-group"><label>Cliente Inicial</label><input type="text" id="filter-cliente-inicial" placeholder="Buscar cliente..."></div>
-                    <div class="filter-group"><label>Cliente Final</label><input type="text" id="filter-cliente-final" placeholder="Buscar cliente..."></div>
+                    <div class="filter-group"><label>Sucursal</label><input type="text" id="filter-cliente-final" placeholder="Buscar sucursal..."></div>
                     <div class="filter-group"><label>NOM</label><input type="text" id="filter-nom" placeholder="Buscar NOM..."></div>
                     <div class="filter-group"><label>Asesor / Consultor</label><input type="text" id="filter-asesor" placeholder="Buscar asesor o consultor..."></div>
                     <div class="filter-group"><label>Personal Ejecutiva</label><select id="filter-personal"><option value="">Todos</option></select></div>
@@ -267,7 +267,7 @@
                         <thead>
                             <tr>
                                 <th onclick="sortTable(0)">OT</th><th onclick="sortTable(1)">Cliente Inicial</th>
-                                <th onclick="sortTable(2)">Cliente Final</th><th onclick="sortTable(3)">NOM</th><th onclick="sortTable(4)">Personal</th>
+                                <th onclick="sortTable(2)">Sucursal</th><th onclick="sortTable(3)">NOM</th><th onclick="sortTable(4)">Personal</th>
                                 <th onclick="sortTable(5)">F. Visita</th><th onclick="sortTable(6)">F. Digital (+20d)</th><th onclick="sortTable(7)">F. Físico (+25d)</th>
                                 <th onclick="sortTable(8)">Días</th><th onclick="sortTable(9)">Estatus</th><th>Asesor/Consultor</th><th>Acciones</th>
                             </tr>
@@ -488,7 +488,7 @@
                 header2.appendChild(numSpan); header2.appendChild(diasSpan);
                 const mkInfo = (label, val) => { const d = document.createElement('div'); d.className = 'ot-vencida-info'; const b = document.createElement('strong'); b.textContent = label; d.appendChild(b); d.appendChild(document.createTextNode(' ' + (val || '-'))); return d; };
                 item.appendChild(header2);
-                item.appendChild(mkInfo('Cliente:', ot.clienteFinal));
+                item.appendChild(mkInfo('Sucursal:', ot.clienteFinal));
                 item.appendChild(mkInfo('NOM:', ot.nom));
                 item.appendChild(mkInfo('Fecha Visita:', ot.fechaVisita));
                 item.appendChild(mkInfo('Responsable:', ot.personal));
@@ -678,7 +678,7 @@
         }
 
         function exportToCSV() {
-            const headers = ['OT', 'Cliente Inicial', 'Cliente Final', 'NOM', 'Personal', 'F. Visita', 'F. Digital (+15d)', 'F. Físico (+25d)', 'Días', 'Estatus', 'Asesor/Consultor'];
+            const headers = ['OT', 'Cliente Inicial', 'Sucursal', 'NOM', 'Personal', 'F. Visita', 'F. Digital (+20d)', 'F. Físico (+25d)', 'Días', 'Estatus', 'Asesor/Consultor'];
             const rows = filteredData.map(row => [row.ot, row.clienteInicial, row.clienteFinal, row.nom, row.personal, row.fechaVisita, row.fechaDigital, row.fechaFisico, calcularDiasEntrega(row) || '', row.estatusAuto, row.asesorConsultor]);
             const csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `ejecutiva_ambiental_${new Date().toISOString().split('T')[0]}.csv`; link.click();
