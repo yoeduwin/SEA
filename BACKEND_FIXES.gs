@@ -165,6 +165,7 @@ const AUTH_MODE = {
   createExpediente:       'GOOGLE',
   addFilesToExpediente:   'GOOGLE',
   updateEstatusInforme:   'GOOGLE',
+  getRenovaciones:        'GOOGLE',
   // ── Requiere reCAPTCHA (portales públicos de registro de clientes) ────────
   // PAIC.html y SEAPD.html son portales donde los CLIENTES se registran
   registrarCliente:       'RECAPTCHA',
@@ -187,7 +188,8 @@ const ACTION_MODULE = {
   getConsecutivo:         'SEAINF',
   createExpediente:       'SEAINF',
   addFilesToExpediente:   'SEAINF',
-  updateEstatusInforme:   'SEAINF'
+  updateEstatusInforme:   'SEAINF',
+  getRenovaciones:        'SEADB'
 };
 
 // ── verificarIdToken_ ──────────────────────────────────────────────────────
