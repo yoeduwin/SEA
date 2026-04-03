@@ -977,14 +977,79 @@
             return 'ok';
         }
 
+        // Servicios rastreados → ciclo en años
+        const SERVICIOS_RENOVACION = {
+            'NOM-022-STPS':     1,
+            'NOM-081-SEMARNAT': 1,
+            'NOM-025-STPS':     2,
+            'NOM-024-STPS':     2,
+            'NOM-015-STPS':     2,
+            'PROGRAMA INTERNO': 1,
+            'PIPC':             1,
+            'PROTECCION CIVIL': 1
+        };
+
+        function matchServicioRen(nom) {
+            const n = (nom || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            for (const key in SERVICIOS_RENOVACION) {
+                if (n.includes(key)) return { key, ciclo: SERVICIOS_RENOVACION[key] };
+            }
+            return null;
+        }
+
+        function parseFechaInforme(fechaStr) {
+            // Formato CSV: "dd/mm/yyyy hh:mm:ss" o "dd/mm/yyyy"
+            const parte = (fechaStr || '').split(' ')[0].trim();
+            const p = parte.split('/');
+            if (p.length === 3) return new Date(+p[2], +p[1] - 1, +p[0]);
+            return null;
+        }
+
+        function calcularRenovacionesDesdeInformes() {
+            const mapaUltimos = {};
+            allInformes.forEach(inf => {
+                const match = matchServicioRen(inf.nom);
+                if (!match) return;
+                const fecha = parseFechaInforme(inf.fecha);
+                if (!fecha || isNaN(fecha.getTime())) return;
+                const clave = (inf.rfc || inf.empresa || '').toUpperCase().trim() + '|' +
+                              (inf.sucursal || '').trim() + '|' + match.key;
+                if (!mapaUltimos[clave] || fecha > mapaUltimos[clave].fecha) {
+                    mapaUltimos[clave] = { fecha, inf, cicloAnios: match.ciclo };
+                }
+            });
+
+            const hoy = new Date();
+            const MS_DIA = 1000 * 60 * 60 * 24;
+            const fmt = d => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+
+            const lista = Object.values(mapaUltimos).map(({ fecha, inf, cicloAnios }) => {
+                const proxima = new Date(fecha);
+                proxima.setFullYear(proxima.getFullYear() + cicloAnios);
+                const diasRestantes = Math.ceil((proxima - hoy) / MS_DIA);
+                return {
+                    cliente:           inf.empresa,
+                    sucursal:          inf.sucursal || '',
+                    rfc:               inf.rfc || '',
+                    servicio:          inf.nom,
+                    cicloAnios,
+                    ultimoServicio:    (inf.fecha || '').split(' ')[0],
+                    proximaRenovacion: fmt(proxima),
+                    diasRestantes,
+                    emailContacto:     inf.correo || ''
+                };
+            });
+            lista.sort((a, b) => a.diasRestantes - b.diasRestantes);
+            return lista;
+        }
+
         async function loadRenovaciones() {
             const tbody = document.getElementById('ren-tbody');
             tbody.innerHTML = '<tr><td colspan="8" class="loading"><div class="spinner"></div>Cargando renovaciones...</td></tr>';
             try {
-                const res  = await SEAAuth.wrapFetch(`${API_URL}?action=getRenovaciones`);
-                const json = await res.json();
-                if (!json.success) throw new Error(json.error || 'Error desconocido');
-                renovacionesData = json.data || [];
+                // Si los informes aún no están cargados, cargarlos primero
+                if (allInformes.length === 0) await loadInformes();
+                renovacionesData = calcularRenovacionesDesdeInformes();
                 renderRenovaciones();
             } catch (e) {
                 tbody.innerHTML = `<tr><td colspan="8" style="color:#e74c3c;padding:2rem;text-align:center">⚠️ ${escHtml(e.message)}</td></tr>`;
