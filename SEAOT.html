@@ -537,8 +537,19 @@
   function printWorkOrder() {
     const controls = document.querySelectorAll('.excel-controls, .nav-tabs, .excel-mapping-info'); controls.forEach(e => e.style.display = 'none');
     document.getElementById('profileTab').style.display = 'none'; document.getElementById('workorderTab').style.display = 'block';
+    // Reemplazar <select> con texto plano para evitar duplicación en PDF
+    const replaced = [];
+    document.querySelectorAll('#workorderTab select').forEach(sel => {
+      const text = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
+      const span = document.createElement('span');
+      span.textContent = text;
+      span.style.cssText = 'font-size:11px;color:#333;';
+      sel.parentNode.insertBefore(span, sel);
+      sel.style.display = 'none';
+      replaced.push({ sel, span });
+    });
     window.print();
-    setTimeout(() => { controls.forEach(e => e.style.display = ''); document.getElementById('profileTab').style.display = ''; switchTab('workorder'); }, 800);
+    setTimeout(() => { replaced.forEach(({ sel, span }) => { sel.style.display = ''; span.remove(); }); controls.forEach(e => e.style.display = ''); document.getElementById('profileTab').style.display = ''; switchTab('workorder'); }, 800);
   }
   function sendWorkOrder() {
     const email = document.getElementById('wo_email')?.value;
