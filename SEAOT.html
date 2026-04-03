@@ -580,25 +580,44 @@
 
     const body = `Estimado,
 
-Adjunto encontrará la Orden de Trabajo ${orderNumber} para los servicios programados.
+Su Orden de Trabajo ${orderNumber} ha sido generada correctamente.
 
-🏢 Razón Social: ${company}
+Datos principales
+  • 🏢 Razón Social: ${company}
   • Sucursal: ${branch}
   • Giro/Actividad: ${giro}
-  • Registro Patronal: ${patronal}
-
-⚙️ Capacidad Instalada: ${installed}
-⚙️ Capacidad de Operación: ${operation}
-
-📋 Servicios programados:${serviciosDetalle || '\n  (Ver orden de trabajo adjunta)'}
-
+  
+Ubicación del servicio
 📍 Dirección: ${address}
 🔗 Google Maps: ${maps}
 
-📌 RECORDATORIO IMPORTANTE:
-Portar EPP (botas de seguridad, casco de seguridad, lentes de seguridad, protección auditiva, guantes de seguridad, chaleco).
 
-Saludos cordiales,
+📋 Servicios incluidos
+${serviciosDetalle || '• Ver detalle en la orden de trabajo adjunta.'}
+
+Información técnica
+⚙️ Capacidad Instalada: ${installed}
+⚙️ Capacidad de Operación: ${operation}
+⚙️ Registro Patronal: ${patronal}
+
+✅ Notificación requerida por normativa ambiental
+Para los servicios relacionados con la NOM-081-SEMARNAT-1994, y como parte de nuestras obligaciones de registro en el Padrón de Laboratorios Autorizados, realizamos una notificación a la autoridad ambiental correspondiente.
+Por este motivo, la SMADSOT se encuentra incluida en copia en este correo. Esta notificación es un proceso estándar y no requiere ninguna acción adicional de su parte.
+
+
+Qué sigue
+• Revise la orden adjunta.
+• Comparta este correo con su contacto en planta o en sitio.
+• Si hay restricciones de acceso, horarios o requisitos adicionales, respóndanos por este medio.
+
+📌 Requisitos de seguridad
+Nuestro personal acudirá con el EPP correspondiente:
+botas, casco, lentes, y guantes de seguridad, protección auditiva, y chaleco.
+
+Si requiere algún ajuste o desea compartir indicaciones de acceso, puede responder a este correo o comunicarse al 222-941-7295.
+
+
+Gracias,
 Ejecutiva Ambiental
 Tel: 222-941-7295`;
 
