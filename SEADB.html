@@ -570,6 +570,7 @@
                 header2.appendChild(numSpan); header2.appendChild(diasSpan);
                 const mkInfo = (label, val) => { const d = document.createElement('div'); d.className = 'ot-vencida-info'; const b = document.createElement('strong'); b.textContent = label; d.appendChild(b); d.appendChild(document.createTextNode(' ' + (val || '-'))); return d; };
                 item.appendChild(header2);
+                item.appendChild(mkInfo('Cliente Inicial:', ot.clienteInicial));
                 item.appendChild(mkInfo('Sucursal:', ot.clienteFinal));
                 item.appendChild(mkInfo('NOM:', ot.nom));
                 item.appendChild(mkInfo('Fecha Visita:', ot.fechaVisita));
