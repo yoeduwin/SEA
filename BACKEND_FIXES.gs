@@ -450,8 +450,11 @@ function setupSheets() {
 
 // ── verificarRecaptcha_ ───────────────────────────────────────────────────
 /**
- * Verifica un token de reCAPTCHA v3 con Google.
- * La Secret Key se obtiene de Script Properties (nunca en el frontend).
+ * Verifica un token de reCAPTCHA Enterprise con la API de GCP.
+ * Requiere tres Script Properties:
+ *   RECAPTCHA_API_KEY  → API Key de GCP (restringida a reCAPTCHA Enterprise API)
+ *   GCP_PROJECT_ID     → ID del proyecto GCP
+ *   RECAPTCHA_SITE_KEY → Site Key pública (misma que en el frontend)
  * @param {string} rcToken  token enviado por el frontend
  * @param {number} minScore mínimo aceptable (0.0–1.0). Default 0.5
  * @returns {boolean}
@@ -459,24 +462,36 @@ function setupSheets() {
 function verificarRecaptcha_(rcToken, minScore) {
   if (!rcToken || typeof rcToken !== 'string' || rcToken.length < 20) return false;
 
-  const SECRET = PropertiesService.getScriptProperties().getProperty('RECAPTCHA_SECRET_KEY');
-  if (!SECRET) {
-    Logger.log('RECAPTCHA_SECRET_KEY no configurada en Script Properties.');
+  const props    = PropertiesService.getScriptProperties();
+  const API_KEY  = props.getProperty('RECAPTCHA_API_KEY');
+  const PROJ_ID  = props.getProperty('GCP_PROJECT_ID');
+  const SITE_KEY = props.getProperty('RECAPTCHA_SITE_KEY');
+
+  if (!API_KEY || !PROJ_ID || !SITE_KEY) {
+    Logger.log('reCAPTCHA Enterprise: faltan Script Properties (RECAPTCHA_API_KEY, GCP_PROJECT_ID, RECAPTCHA_SITE_KEY).');
     return false;
   }
 
   try {
-    const resp = UrlFetchApp.fetch('https://www.google.com/recaptcha/api/siteverify', {
+    const url  = 'https://recaptchaenterprise.googleapis.com/v1/projects/' + PROJ_ID + '/assessments?key=' + API_KEY;
+    const resp = UrlFetchApp.fetch(url, {
       method: 'post',
-      payload: { secret: SECRET, response: rcToken },
+      contentType: 'application/json',
+      payload: JSON.stringify({
+        event: { token: rcToken, siteKey: SITE_KEY, expectedAction: 'sea_portal_submit' }
+      }),
       muteHttpExceptions: true
     });
-    if (resp.getResponseCode() !== 200) return false;
-
-    const result = JSON.parse(resp.getContentText());
+    if (resp.getResponseCode() !== 200) {
+      Logger.log('reCAPTCHA Enterprise HTTP ' + resp.getResponseCode() + ': ' + resp.getContentText());
+      return false;
+    }
+    const r         = JSON.parse(resp.getContentText());
+    const valid     = r.tokenProperties && r.tokenProperties.valid === true;
+    const score     = (r.riskAnalysis && r.riskAnalysis.score) || 0;
     const threshold = (typeof minScore === 'number') ? minScore : 0.5;
-    Logger.log('reCAPTCHA: success=' + result.success + ' score=' + result.score + ' action=' + result.action);
-    return result.success === true && (result.score || 0) >= threshold;
+    Logger.log('reCAPTCHA Enterprise: valid=' + valid + ' score=' + score + ' action=' + (r.tokenProperties && r.tokenProperties.action));
+    return valid && score >= threshold;
 
   } catch (e) {
     Logger.log('verificarRecaptcha_ error: ' + e.message);
