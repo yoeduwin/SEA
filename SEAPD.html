@@ -1351,6 +1351,8 @@
           showError(`Error del servidor (código ${status}). Por favor intente nuevamente.`, 'Si el problema persiste, contáctenos directamente');
         } else if (error.message === 'RESPUESTA_INVALIDA' || error.message === 'ERROR_SERVIDOR') {
           showError('El servidor no pudo procesar la solicitud. Por favor intente nuevamente.', 'Si el problema persiste, contáctenos por WhatsApp o teléfono');
+        } else if (error.message === 'AUTH_REQUIRED') {
+          showError('Error de verificación de seguridad. Por favor, recarga la página e intenta de nuevo.', 'Si el problema persiste, contáctenos directamente.');
         } else {
           showError('Error al enviar la información. Por favor, intente nuevamente o contáctenos directamente.', error.message || 'Error desconocido');
         }
@@ -1615,7 +1617,7 @@
 
   <!-- ── reCAPTCHA v3 (portal público de registro de clientes) ── -->
   <!-- La Site Key es pública por diseño. La Secret Key vive solo en GAS Script Properties. -->
-  <script src="https://www.google.com/recaptcha/api.js?render=6LdIq4csAAAAAHCggurLxQbsc15M8MnAD8UIOR1E" async defer></script>
+  <script src="https://www.google.com/recaptcha/enterprise.js?render=6LdIq4csAAAAAHCggurLxQbsc15M8MnAD8UIOR1E" async defer></script>
   <script src="recaptcha.js"></script>
 </body>
 </html>
