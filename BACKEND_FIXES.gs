@@ -582,6 +582,7 @@ function doPost(e) {
       case 'getInformes': return output_(getInformesSafe_());
       case 'getConsecutivo': return output_(getConsecutivoSafe_(data));
       case 'updateRespInf': return output_(updateResponsableInformeSafe_(data, _usuario));
+      case 'getRenovaciones': return output_(getRenovaciones());
       default: return output_({ success: false, error: 'Acción POST no reconocida.' });
     }
   } catch (err) {
@@ -616,6 +617,7 @@ function doGet(e) {
       case 'getOrdenes': return output_(getOrdenesSafe_());
       case 'getInformes': return output_(getInformesSafe_());
       case 'getConsecutivo': return output_(getConsecutivoSafe_(e.parameter));
+      case 'getRenovaciones': return output_(getRenovaciones());
       default: return output_({ success: false, error: 'Acción GET no reconocida.' });
     }
   } catch (err) {
@@ -1445,5 +1447,122 @@ function autorizarGmail() {
     'Si recibes este correo, el scope de Gmail está autorizado correctamente.'
   );
   Logger.log('Gmail autorizado. Redesplega la webapp.');
+}
+
+// =========================================================================
+// RENOVACIONES — Alertas de servicios periódicos
+// =========================================================================
+function getRenovaciones() {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheetOt = ss.getSheetByName(CONFIG.SHEET_OT);
+  const sheetCl = ss.getSheetByName(CONFIG.SHEET_CLIENTES);
+
+  // Servicios rastreados: clave normalizada (sin tildes, mayúsculas) → ciclo en años
+  const SERVICIOS_RENOVACION = {
+    'NOM-022-STPS':    1,
+    'NOM-081-SEMARNAT':1,
+    'NOM-025-STPS':    2,
+    'NOM-024-STPS':    2,
+    'NOM-015-STPS':    2,
+    'PROGRAMA INTERNO':1,  // PIPC
+    'PIPC':            1,
+    'PROTECCION CIVIL':1
+  };
+
+  function normalizar_(str) {
+    return String(str || '').toUpperCase().trim()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }
+
+  function matchServicio_(nom) {
+    const n = normalizar_(nom);
+    for (const key in SERVICIOS_RENOVACION) {
+      if (n.indexOf(key) !== -1) return { key: key, ciclo: SERVICIOS_RENOVACION[key] };
+    }
+    return null;
+  }
+
+  // Construir mapa RFC|Sucursal → email contacto desde CLIENTES_MAESTRO
+  const clData = sheetCl.getDataRange().getDisplayValues().slice(1);
+  const emailMap = {};
+  clData.forEach(function(row) {
+    const rfc = String(row[CL.RFC] || '').toUpperCase().trim();
+    const suc = String(row[CL.SUCURSAL] || '').trim();
+    if (rfc) emailMap[rfc + '|' + suc] = String(row[CL.CORREO] || '').trim();
+  });
+
+  // Leer OTs finalizadas con Fecha Real Entrega
+  const otData = sheetOt.getDataRange().getDisplayValues().slice(1);
+  const mapaUltimos = {};  // clave: RFC|Sucursal|ServicioKey → mejor entrada
+
+  otData.forEach(function(row) {
+    const estatus = String(row[CO.ESTATUS_EXTERNO] || '').toUpperCase().trim();
+    if (estatus !== 'FINALIZADO') return;
+    const fechaReal = String(row[CO.FECHA_REAL] || '').trim();
+    if (!fechaReal) return;
+
+    const nom = String(row[CO.NOM] || '').trim();
+    const match = matchServicio_(nom);
+    if (!match) return;
+
+    const rfc = String(row[CO.RFC] || '').toUpperCase().trim();
+    const suc = String(row[CO.SUCURSAL] || '').trim();
+    const clave = rfc + '|' + suc + '|' + match.key;
+
+    // Parsear fecha dd/mm/yyyy (formato es-MX de GAS getDisplayValues)
+    const partes = fechaReal.split('/');
+    let fechaObj;
+    if (partes.length === 3) {
+      fechaObj = new Date(+partes[2], +partes[1] - 1, +partes[0]);
+    } else {
+      fechaObj = new Date(fechaReal);
+    }
+    if (isNaN(fechaObj.getTime())) return;
+
+    if (!mapaUltimos[clave] || fechaObj > mapaUltimos[clave].fecha) {
+      mapaUltimos[clave] = {
+        fecha:      fechaObj,
+        fechaStr:   fechaReal,
+        nom:        nom,
+        cliente:    String(row[CO.CLIENTE]  || '').trim(),
+        sucursal:   suc,
+        rfc:        rfc,
+        cicloAnios: match.ciclo,
+        ot:         String(row[CO.OT]       || '').trim()
+      };
+    }
+  });
+
+  const hoy = new Date();
+  const MS_DIA = 1000 * 60 * 60 * 24;
+
+  function fmt_(d) {
+    return String(d.getDate()).padStart(2,'0') + '/' +
+           String(d.getMonth() + 1).padStart(2,'0') + '/' +
+           d.getFullYear();
+  }
+
+  const renovaciones = Object.values(mapaUltimos).map(function(item) {
+    const proxima = new Date(item.fecha);
+    proxima.setFullYear(proxima.getFullYear() + item.cicloAnios);
+    const diasRestantes = Math.ceil((proxima - hoy) / MS_DIA);
+    return {
+      cliente:           item.cliente,
+      sucursal:          item.sucursal,
+      rfc:               item.rfc,
+      servicio:          item.nom,
+      cicloAnios:        item.cicloAnios,
+      ultimoServicio:    item.fechaStr,
+      proximaRenovacion: fmt_(proxima),
+      diasRestantes:     diasRestantes,
+      emailContacto:     emailMap[item.rfc + '|' + item.sucursal] || '',
+      ultimaOT:          item.ot
+    };
+  });
+
+  // Ordenar: más urgentes primero (vencidos incluidos)
+  renovaciones.sort(function(a, b) { return a.diasRestantes - b.diasRestantes; });
+
+  return { success: true, data: renovaciones };
 }
 

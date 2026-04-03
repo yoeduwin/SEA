@@ -210,6 +210,18 @@
         .inf-btn-drive:hover { background: #174d34; }
         .inf-btn-icon { padding: 0.4rem 0.52rem; border: 1px solid #e2e6ea; border-radius: 6px; cursor: pointer; font-size: 0.78rem; background: white; color: #495057; transition: all 0.15s; line-height: 1; }
         .inf-btn-icon:hover { background: #f0f2f4; border-color: #c9d0d8; }
+        /* ─── Renovaciones tab ─── */
+        .ren-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap:1rem; margin-bottom:1.5rem; }
+        .ren-badge { display:inline-block; padding:0.2rem 0.6rem; border-radius:4px; font-size:0.75rem; font-weight:600; color:white; }
+        .ren-badge.vencido { background:#7f1d1d; }
+        .ren-badge.urgente { background:#e74c3c; }
+        .ren-badge.proximo { background:#e67e22; }
+        .ren-badge.ok { background:#27ae60; }
+        tr.ren-row-urgente { background:#fff5f5 !important; }
+        tr.ren-row-proximo { background:#fffbf0 !important; }
+        .ren-btn-email { background:#2d5f4f; color:white; border:none; border-radius:6px; padding:0.4rem 0.8rem; cursor:pointer; font-size:0.75rem; font-weight:600; transition:background 0.2s; white-space:nowrap; }
+        .ren-btn-email:hover { background:#1e4035; }
+        .ren-filters { background:white; padding:1rem; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.08); margin-bottom:1.5rem; }
     </style>
 <body>
     <div class="header">
@@ -225,6 +237,7 @@
             <div class="tab active" onclick="switchTab('ordenes')">📋 Órdenes de Trabajo</div>
             <div class="tab" onclick="switchTab('informes')">📄 Informes</div>
             <div class="tab" onclick="switchTab('calendario')">📅 Calendario</div>
+            <div class="tab" onclick="switchTab('renovaciones')">🔔 Renovaciones</div>
         </div>
     </div>
     <div id="tab-ordenes" class="tab-content active">
@@ -353,6 +366,74 @@
         </div>
     </div>
 
+    <div id="tab-renovaciones" class="tab-content">
+        <div class="container">
+            <div class="ren-kpi-grid">
+                <div class="kpi-card"><div class="kpi-label">Total</div><div class="kpi-value" id="ren-total">—</div><div class="kpi-subtitle">Servicios rastreados</div></div>
+                <div class="kpi-card"><div class="kpi-label" style="color:#7f1d1d">Vencidos</div><div class="kpi-value" id="ren-vencidos" style="color:#7f1d1d">—</div><div class="kpi-subtitle">Requieren acción ya</div></div>
+                <div class="kpi-card"><div class="kpi-label" style="color:#e74c3c">Urgentes</div><div class="kpi-value" id="ren-urgentes" style="color:#e74c3c">—</div><div class="kpi-subtitle">Menos de 30 días</div></div>
+                <div class="kpi-card"><div class="kpi-label" style="color:#e67e22">Próximos</div><div class="kpi-value" id="ren-proximos" style="color:#e67e22">—</div><div class="kpi-subtitle">30 a 90 días</div></div>
+                <div class="kpi-card"><div class="kpi-label" style="color:#27ae60">Al corriente</div><div class="kpi-value" id="ren-ok" style="color:#27ae60">—</div><div class="kpi-subtitle">Más de 90 días</div></div>
+            </div>
+            <div class="ren-filters">
+                <h3>🔍 Filtros</h3>
+                <div class="filter-grid">
+                    <div class="filter-group"><label>Buscar cliente</label><input type="text" id="ren-filter-cliente" placeholder="Nombre o sucursal..."></div>
+                    <div class="filter-group"><label>Servicio</label>
+                        <select id="ren-filter-servicio">
+                            <option value="">Todos</option>
+                            <option value="NOM-022-STPS">NOM-022-STPS (Anual)</option>
+                            <option value="NOM-081-SEMARNAT">NOM-081-SEMARNAT (Anual)</option>
+                            <option value="PROGRAMA INTERNO">PIPC / Programa Interno (Anual)</option>
+                            <option value="NOM-015-STPS">NOM-015-STPS (Bienal)</option>
+                            <option value="NOM-024-STPS">NOM-024-STPS (Bienal)</option>
+                            <option value="NOM-025-STPS">NOM-025-STPS (Bienal)</option>
+                        </select>
+                    </div>
+                    <div class="filter-group"><label>Urgencia</label>
+                        <select id="ren-filter-urgencia">
+                            <option value="">Todas</option>
+                            <option value="vencido">Vencidos</option>
+                            <option value="urgente">Urgentes (&lt;30 días)</option>
+                            <option value="proximo">Próximos (30–90 días)</option>
+                            <option value="ok">Al corriente (&gt;90 días)</option>
+                        </select>
+                    </div>
+                    <div class="filter-group"><label>Ciclo</label>
+                        <select id="ren-filter-ciclo">
+                            <option value="">Todos</option>
+                            <option value="1">Anuales</option>
+                            <option value="2">Bienales</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="table-container">
+                <div class="table-header">
+                    <h3>Vencimientos de Servicios Periódicos</h3>
+                    <span id="ren-count" style="color:#7f8c8d;font-size:0.85rem"></span>
+                </div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Cliente</th>
+                                <th>Sucursal</th>
+                                <th>Servicio</th>
+                                <th>Último Servicio</th>
+                                <th>Próxima Renovación</th>
+                                <th>Días Restantes</th>
+                                <th>Ciclo</th>
+                                <th>Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ren-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     
@@ -376,6 +457,7 @@
             document.getElementById(`tab-${tabName}`).classList.add('active');
             if (tabName === 'informes' && allInformes.length === 0) { loadInformes(); }
             if (tabName === 'calendario') { if (!calendar) { initCalendar(); } else { loadCalendarEvents(); } }
+            if (tabName === 'renovaciones' && renovacionesData.length === 0) { loadRenovaciones(); }
         }
 
         // Días SLA: reglas de negocio para fechas límite de entrega
@@ -880,6 +962,113 @@
         function clearCalendarFilters() { calendarFilters.visita = true; calendarFilters.digital = true; document.getElementById('filter-visita').classList.add('checked'); document.getElementById('filter-digital').classList.add('checked'); loadCalendarEvents(); showToast('✅ Filtros limpiados', 2000); }
 
         function iniciarApp() { loadData(); }
+
+        // ── Renovaciones ─────────────────────────────────────────────────────
+        let renovacionesData = [];
+
+        function escHtml(str) {
+            return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        function getRenUrgencia(dias) {
+            if (dias < 0)  return 'vencido';
+            if (dias < 30) return 'urgente';
+            if (dias < 90) return 'proximo';
+            return 'ok';
+        }
+
+        async function loadRenovaciones() {
+            const tbody = document.getElementById('ren-tbody');
+            tbody.innerHTML = '<tr><td colspan="8" class="loading"><div class="spinner"></div>Cargando renovaciones...</td></tr>';
+            try {
+                const res  = await SEAAuth.wrapFetch(`${API_URL}?action=getRenovaciones`);
+                const json = await res.json();
+                if (!json.success) throw new Error(json.error || 'Error desconocido');
+                renovacionesData = json.data || [];
+                renderRenovaciones();
+            } catch (e) {
+                tbody.innerHTML = `<tr><td colspan="8" style="color:#e74c3c;padding:2rem;text-align:center">⚠️ ${escHtml(e.message)}</td></tr>`;
+            }
+        }
+
+        function renderRenovaciones() {
+            const busqueda    = (document.getElementById('ren-filter-cliente').value  || '').toLowerCase();
+            const filtServ    = (document.getElementById('ren-filter-servicio').value || '').toUpperCase();
+            const filtUrg     =  document.getElementById('ren-filter-urgencia').value || '';
+            const filtCiclo   =  document.getElementById('ren-filter-ciclo').value    || '';
+
+            const datos = renovacionesData.filter(r => {
+                if (busqueda && !r.cliente.toLowerCase().includes(busqueda) && !(r.sucursal||'').toLowerCase().includes(busqueda)) return false;
+                if (filtServ && !(r.servicio||'').toUpperCase().includes(filtServ)) return false;
+                if (filtUrg  && getRenUrgencia(r.diasRestantes) !== filtUrg)       return false;
+                if (filtCiclo && String(r.cicloAnios) !== filtCiclo)               return false;
+                return true;
+            });
+
+            // KPIs sobre datos completos
+            document.getElementById('ren-total').textContent    = renovacionesData.length;
+            document.getElementById('ren-vencidos').textContent = renovacionesData.filter(r => r.diasRestantes <  0).length;
+            document.getElementById('ren-urgentes').textContent = renovacionesData.filter(r => r.diasRestantes >= 0 && r.diasRestantes < 30).length;
+            document.getElementById('ren-proximos').textContent = renovacionesData.filter(r => r.diasRestantes >= 30 && r.diasRestantes < 90).length;
+            document.getElementById('ren-ok').textContent       = renovacionesData.filter(r => r.diasRestantes >= 90).length;
+            document.getElementById('ren-count').textContent    = `${datos.length} resultado(s)`;
+
+            const tbody = document.getElementById('ren-tbody');
+            if (!datos.length) {
+                tbody.innerHTML = '<tr><td colspan="8"><div class="no-results"><div class="no-results-icon">🔔</div><p>Sin renovaciones con los filtros aplicados</p></div></td></tr>';
+                return;
+            }
+            tbody.innerHTML = '';
+            datos.forEach(r => {
+                const urgencia = getRenUrgencia(r.diasRestantes);
+                const badgeClass = urgencia;
+                const rowClass   = urgencia === 'ok' ? '' : (urgencia === 'proximo' ? 'ren-row-proximo' : 'ren-row-urgente');
+                const diasLabel  = r.diasRestantes < 0
+                    ? `Vencida hace ${Math.abs(r.diasRestantes)} días`
+                    : `${r.diasRestantes} días`;
+                const tr = document.createElement('tr');
+                if (rowClass) tr.className = rowClass;
+                tr.innerHTML = `
+                    <td><strong>${escHtml(r.cliente)}</strong></td>
+                    <td>${escHtml(r.sucursal)}</td>
+                    <td><span class="nom-badge" style="background:${getNomColor(r.servicio)}">${escHtml(r.servicio)}</span></td>
+                    <td>${escHtml(r.ultimoServicio)}</td>
+                    <td>${escHtml(r.proximaRenovacion)}</td>
+                    <td><span class="ren-badge ${badgeClass}">${escHtml(diasLabel)}</span></td>
+                    <td>${r.cicloAnios === 1 ? 'Anual' : 'Bienal'}</td>
+                    <td><button class="ren-btn-email" onclick='abrirMailtoRenovacion(${JSON.stringify(r)})'>✉️ Contactar</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function abrirMailtoRenovacion(r) {
+            const cicloTexto = r.cicloAnios === 1 ? 'anual' : 'bienal';
+            const subject = encodeURIComponent(`Renovación ${r.servicio} — ${r.cliente}${r.sucursal ? ' / ' + r.sucursal : ''}`);
+            const body = encodeURIComponent(
+                `Estimado equipo de ventas,\n\n` +
+                `El cliente ${r.cliente}${r.sucursal ? ' / ' + r.sucursal : ''} (RFC: ${r.rfc}) ` +
+                `tiene próxima su renovación ${cicloTexto} del servicio ${r.servicio}.\n\n` +
+                `Último servicio realizado: ${r.ultimoServicio}\n` +
+                `Próxima renovación: ${r.proximaRenovacion}\n` +
+                `Días restantes: ${r.diasRestantes >= 0 ? r.diasRestantes + ' días' : 'VENCIDA hace ' + Math.abs(r.diasRestantes) + ' días'}\n\n` +
+                (r.emailContacto ? `Contacto del cliente: ${r.emailContacto}\n\n` : '') +
+                `Por favor, coordina el seguimiento y la cotización correspondiente.\n\n` +
+                `Saludos,\nSistema SEADB — Ejecutiva Ambiental`
+            );
+            window.open(`mailto:ventas@ejecutivambiental.com?subject=${subject}&body=${body}`, '_blank');
+        }
+
+        // Suscribir filtros de renovaciones
+        document.addEventListener('DOMContentLoaded', () => {
+            ['ren-filter-cliente','ren-filter-servicio','ren-filter-urgencia','ren-filter-ciclo'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.addEventListener('input',  renderRenovaciones);
+                    el.addEventListener('change', renderRenovaciones);
+                }
+            });
+        });
     </script>
 
     <!-- ── Autenticación Google (herramienta interna) ── -->
