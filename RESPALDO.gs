@@ -56,11 +56,20 @@ function crearRespaldoSemanal() {
     const iter = DriveApp.getFoldersByName(RESPALDO_CONFIG.CARPETA_RESPALDO_NOMBRE);
     const carpeta = iter.hasNext() ? iter.next() : DriveApp.createFolder(RESPALDO_CONFIG.CARPETA_RESPALDO_NOMBRE);
 
-    // Crear copia con timestamp
+    // Crear copia con timestamp (exportar como XLSX para no generar un proyecto GAS nuevo)
     const timestamp = Utilities.formatDate(new Date(), 'GMT-6', 'yyyy-MM-dd_HHmm');
     const nombreCopia = `SEA_Respaldo_${timestamp}`;
-    const archivo = DriveApp.getFileById(RESPALDO_CONFIG.SPREADSHEET_ID);
-    const copia = archivo.makeCopy(nombreCopia, carpeta);
+    const exportUrl = `https://docs.google.com/spreadsheets/d/${RESPALDO_CONFIG.SPREADSHEET_ID}/export?format=xlsx`;
+    const token = ScriptApp.getOAuthToken();
+    const response = UrlFetchApp.fetch(exportUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+      muteHttpExceptions: true
+    });
+    if (response.getResponseCode() !== 200) {
+      throw new Error(`Export falló con código HTTP ${response.getResponseCode()}`);
+    }
+    const blob = response.getBlob().setName(`${nombreCopia}.xlsx`);
+    const copia = carpeta.createFile(blob);
 
     Logger.log('✅ Respaldo creado: ' + copia.getUrl());
 
@@ -85,7 +94,7 @@ function crearRespaldoSemanal() {
       `El respaldo semanal del sistema SEA se completó correctamente.\n\n` +
       `Archivo: ${nombreCopia}\n` +
       `URL: ${copia.getUrl()}\n` +
-      `Respaldos conservados: ${Math.min(archivos.length, RESPALDO_CONFIG.MAX_RESPALDOS)}\n\n` +
+      `Respaldos conservados: ${Math.min(archivos.length, RESPALDO_CONFIG.MAX_RESPALDOS)} (formato .xlsx)\n\n` +
       `Sistema de Respaldo Automático — Ejecutiva Ambiental`
     );
 
