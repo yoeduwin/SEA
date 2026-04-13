@@ -78,20 +78,23 @@ const CONFIG = {
       ASESOR_CONSULTOR: 21
     },
     ORDENES: {
-      FECHA:            0,  // A
-      OT:               1,  // B
-      TIPO:             2,  // C
-      NOM:              3,  // D  (NUM_INFORME eliminado)
-      CLIENTE:          4,  // E
-      SUCURSAL:         5,  // F
-      RFC:              6,  // G
-      PERSONAL:         7,  // H
-      FECHA_VISITA:     8,  // I
-      FECHA_ENTREGA:    9,  // J
-      FECHA_REAL:       10, // K
-      ESTATUS_EXTERNO:  11, // L
-      LINK_DRIVE:       12, // M
-      OBSERVACIONES:    13  // N  (ESTATUS_INFORME eliminado)
+      FECHA:              0,  // A
+      OT:                 1,  // B
+      TIPO:               2,  // C
+      NOM:                3,  // D  (NUM_INFORME eliminado)
+      CLIENTE:            4,  // E
+      SUCURSAL:           5,  // F
+      RFC:                6,  // G
+      PERSONAL:           7,  // H
+      FECHA_VISITA:       8,  // I
+      FECHA_ENTREGA:      9,  // J
+      FECHA_REAL:         10, // K
+      ESTATUS_EXTERNO:    11, // L
+      LINK_DRIVE:         12, // M
+      OBSERVACIONES:      13, // N
+      FECHA_PAUSA:        14, // O — fecha en que se puso EN PAUSA (última ocurrencia)
+      MOTIVO_PAUSA:       15, // P — razón escrita por el operador
+      FECHA_INFO_COMPLETA:16  // Q — fecha en que el cliente entregó info completa (base para recálculo)
     },
     INFORMES: {
       TIMESTAMP:        0,  // A
@@ -130,7 +133,11 @@ const CU = CONFIG.COLUMNS.USUARIOS;
 const ESTATUS_INFORME_VALIDOS_ = ['NO INICIADO', 'EN PROCESO', 'PARA REVISION', 'PARA IMPRESION', 'FINALIZADO', 'CANCELADO'];
 const ESTATUS_INFORME_TERMINALES_ = ['FINALIZADO', 'CANCELADO'];
 // Valores válidos para ORDENES_TRABAJO.EstatusExterno (col L)
+// EN PAUSA es reversible — NO se agrega a la lista de terminales
+const ESTATUS_EXTERNO_VALIDOS_   = ['NO INICIADO', 'EN PROCESO', 'EN PAUSA', 'ENTREGADO', 'FINALIZADO', 'CANCELADO'];
 const ESTATUS_EXTERNO_TERMINALES_ = ['FINALIZADO', 'CANCELADO'];
+// Estatus desde los que se puede pausar una OT
+const ESTATUS_PAUSABLES_          = ['NO INICIADO', 'EN PROCESO'];
 // =========================================================================
 // MÓDULO DE SEGURIDAD — Autenticación Google OAuth + reCAPTCHA v3
 // =========================================================================
@@ -153,6 +160,8 @@ const AUTH_MODE = {
   getTablero:             'GOOGLE',
   getTableroInf:          'GOOGLE',
   updateEstatus:          'GOOGLE',
+  pausarOT:               'GOOGLE',
+  reanudarOT:             'GOOGLE',
   updateRespInf:          'GOOGLE',
   updateResponsable:      'GOOGLE',
   // SEAOT
@@ -179,6 +188,8 @@ const ACTION_MODULE = {
   getTablero:             'SEADB',
   getTableroInf:          'SEAINF',
   updateEstatus:          'SEADB',
+  pausarOT:               'SEADB',
+  reanudarOT:             'SEADB',
   updateResponsable:      'SEADB',
   updateRespInf:          'SEAINF',
   buscarClienteRFC:       'SEAOT',
@@ -582,6 +593,8 @@ function doPost(e) {
       case 'createExpediente': return output_(fase3_CrearExpediente(data));
       case 'addFilesToExpediente': return output_(fase3_AddFilesToExpediente(data));
       case 'updateEstatus': return output_(updateEstatusSafe_(data, _usuario));
+      case 'pausarOT': return output_(pausarOT_(data, _usuario));
+      case 'reanudarOT': return output_(reanudarOT_(data, _usuario));
       case 'updateEstatusInforme': return output_(updateEstatusInformeSafe_(data, _usuario));
       case 'updateResponsable': return output_(updateResponsableSafe_(data, _usuario));
       // Acciones GET migradas a POST para mantener token fuera de la URL (B-03)
@@ -1080,6 +1093,106 @@ function updateEstatusSafe_(data, usuario) {
   }
   return { success: false, error: 'OT no encontrada' };
 }
+// ── pausarOT_ ────────────────────────────────────────────────────────────────
+/**
+ * Pone una OT en estado EN PAUSA por información incompleta/errónea del cliente.
+ * Solo aplica a OTs en estado NO INICIADO o EN PROCESO.
+ *
+ * @param {Object} data  { ot, motivo }
+ * @param {string} usuario  Email del operador autenticado
+ */
+function pausarOT_(data, usuario) {
+  if (!data || !data.ot || !data.motivo) return { success: false, error: 'Faltan campos requeridos: ot, motivo.' };
+  if (String(data.motivo).trim().length < 10) return { success: false, error: 'El motivo debe tener al menos 10 caracteres.' };
+
+  const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+  const values = sheet.getDataRange().getValues();
+
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][CO.OT]).trim() !== String(data.ot).trim()) continue;
+
+    const estatusActual = String(values[i][CO.ESTATUS_EXTERNO]).trim().toUpperCase();
+    if (!ESTATUS_PAUSABLES_.includes(estatusActual)) {
+      return { success: false, error: `No se puede pausar una OT en estado "${estatusActual}". Solo se puede pausar desde: ${ESTATUS_PAUSABLES_.join(', ')}.` };
+    }
+
+    const fechaHoy = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'dd/MM/yyyy');
+    const motivo   = String(data.motivo).trim();
+
+    sheet.getRange(i + 1, CO.ESTATUS_EXTERNO + 1).setValue('EN PAUSA');
+    sheet.getRange(i + 1, CO.FECHA_PAUSA + 1).setValue(fechaHoy);
+    sheet.getRange(i + 1, CO.MOTIVO_PAUSA + 1).setValue(motivo);
+
+    registrarAuditoria_(usuario, 'PAUSAR_OT', data.ot, 'estatus_externo', estatusActual, 'EN PAUSA');
+    registrarAuditoria_(usuario, 'PAUSAR_OT', data.ot, 'fecha_pausa', '', fechaHoy);
+    registrarAuditoria_(usuario, 'PAUSAR_OT', data.ot, 'motivo_pausa', '', motivo);
+    return { success: true, message: 'OT pausada correctamente.' };
+  }
+  return { success: false, error: 'OT no encontrada.' };
+}
+
+// ── reanudarOT_ ──────────────────────────────────────────────────────────────
+/**
+ * Reanuda una OT que está EN PAUSA, recalculando FECHA_ENTREGA desde la fecha
+ * en que el cliente entregó información completa. FECHA_VISITA no se modifica.
+ *
+ * @param {Object} data  { ot, fechaInfoCompleta (dd/MM/yyyy), motivoReanudacion }
+ * @param {string} usuario  Email del operador autenticado
+ */
+function reanudarOT_(data, usuario) {
+  if (!data || !data.ot || !data.fechaInfoCompleta || !data.motivoReanudacion)
+    return { success: false, error: 'Faltan campos requeridos: ot, fechaInfoCompleta, motivoReanudacion.' };
+  if (String(data.motivoReanudacion).trim().length < 10)
+    return { success: false, error: 'El motivo debe tener al menos 10 caracteres.' };
+
+  const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+  const values = sheet.getDataRange().getValues();
+
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][CO.OT]).trim() !== String(data.ot).trim()) continue;
+
+    const estatusActual = String(values[i][CO.ESTATUS_EXTERNO]).trim().toUpperCase();
+    if (estatusActual !== 'EN PAUSA') {
+      return { success: false, error: `Solo se puede reanudar una OT que esté EN PAUSA. Estatus actual: "${estatusActual}".` };
+    }
+
+    // Parsear fecha info completa (acepta dd/MM/yyyy)
+    const partes = String(data.fechaInfoCompleta).trim().split('/');
+    if (partes.length !== 3) return { success: false, error: 'Formato de fecha inválido. Use dd/MM/yyyy.' };
+    const dBase = new Date(Number(partes[2]), Number(partes[1]) - 1, Number(partes[0]));
+    if (isNaN(dBase.getTime())) return { success: false, error: 'Fecha inválida.' };
+
+    // Días SLA según tipo de orden (OTA = 20d digital, OTB = 25d físico)
+    const tipoOrden = String(values[i][CO.TIPO]).trim().toUpperCase();
+    const diasSLA   = tipoOrden === 'OTB' ? 25 : 20;
+    const dEntregaNueva = new Date(dBase);
+    dEntregaNueva.setDate(dEntregaNueva.getDate() + diasSLA);
+    const fechaEntregaNueva    = Utilities.formatDate(dEntregaNueva, CONFIG.TIMEZONE, 'dd/MM/yyyy');
+    const fechaInfoCompletaFmt = Utilities.formatDate(dBase, CONFIG.TIMEZONE, 'dd/MM/yyyy');
+
+    const fechaEntregaAnterior  = String(values[i][CO.FECHA_ENTREGA] || '');
+    const observacionesAnterior = String(values[i][CO.OBSERVACIONES] || '');
+    const motivoReanudacion     = String(data.motivoReanudacion).trim();
+    const notaTimestamp         = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'dd/MM/yyyy HH:mm');
+    const notaAppend            = `[${notaTimestamp}] REANUDACIÓN: ${motivoReanudacion}`;
+    const observacionesNuevas   = observacionesAnterior ? observacionesAnterior + '\n' + notaAppend : notaAppend;
+
+    sheet.getRange(i + 1, CO.FECHA_ENTREGA + 1).setValue(fechaEntregaNueva);
+    sheet.getRange(i + 1, CO.ESTATUS_EXTERNO + 1).setValue('EN PROCESO');
+    sheet.getRange(i + 1, CO.FECHA_INFO_COMPLETA + 1).setValue(fechaInfoCompletaFmt);
+    sheet.getRange(i + 1, CO.FECHA_PAUSA + 1).setValue('');
+    sheet.getRange(i + 1, CO.MOTIVO_PAUSA + 1).setValue('');
+    sheet.getRange(i + 1, CO.OBSERVACIONES + 1).setValue(observacionesNuevas);
+
+    registrarAuditoria_(usuario, 'REANUDAR_OT', data.ot, 'estatus_externo', 'EN PAUSA', 'EN PROCESO');
+    registrarAuditoria_(usuario, 'REANUDAR_OT', data.ot, 'fecha_info_completa', '', fechaInfoCompletaFmt);
+    registrarAuditoria_(usuario, 'REANUDAR_OT', data.ot, 'fecha_entrega', fechaEntregaAnterior, fechaEntregaNueva);
+    registrarAuditoria_(usuario, 'REANUDAR_OT', data.ot, 'fecha_pausa', values[i][CO.FECHA_PAUSA] || '', '');
+    return { success: true, message: `OT reanudada. Nueva fecha de entrega: ${fechaEntregaNueva}.`, nuevaFechaEntrega: fechaEntregaNueva };
+  }
+  return { success: false, error: 'OT no encontrada.' };
+}
+
 // Actualiza el estatus interno del informe en la hoja INFORMES (col N).
 // NO toca ORDENES_TRABAJO ni ESTATUS_EXTERNO.
 function updateEstatusInformeSafe_(data, usuario) {
@@ -1164,19 +1277,22 @@ function fase4_GetTablero() {
     const rfc = String(row[CO.RFC] || '').toUpperCase().trim();
     const suc = String(row[CO.SUCURSAL] || '').trim();
     return {
-      ot:               row[CO.OT],
-      nom:              row[CO.NOM],
-      cliente:          row[CO.CLIENTE],
-      sucursal:         row[CO.SUCURSAL],
-      rfc:              rfc,
-      tipo_orden:       row[CO.TIPO],
-      responsable:      row[CO.PERSONAL],
-      fecha_visita:     row[CO.FECHA_VISITA],
-      fechaEntrega:     row[CO.FECHA_ENTREGA],
-      fechaRealEntrega: row[CO.FECHA_REAL],
-      estatus:          row[CO.ESTATUS_EXTERNO],
-      link_drive:       row[CO.LINK_DRIVE],
-      asesor_consultor: asesorMap[rfc + '|' + suc] || ''
+      ot:                  row[CO.OT],
+      nom:                 row[CO.NOM],
+      cliente:             row[CO.CLIENTE],
+      sucursal:            row[CO.SUCURSAL],
+      rfc:                 rfc,
+      tipo_orden:          row[CO.TIPO],
+      responsable:         row[CO.PERSONAL],
+      fecha_visita:        row[CO.FECHA_VISITA],
+      fechaEntrega:        row[CO.FECHA_ENTREGA],
+      fechaRealEntrega:    row[CO.FECHA_REAL],
+      estatus:             row[CO.ESTATUS_EXTERNO],
+      link_drive:          row[CO.LINK_DRIVE],
+      asesor_consultor:    asesorMap[rfc + '|' + suc] || '',
+      fechaPausa:          row[CO.FECHA_PAUSA]          || '',
+      motivoPausa:         row[CO.MOTIVO_PAUSA]         || '',
+      fechaInfoCompleta:   row[CO.FECHA_INFO_COMPLETA]  || ''
     };
   });
   return { success: true, data: registros };

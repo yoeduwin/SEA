@@ -66,6 +66,16 @@
         .action-btn.whatsapp { background: #25d366; color: white; }
         .action-btn.email { background: #ea4335; color: white; }
         .action-btn.copy { background: #95a5a6; color: white; }
+        .action-btn.btn-pausar { background: #f39c12; color: white; }
+        .action-btn.btn-reanudar { background: #8e44ad; color: white; }
+        .pausa-modal-header { background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%); color: white; padding: 1.2rem 1.5rem; display: flex; align-items: center; gap: 0.8rem; border-radius: 12px 12px 0 0; }
+        .reanudar-modal-header { background: linear-gradient(135deg, #8e44ad 0%, #6c3483 100%); color: white; padding: 1.2rem 1.5rem; display: flex; align-items: center; gap: 0.8rem; border-radius: 12px 12px 0 0; }
+        .pausa-modal-header h3, .reanudar-modal-header h3 { font-size: 1.1rem; font-weight: 600; margin: 0; }
+        .pausa-field { margin-bottom: 1rem; }
+        .pausa-field label { display: block; font-weight: 600; color: #2c3e50; margin-bottom: 0.4rem; font-size: 0.9rem; }
+        .pausa-field input, .pausa-field textarea { width: 100%; padding: 0.6rem; border: 1px solid #ddd; border-radius: 6px; font-size: 0.9rem; box-sizing: border-box; }
+        .pausa-field textarea { min-height: 80px; resize: vertical; }
+        .pausa-preview { background: #f0f4f8; border-left: 4px solid #8e44ad; padding: 0.8rem 1rem; border-radius: 4px; font-size: 0.9rem; margin-top: 0.5rem; color: #2c3e50; }
         .no-results { text-align: center; padding: 3rem; color: #95a5a6; }
         .no-results-icon { font-size: 3rem; margin-bottom: 1rem; }
         .table-action-btns { display: flex; gap: 0.3rem; flex-wrap: wrap; }
@@ -263,7 +273,7 @@
                         <label>Estatus</label>
                         <select id="filter-estatus">
                             <option value="">Todos</option><option value="ENTREGADO">✅ Entregado</option><option value="TIEMPO">🟢 En tiempo</option>
-                            <option value="LIMITE">🟠 En límite</option><option value="ALERTA">🔴 Alerta</option><option value="PENDIENTE">🟡 Pendiente</option>
+                            <option value="LIMITE">🟠 En límite</option><option value="ALERTA">🔴 Alerta</option><option value="PENDIENTE">🟡 Pendiente</option><option value="PAUSA">⏸ En Pausa</option>
                         </select>
                     </div>
                 </div>
@@ -495,9 +505,13 @@
                         }
 
                         const isEntregado = estatusRaw === 'ENTREGADO' || estatusRaw === 'FINALIZADO';
+                        const isPausa     = estatusRaw === 'EN PAUSA';
                         let estatusAuto = '';
                         if (isEntregado) {
                             estatusAuto = '✅ Entregado';
+                        } else if (isPausa) {
+                            const fechaPausaRaw = row.fechaPausa || '';
+                            estatusAuto = fechaPausaRaw ? `⏸ En Pausa (desde ${fechaPausaRaw})` : '⏸ En Pausa';
                         } else if (dEntrega || dVisita) {
                             const fechaLimite = dEntrega ? new Date(dEntrega) : (() => { const d = new Date(dVisita); d.setDate(d.getDate() + SLA_DIGITAL_DIAS); return d; })();
                             const hoy = new Date();
@@ -525,10 +539,15 @@
                             fechaDigital: fDigital,
                             fechaFisico: fFisico,
                             estatusAuto: estatusAuto,
+                            estatusRaw: estatusRaw,
                             entregadoManual: isEntregado ? 'ENTREGADO' : '',
                             fechaRealEntrega: row.fechaRealEntrega || row.fecha_real_entrega || '',
                             asesorConsultor: row.asesor_consultor || '',
                             linkOT: linkDriveRaw,
+                            fechaPausa: row.fechaPausa || '',
+                            motivoPausa: row.motivoPausa || '',
+                            fechaInfoCompleta: row.fechaInfoCompleta || '',
+                            tipoOrden: row.tipo_orden || '',
                             rawRow: row
                         };
                     }).filter(row => row.ot);
@@ -546,7 +565,11 @@
         }
 
         function checkOtsVencidas() {
-            const otsVencidas = allData.filter(row => !row.entregadoManual.toUpperCase().includes('ENTREGADO') && getStatusCategory(row) === 'ALERTA');
+            const otsVencidas = allData.filter(row =>
+                !row.entregadoManual.toUpperCase().includes('ENTREGADO') &&
+                row.estatusRaw !== 'EN PAUSA' &&
+                getStatusCategory(row) === 'ALERTA'
+            );
             if (otsVencidas.length > 0) { mostrarAlertaVencidas(otsVencidas); }
         }
 
@@ -637,6 +660,7 @@
         }
 
         function getStatusCategory(row) {
+            if (row.estatusRaw === 'EN PAUSA') return 'PAUSA';
             const estatus = row.estatusAuto || '';
             if (estatus.includes('✅') || estatus.includes('Entregado')) return 'ENTREGADO';
             if (estatus.includes('🔴') || estatus.includes('Alerta')) return 'ALERTA';
@@ -701,9 +725,9 @@
 
         function updateCharts() { updateStatusChart(); updateMesChart(); updateTiemposChart(); }
         function updateStatusChart() {
-            const entregadas = filteredData.filter(r => r.entregadoManual.toUpperCase().includes('ENTREGADO')).length; const tiempo = filteredData.filter(r => getStatusCategory(r) === 'TIEMPO').length; const limite = filteredData.filter(r => getStatusCategory(r) === 'LIMITE').length; const alerta = filteredData.filter(r => getStatusCategory(r) === 'ALERTA').length; const pendiente = filteredData.filter(r => getStatusCategory(r) === 'PENDIENTE').length;
+            const entregadas = filteredData.filter(r => r.entregadoManual.toUpperCase().includes('ENTREGADO')).length; const tiempo = filteredData.filter(r => getStatusCategory(r) === 'TIEMPO').length; const limite = filteredData.filter(r => getStatusCategory(r) === 'LIMITE').length; const alerta = filteredData.filter(r => getStatusCategory(r) === 'ALERTA').length; const pendiente = filteredData.filter(r => getStatusCategory(r) === 'PENDIENTE').length; const pausa = filteredData.filter(r => getStatusCategory(r) === 'PAUSA').length;
             if (charts.status) charts.status.destroy();
-            charts.status = new Chart(document.getElementById('chartStatus'), { type: 'doughnut', data: { labels: ['✅ Entregadas', '🟢 En tiempo', '🟠 En límite', '🔴 Alerta', '🟡 Pendiente'], datasets: [{ data: [entregadas, tiempo, limite, alerta, pendiente], backgroundColor: ['#27ae60', '#2ecc71', '#f39c12', '#e74c3c', '#95a5a6'], borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'bottom', labels: { font: { size: 9 }, padding: 8, boxWidth: 12 } } } } });
+            charts.status = new Chart(document.getElementById('chartStatus'), { type: 'doughnut', data: { labels: ['✅ Entregadas', '🟢 En tiempo', '🟠 En límite', '🔴 Alerta', '🟡 Pendiente', '⏸ En Pausa'], datasets: [{ data: [entregadas, tiempo, limite, alerta, pendiente, pausa], backgroundColor: ['#27ae60', '#2ecc71', '#f39c12', '#e74c3c', '#95a5a6', '#8e44ad'], borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'bottom', labels: { font: { size: 9 }, padding: 8, boxWidth: 12 } } } } });
         }
         function updateMesChart() {
             const mesesCount = {}; filteredData.forEach(row => { const fecha = parseFecha(row.fechaVisita); if (fecha) { const mes = fecha.toLocaleDateString('es-MX', { year: 'numeric', month: 'short' }); mesesCount[mes] = (mesesCount[mes] || 0) + 1; } });
@@ -729,14 +753,26 @@
         }
 
         function createTableRow(row) {
-            const tr = document.createElement('tr'); const dias = calcularDiasEntrega(row); const isEntregado = row.entregadoManual.toUpperCase().includes('ENTREGADO');
+            const tr = document.createElement('tr');
+            const dias = calcularDiasEntrega(row);
+            const isEntregado = row.entregadoManual.toUpperCase().includes('ENTREGADO');
+            const isPausa = row.estatusRaw === 'EN PAUSA';
+            const otEsc  = escapeQuotes(row.ot);
+
+            const botonesAccion = isEntregado
+                ? `<span style="color: #27ae60; font-size: 0.75rem; font-weight: 600;">✅ Entregado</span>`
+                : isPausa
+                    ? `<button class="action-btn btn-reanudar" onclick="abrirModalReanudar('${otEsc}', '${escapeQuotes(row.tipoOrden)}')">▶ Reanudar</button>`
+                    : `<button class="action-btn drive" onclick="marcarEntregado('${otEsc}')">✅ Entregado</button>
+                       <button class="action-btn btn-pausar" onclick="abrirModalPausar('${otEsc}')">⏸ Pausar</button>`;
+
             tr.innerHTML = `
                 <td><strong>${escHtml(row.ot)}</strong></td><td>${escHtml(row.clienteInicial)}</td><td>${escHtml(row.clienteFinal)}</td><td>${escHtml(row.nom)}</td><td>${escHtml(row.personal)}</td>
                 <td>${escHtml(row.fechaVisita)}</td><td><strong>${escHtml(row.fechaDigital)}</strong></td><td><strong>${escHtml(row.fechaFisico)}</strong></td><td>${dias !== null ? dias : '-'}</td><td>${escHtml(row.estatusAuto)}</td><td>${escHtml(row.asesorConsultor)}</td>
                 <td>
                     <div class="table-action-btns">
-                        <button class="action-btn whatsapp" onclick="compartirOT('${escapeQuotes(row.ot)}', '${escapeQuotes(row.nom)}', '${escapeQuotes(row.fechaVisita)}', '${escapeQuotes(row.personal)}', '${escapeQuotes(row.clienteFinal)}')">📤 Compartir</button>
-                        ${!isEntregado ? `<button class="action-btn drive" onclick="marcarEntregado('${escapeQuotes(row.ot)}')">✅ Entregado</button>` : `<span style="color: #27ae60; font-size: 0.75rem; font-weight: 600;">✅ Entregado</span>`}
+                        <button class="action-btn whatsapp" onclick="compartirOT('${otEsc}', '${escapeQuotes(row.nom)}', '${escapeQuotes(row.fechaVisita)}', '${escapeQuotes(row.personal)}', '${escapeQuotes(row.clienteFinal)}')">📤 Compartir</button>
+                        ${botonesAccion}
                         <button class="action-btn copy" onclick="openDrive('${escapeQuotes(safeDriveUrl(row.linkOT))}')">📁 Drive</button>
                     </div>
                 </td>
@@ -778,6 +814,185 @@
                 const result = await response.json();
                 if (result.success) { showToast('✅ OT marcada como ENTREGADA', 3000); setTimeout(() => loadData(), 2000); } else { showToast(`❌ Error: ${result.error}`, 5000); }
             } catch (error) { showToast(`❌ Error: ${error.message}`, 5000); }
+        }
+
+        // ── Modal: Pausar OT ──────────────────────────────────────────────────
+        function abrirModalPausar(ot) {
+            const overlay = document.createElement('div');
+            overlay.className = 'modal-overlay';
+            overlay.id = 'pausaModal';
+
+            const mc = document.createElement('div');
+            mc.className = 'modal-content evento-modal-content';
+            mc.style.maxWidth = '480px';
+
+            const hdr = document.createElement('div');
+            hdr.className = 'pausa-modal-header';
+            hdr.innerHTML = `<span style="font-size:1.3rem;">⏸</span><h3>Pausar OT por Información Pendiente</h3>`;
+
+            const body = document.createElement('div');
+            body.style.padding = '1.5rem';
+
+            const info = document.createElement('div');
+            info.className = 'alert-message';
+            info.style.marginBottom = '1rem';
+            info.innerHTML = `<strong>OT:</strong> ${escHtml(ot)}<br>El conteo SLA se congelará hasta que el cliente entregue información completa.`;
+
+            const campoMotivo = document.createElement('div');
+            campoMotivo.className = 'pausa-field';
+            const lblMotivo = document.createElement('label');
+            lblMotivo.textContent = 'Motivo de la pausa (mínimo 10 caracteres) *';
+            const txtMotivo = document.createElement('textarea');
+            txtMotivo.id = 'pausaMotivo';
+            txtMotivo.placeholder = 'Ej: Cliente entregó CSF vencida, se requiere versión actualizada.';
+            campoMotivo.appendChild(lblMotivo);
+            campoMotivo.appendChild(txtMotivo);
+
+            body.appendChild(info);
+            body.appendChild(campoMotivo);
+
+            const ftr = document.createElement('div');
+            ftr.className = 'modal-footer';
+            ftr.innerHTML = `<button class="modal-btn modal-btn-secondary" onclick="cerrarModal('pausaModal')">Cancelar</button>`;
+            const btnConfirmar = document.createElement('button');
+            btnConfirmar.className = 'modal-btn';
+            btnConfirmar.style.background = '#f39c12';
+            btnConfirmar.style.color = 'white';
+            btnConfirmar.textContent = 'Confirmar Pausa';
+            btnConfirmar.addEventListener('click', () => ejecutarPausa(ot));
+            ftr.appendChild(btnConfirmar);
+
+            mc.appendChild(hdr);
+            mc.appendChild(body);
+            mc.appendChild(ftr);
+            overlay.appendChild(mc);
+            document.body.appendChild(overlay);
+            overlay.addEventListener('click', e => { if (e.target === overlay) cerrarModal('pausaModal'); });
+        }
+
+        async function ejecutarPausa(ot) {
+            const motivo = (document.getElementById('pausaMotivo') || {}).value || '';
+            if (motivo.trim().length < 10) { showToast('❌ El motivo debe tener al menos 10 caracteres.', 4000); return; }
+            cerrarModal('pausaModal');
+            showToast('⏳ Pausando OT...', 5000);
+            try {
+                const payload = { action: 'pausarOT', ot, motivo: motivo.trim() };
+                const response = await SEAAuth.wrapFetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
+                const result = await response.json();
+                if (result.success) { showToast('⏸ OT pausada correctamente.', 3000); setTimeout(() => loadData(), 1500); }
+                else { showToast(`❌ Error: ${result.error}`, 5000); }
+            } catch (err) { showToast(`❌ Error: ${err.message}`, 5000); }
+        }
+
+        // ── Modal: Reanudar OT ────────────────────────────────────────────────
+        function sumarDias(fechaStr, dias) {
+            const p = fechaStr.split('/');
+            const d = new Date(Number(p[2]), Number(p[1]) - 1, Number(p[0]));
+            d.setDate(d.getDate() + dias);
+            return String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear();
+        }
+
+        function abrirModalReanudar(ot, tipoOrden) {
+            const diasSLA = (tipoOrden || '').toUpperCase() === 'OTB' ? 25 : 20;
+            const overlay = document.createElement('div');
+            overlay.className = 'modal-overlay';
+            overlay.id = 'reanudarModal';
+
+            const mc = document.createElement('div');
+            mc.className = 'modal-content evento-modal-content';
+            mc.style.maxWidth = '480px';
+
+            const hdr = document.createElement('div');
+            hdr.className = 'reanudar-modal-header';
+            hdr.innerHTML = `<span style="font-size:1.3rem;">▶</span><h3>Reanudar OT — Nueva Fecha de Entrega</h3>`;
+
+            const body = document.createElement('div');
+            body.style.padding = '1.5rem';
+
+            const info = document.createElement('div');
+            info.className = 'alert-message';
+            info.style.borderColor = '#8e44ad';
+            info.style.marginBottom = '1rem';
+            info.innerHTML = `<strong>OT:</strong> ${escHtml(ot)} &nbsp;|&nbsp; <strong>Tipo:</strong> ${escHtml(tipoOrden)} &nbsp;|&nbsp; <strong>SLA:</strong> +${diasSLA} días<br>La nueva <strong>FECHA_ENTREGA</strong> se calculará desde la fecha que indiques abajo. <strong>La fecha de visita original no cambia.</strong>`;
+
+            const campoFecha = document.createElement('div');
+            campoFecha.className = 'pausa-field';
+            const lblFecha = document.createElement('label');
+            lblFecha.textContent = 'Fecha en que el cliente entregó información completa *';
+            const inputFecha = document.createElement('input');
+            inputFecha.type = 'date';
+            inputFecha.id = 'reanudarFecha';
+            const preview = document.createElement('div');
+            preview.className = 'pausa-preview';
+            preview.id = 'reanudarPreview';
+            preview.textContent = 'Selecciona una fecha para ver la nueva fecha de entrega calculada.';
+            inputFecha.addEventListener('input', () => {
+                const v = inputFecha.value;
+                if (!v) { preview.textContent = 'Selecciona una fecha...'; return; }
+                const p = v.split('-');
+                const fechaFmt = p[2] + '/' + p[1] + '/' + p[0];
+                const nuevaEntrega = sumarDias(fechaFmt, diasSLA);
+                preview.innerHTML = `Nueva FECHA_ENTREGA: <strong>${nuevaEntrega}</strong> (${diasSLA} días desde la fecha indicada)`;
+            });
+            campoFecha.appendChild(lblFecha);
+            campoFecha.appendChild(inputFecha);
+            campoFecha.appendChild(preview);
+
+            const campoMotivo = document.createElement('div');
+            campoMotivo.className = 'pausa-field';
+            campoMotivo.style.marginTop = '1rem';
+            const lblMotivo = document.createElement('label');
+            lblMotivo.textContent = 'Motivo de la reanudación (mínimo 10 caracteres) *';
+            const txtMotivo = document.createElement('textarea');
+            txtMotivo.id = 'reanudarMotivo';
+            txtMotivo.placeholder = 'Ej: Cliente entregó CSF vigente y RFC actualizado.';
+            campoMotivo.appendChild(lblMotivo);
+            campoMotivo.appendChild(txtMotivo);
+
+            body.appendChild(info);
+            body.appendChild(campoFecha);
+            body.appendChild(campoMotivo);
+
+            const ftr = document.createElement('div');
+            ftr.className = 'modal-footer';
+            ftr.innerHTML = `<button class="modal-btn modal-btn-secondary" onclick="cerrarModal('reanudarModal')">Cancelar</button>`;
+            const btnConfirmar = document.createElement('button');
+            btnConfirmar.className = 'modal-btn';
+            btnConfirmar.style.background = '#8e44ad';
+            btnConfirmar.style.color = 'white';
+            btnConfirmar.textContent = 'Confirmar Reanudación';
+            btnConfirmar.addEventListener('click', () => ejecutarReanudacion(ot));
+            ftr.appendChild(btnConfirmar);
+
+            mc.appendChild(hdr);
+            mc.appendChild(body);
+            mc.appendChild(ftr);
+            overlay.appendChild(mc);
+            document.body.appendChild(overlay);
+            overlay.addEventListener('click', e => { if (e.target === overlay) cerrarModal('reanudarModal'); });
+        }
+
+        async function ejecutarReanudacion(ot) {
+            const inputFecha = document.getElementById('reanudarFecha');
+            const motivo = (document.getElementById('reanudarMotivo') || {}).value || '';
+            if (!inputFecha || !inputFecha.value) { showToast('❌ Debes ingresar la fecha en que el cliente entregó la información.', 4000); return; }
+            if (motivo.trim().length < 10) { showToast('❌ El motivo debe tener al menos 10 caracteres.', 4000); return; }
+            const p = inputFecha.value.split('-');
+            const fechaInfoCompleta = p[2] + '/' + p[1] + '/' + p[0]; // dd/MM/yyyy
+            cerrarModal('reanudarModal');
+            showToast('⏳ Reanudando OT...', 5000);
+            try {
+                const payload = { action: 'reanudarOT', ot, fechaInfoCompleta, motivoReanudacion: motivo.trim() };
+                const response = await SEAAuth.wrapFetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
+                const result = await response.json();
+                if (result.success) { showToast(`▶ OT reanudada. Nueva entrega: ${result.nuevaFechaEntrega}`, 4000); setTimeout(() => loadData(), 1500); }
+                else { showToast(`❌ Error: ${result.error}`, 5000); }
+            } catch (err) { showToast(`❌ Error: ${err.message}`, 5000); }
+        }
+
+        function cerrarModal(id) {
+            const modal = document.getElementById(id);
+            if (modal) { modal.style.animation = 'fadeIn 0.3s ease-out reverse'; setTimeout(() => modal.remove(), 300); }
         }
 
         function escapeQuotes(str) { return str.replace(/'/g, "\\'").replace(/"/g, '\\"'); }
