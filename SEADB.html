@@ -283,6 +283,18 @@
                 <div class="chart-card"><h3>OTs por Mes de Registro</h3><canvas id="chartMes"></canvas></div>
                 <div class="chart-card"><h3>Tiempo de Entrega (Días)</h3><canvas id="chartTiempos"></canvas></div>
             </div>
+            <div class="charts-grid" style="grid-template-columns: 1fr;">
+                <div class="chart-card"><h3>📦 Órdenes Finalizadas por Mes</h3><canvas id="chartCierres"></canvas></div>
+            </div>
+            <div class="table-container" id="seccionCierres" style="margin-bottom:1.5rem;">
+                <div class="table-header"><h3>✅ Detalle de Órdenes Finalizadas (<span id="cierres-count">0</span> registros)</h3></div>
+                <div class="table-wrapper">
+                    <table id="tablaCierres">
+                        <thead><tr><th>OT</th><th>Cliente</th><th>Sucursal</th><th>NOM</th><th>Personal</th><th>F. Visita</th><th>F. Finalizado</th></tr></thead>
+                        <tbody id="tablaCierresBody"></tbody>
+                    </table>
+                </div>
+            </div>
             <div class="table-container">
                 <div class="table-header"><h3>📋 Órdenes de Trabajo (<span id="table-count">0</span> registros)</h3></div>
                 <div class="table-wrapper">
@@ -723,7 +735,7 @@
 
         document.getElementById('filter-ot').addEventListener('input', applyFilters); document.getElementById('filter-cliente-inicial').addEventListener('input', applyFilters); document.getElementById('filter-cliente-final').addEventListener('input', applyFilters); document.getElementById('filter-nom').addEventListener('input', applyFilters); document.getElementById('filter-personal').addEventListener('change', applyFilters); document.getElementById('filter-estatus').addEventListener('change', applyFilters);
 
-        function updateCharts() { updateStatusChart(); updateMesChart(); updateTiemposChart(); }
+        function updateCharts() { updateStatusChart(); updateMesChart(); updateTiemposChart(); updateCierresChart(); }
         function updateStatusChart() {
             const entregadas = filteredData.filter(r => r.entregadoManual.toUpperCase().includes('ENTREGADO')).length; const tiempo = filteredData.filter(r => getStatusCategory(r) === 'TIEMPO').length; const limite = filteredData.filter(r => getStatusCategory(r) === 'LIMITE').length; const alerta = filteredData.filter(r => getStatusCategory(r) === 'ALERTA').length; const pendiente = filteredData.filter(r => getStatusCategory(r) === 'PENDIENTE').length; const pausa = filteredData.filter(r => getStatusCategory(r) === 'PAUSA').length;
             if (charts.status) charts.status.destroy();
@@ -740,6 +752,17 @@
             const otsConTiempos = filteredData.filter(r => r.entregadoManual.toUpperCase().includes('ENTREGADO')).map(r => ({ ot: r.ot, dias: calcularDiasEntrega(r) })).filter(d => d.dias !== null && d.dias >= 0).sort((a, b) => b.dias - a.dias).slice(0, 10);
             if (charts.tiempos) charts.tiempos.destroy();
             charts.tiempos = new Chart(document.getElementById('chartTiempos'), { type: 'bar', data: { labels: otsConTiempos.map(d => d.ot), datasets: [{ data: otsConTiempos.map(d => d.dias), backgroundColor: '#3498db', borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: true, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { font: { size: 9 } }, grid: { display: false } }, y: { ticks: { font: { size: 8 } }, grid: { display: false } } } } });
+        }
+        function updateCierresChart() {
+            const finalizadas = filteredData.filter(r => r.estatusRaw === 'FINALIZADO' && r.fechaRealEntrega);
+            const mesesCount = {};
+            finalizadas.forEach(row => { const fecha = parseFecha(row.fechaRealEntrega); if (fecha) { const mes = fecha.toLocaleDateString('es-MX', { year: 'numeric', month: 'short' }); mesesCount[mes] = (mesesCount[mes] || 0) + 1; } });
+            const sortedMeses = Object.entries(mesesCount).sort((a, b) => { const [mesA, yearA] = a[0].split(' '); const [mesB, yearB] = b[0].split(' '); return new Date(yearA, getMesIndex(mesA)) - new Date(yearB, getMesIndex(mesB)); }).slice(-12);
+            if (charts.cierres) charts.cierres.destroy();
+            charts.cierres = new Chart(document.getElementById('chartCierres'), { type: 'bar', data: { labels: sortedMeses.map(([mes]) => mes), datasets: [{ data: sortedMeses.map(([, count]) => count), backgroundColor: '#27ae60', borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { font: { size: 9 }, stepSize: 1 }, grid: { display: false } }, x: { ticks: { font: { size: 9 } }, grid: { display: false } } } } });
+            document.getElementById('cierres-count').textContent = finalizadas.length;
+            const tbody = document.getElementById('tablaCierresBody'); tbody.innerHTML = '';
+            finalizadas.sort((a, b) => { const fa = parseFecha(a.fechaRealEntrega), fb = parseFecha(b.fechaRealEntrega); return (fb || 0) - (fa || 0); }).forEach(row => { const tr = document.createElement('tr'); tr.innerHTML = `<td>${row.ot||''}</td><td>${row.cliente||''}</td><td>${row.sucursal||''}</td><td>${row.nom||''}</td><td>${row.personal||''}</td><td>${row.fechaVisita||''}</td><td>${row.fechaRealEntrega||''}</td>`; tbody.appendChild(tr); });
         }
 
         function updateTable() {
