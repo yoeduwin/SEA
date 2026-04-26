@@ -77,11 +77,34 @@
     .search-box input { flex:1; padding:10px; font-size:14px; text-transform:uppercase; border:1px solid #ccc; border-radius:4px; }
     .search-box button { background:#1e5a3e; color:white; border:none; padding:10px 20px; border-radius:4px; cursor:pointer; font-weight:bold; }
     .close-modal { margin-top:15px; background:#6c757d; color:white; border:none; padding:8px 15px; border-radius:4px; cursor:pointer; width:100%; }
+    /* Revisión de Contrato */
+    .contract-review-block{border-left:3px solid #1e5a3e;background:#f8f9fa;border-radius:3px;padding:8px 10px;margin-top:5px;}
+    .contract-review-label{font-weight:bold;color:#1e5a3e;font-size:11px;text-transform:uppercase;letter-spacing:.3px;}
+    .contract-review-text{font-size:10px;font-style:italic;margin:4px 0 6px;color:#333;}
+    .contract-review-date{display:flex;align-items:center;gap:8px;}
+    .contract-review-date label{font-weight:normal;font-size:10px;text-transform:none;margin:0;}
+    .contract-review-date input{max-width:160px;}
+    /* Declaración de Imparcialidad */
+    .impartiality-statement{font-size:10px;font-style:italic;color:#333;margin:0 0 8px;line-height:1.45;}
+    .declaration-empty{text-align:center;font-style:italic;color:#999;font-size:10px;padding:10px;}
+    #declarationTable .decl-signature-line{border-bottom:1px solid #333;height:18px;margin:6px 4px 4px;}
+    #wo_generalObservations{min-height:50px;}
     @media print{
       .nav-tabs,.excel-controls,.excel-mapping-info,.no-print,.modal-overlay,#sea-user-info{display:none !important;}
       .service-suggestions{display:none !important;}
-      body{background:#fff;padding:0;font-size:11px}
+      .add-row-btn,.remove-row-btn{display:none !important;}
+      #workTable th:last-child,#workTable td:last-child{display:none !important;}
+      body{background:#fff;padding:0;font-size:10px}
       .main-container{margin:0;max-width:none;padding:0}
+      .section-content{padding:8px !important;}
+      .section-header{padding:5px 10px !important;font-size:10px !important;}
+      .form-grid{gap:8px !important;margin-bottom:8px !important;}
+      .work-table th{padding:4px 3px;font-size:10px;}
+      .work-table td{padding:2px;font-size:10px;}
+      #wo_generalObservations{min-height:30px !important;}
+      .contract-review-block{padding:5px 8px;margin-top:3px;}
+      .contract-review-text{margin:2px 0 3px;}
+      .impartiality-statement{margin:0 0 5px;}
       @page{size:A4;margin:10mm}
       #profileTab{display:none !important;}
       #workorderTab{display:block !important;}
@@ -212,7 +235,14 @@
           </div>
           <div class="form-group"><label>N° de Orden de Servicio</label><input type="text" id="wo_orderNumber" placeholder="OT2603-1"></div>
           <div class="form-group"><label>Fecha de Emisión</label><input type="date" id="wo_issueDate"></div>
-          <div class="form-group"><label>Referencia de Cotización<span class="tt" tabindex="0" data-tip="Número de folio de la cotización o presupuesto aprobado por el cliente. Sirve para relacionar esta OT con el documento comercial previo.">i</span></label><input type="text" id="wo_quoteRef"></div>
+        </div>
+        <div class="contract-review-block">
+          <label class="contract-review-label">Revisión de Contrato<span class="tt" tabindex="0" data-tip="Confirma que se evaluó la capacidad técnica, calibración de equipos, competencia del personal y disponibilidad de fechas antes de aceptar el servicio.">i</span></label>
+          <p class="contract-review-text">"Contrato revisado. Se confirma capacidad técnica, equipos calibrados, personal competente y disponibilidad de fechas para la ejecución del presente servicio."</p>
+          <div class="contract-review-date">
+            <label>Fecha de revisión:</label>
+            <input type="date" id="wo_contractReviewDate">
+          </div>
         </div>
       </div>
     </div>
@@ -275,8 +305,26 @@
         <button class="add-row-btn" onclick="addWorkRow()">+ Agregar Fila</button>
         <div class="form-group full-width" style="margin-top:15px;">
           <label>Observaciones Generales</label>
-          <textarea id="wo_generalObservations" style="min-height:80px;" placeholder="📋 RECORDATORIO: Portar EPP (botas de seguridad, casco de seguridad, lentes de seguridad, protección auditiva, guantes de seguridad, chaleco)"></textarea>
+          <textarea id="wo_generalObservations" placeholder="📋 RECORDATORIO: Portar EPP (botas de seguridad, casco de seguridad, lentes de seguridad, protección auditiva, guantes de seguridad, chaleco)"></textarea>
         </div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-header">Declaración de Imparcialidad y Confidencialidad — Ref. EA-PIYC-01</div>
+      <div class="section-content">
+        <p class="impartiality-statement">"El personal asignado declara no tener relaciones comerciales, financieras o familiares con el cliente que comprometan la imparcialidad del presente servicio, y se compromete a mantener la confidencialidad de la información generada durante su ejecución."</p>
+        <table class="work-table" id="declarationTable">
+          <thead>
+            <tr>
+              <th style="width:30%">Nombre del Ingeniero de Pruebas (IP)</th>
+              <th style="width:40%">Firma / Nombre completo</th>
+              <th style="width:30%">Fecha de declaración</th>
+            </tr>
+          </thead>
+          <tbody id="declarationTableBody">
+            <tr><td colspan="3" class="declaration-empty">Asigne personal en la tabla de servicios para generar las firmas.</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
     <div class="section">
@@ -519,7 +567,65 @@
     tr.innerHTML = `<td><div class="service-autocomplete"><input type="text" class="service-input" placeholder="NOM-XXX-STPS"><div class="service-suggestions"></div></div></td><td><select><option value="">Seleccionar...</option><option>Martín Luna</option><option>Jimmy Ayala</option><option>Iván Zárate</option><option>Eduardo Campos</option><option>Externo - Adrián H</option><option>Externo</option></select></td><td><input type="date"></td><td><input type="text" placeholder="10 puntos, 2 ZC... etc"></td><td><textarea rows="2"></textarea></td><td style="text-align:center;"><button class="remove-row-btn" onclick="removeRow(this)">✖</button></td>`;
     tbody.appendChild(tr); setupServiceAutocomplete(tr.querySelector('.service-input'));
   }
-  function removeRow(btn) { if (btn && btn.closest) btn.closest('tr').remove(); }
+  function removeRow(btn) { if (btn && btn.closest) { btn.closest('tr').remove(); updateDeclarationTable(); } }
+
+  // ================== DECLARACIÓN DE IMPARCIALIDAD (auto-sync) ==================
+  function updateDeclarationTable() {
+    const body = document.getElementById('declarationTableBody');
+    if (!body) return;
+
+    // Preserve manual edits keyed by IP name
+    const manual = {};
+    body.querySelectorAll('tr[data-ip]').forEach(tr => {
+      const ip = tr.dataset.ip;
+      const nameInput = tr.querySelector('.decl-name');
+      const dateInput = tr.querySelector('.decl-date');
+      manual[ip] = {
+        name: (nameInput && nameInput.dataset.manual === 'true') ? nameInput.value : null,
+        date: (dateInput && dateInput.dataset.manual === 'true') ? dateInput.value : null
+      };
+    });
+
+    // Collect unique IPs and earliest service date per IP
+    const ipMap = new Map();
+    document.querySelectorAll('#workTableBody tr').forEach(row => {
+      const fields = row.querySelectorAll('input, select, textarea');
+      if (fields.length >= 3) {
+        const ipName = (fields[1].value || '').trim();
+        const date = (fields[2].value || '').trim();
+        if (ipName) {
+          if (!ipMap.has(ipName)) ipMap.set(ipName, []);
+          if (date) ipMap.get(ipName).push(date);
+        }
+      }
+    });
+
+    if (ipMap.size === 0) {
+      body.innerHTML = '<tr><td colspan="3" class="declaration-empty">Asigne personal en la tabla de servicios para generar las firmas.</td></tr>';
+      return;
+    }
+
+    body.innerHTML = '';
+    const today = new Date().toISOString().split('T')[0];
+    ipMap.forEach((dates, ipName) => {
+      const earliest = dates.length ? dates.slice().sort()[0] : today;
+      const nameVal = manual[ipName]?.name ?? ipName;
+      const dateVal = manual[ipName]?.date ?? earliest;
+      const tr = document.createElement('tr');
+      tr.dataset.ip = ipName;
+      tr.innerHTML = `
+        <td><input type="text" class="decl-name" value="${nameVal.replace(/"/g, '&quot;')}"></td>
+        <td><div class="decl-signature-line"></div></td>
+        <td><input type="date" class="decl-date" value="${dateVal}"></td>
+      `;
+      const nameInput = tr.querySelector('.decl-name');
+      const dateInput = tr.querySelector('.decl-date');
+      nameInput.addEventListener('input', () => { nameInput.dataset.manual = 'true'; });
+      dateInput.addEventListener('input', () => { dateInput.dataset.manual = 'true'; });
+      body.appendChild(tr);
+    });
+  }
+
   function setupServiceAutocomplete(input) {
     if (!input) return; const container = input.closest('.service-autocomplete'); const suggestionsDiv = container.querySelector('.service-suggestions');
     input.addEventListener('input', function() {
@@ -702,12 +808,24 @@ Tel: 222-941-7295`;
         }
       });
     }
+    const today = new Date().toISOString().split('T')[0];
     const issueDateInput = document.getElementById('wo_issueDate');
-    if (issueDateInput) issueDateInput.value = new Date().toISOString().split('T')[0];
+    if (issueDateInput) issueDateInput.value = today;
+    const reviewDateInput = document.getElementById('wo_contractReviewDate');
+    if (reviewDateInput && !reviewDateInput.value) reviewDateInput.value = today;
     document.querySelectorAll('.service-input').forEach(setupServiceAutocomplete);
     document.querySelectorAll('input[name="orderSeries"]').forEach(r => r.addEventListener('change', updateOrderNumber));
     updateOrderNumber();
     document.querySelectorAll('.nav-tab').forEach(tab => tab.addEventListener('click', syncData));
+
+    // Auto-sync declaración de imparcialidad con la tabla de servicios
+    const workBody = document.getElementById('workTableBody');
+    if (workBody) {
+      workBody.addEventListener('change', updateDeclarationTable);
+      workBody.addEventListener('input', updateDeclarationTable);
+    }
+    updateDeclarationTable();
+
     generateQRCode();
   }
 
