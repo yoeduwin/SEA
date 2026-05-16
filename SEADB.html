@@ -63,9 +63,11 @@
         .informe-actions { display: flex; gap: 0.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #ecf0f1; }
         .action-btn { flex: 1; padding: 0.5rem; border: none; border-radius: 6px; cursor: pointer; font-size: 0.75rem; font-weight: 500; transition: all 0.3s; display: flex; align-items: center; justify-content: center; gap: 0.3rem; }
         .action-btn.drive { background: #4285f4; color: white; }
+        .action-btn.drive:disabled { background: #95a5a6; cursor: not-allowed; opacity: 0.6; }
         .action-btn.whatsapp { background: #25d366; color: white; }
         .action-btn.email { background: #ea4335; color: white; }
         .action-btn.copy { background: #95a5a6; color: white; }
+        .action-btn.btn-entregado { background: #27ae60; color: white; }
         .action-btn.btn-pausar { background: #f39c12; color: white; }
         .action-btn.btn-reanudar { background: #8e44ad; color: white; }
         .pausa-modal-header { background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%); color: white; padding: 1.2rem 1.5rem; display: flex; align-items: center; gap: 0.8rem; border-radius: 12px 12px 0 0; }
@@ -763,7 +765,7 @@
                 ? `<span style="color: #27ae60; font-size: 0.75rem; font-weight: 600;">✅ Entregado</span>`
                 : isPausa
                     ? `<button class="action-btn btn-reanudar" onclick="abrirModalReanudar('${otEsc}', '${escapeQuotes(row.tipoOrden)}')">▶ Reanudar</button>`
-                    : `<button class="action-btn drive" onclick="marcarEntregado('${otEsc}')">✅ Entregado</button>
+                    : `<button class="action-btn btn-entregado" onclick="marcarEntregado('${otEsc}')">✅ Entregado</button>
                        <button class="action-btn btn-pausar" onclick="abrirModalPausar('${otEsc}')">⏸ Pausar</button>`;
 
             tr.innerHTML = `
@@ -773,7 +775,10 @@
                     <div class="table-action-btns">
                         <button class="action-btn whatsapp" onclick="compartirOT('${otEsc}', '${escapeQuotes(row.nom)}', '${escapeQuotes(row.fechaVisita)}', '${escapeQuotes(row.personal)}', '${escapeQuotes(row.clienteFinal)}')">📤 Compartir</button>
                         ${botonesAccion}
-                        <button class="action-btn copy" onclick="openDrive('${escapeQuotes(safeDriveUrl(row.linkOT))}')">📁 Drive</button>
+                        ${safeDriveUrl(row.linkOT) !== '#'
+                            ? `<button class="action-btn drive" onclick="openDrive('${escapeQuotes(safeDriveUrl(row.linkOT))}')">📁 Drive</button>`
+                            : `<button class="action-btn drive" disabled title="Sin enlace de Drive">📁 Drive</button>`
+                        }
                     </div>
                 </td>
             `;
