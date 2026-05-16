@@ -769,7 +769,8 @@
           direccion: document.getElementById('field-dir').value.trim(),
           responsable: document.getElementById('field-responsable').value,
           esCapacitacion: 'NO',
-          linkDrive: otData.link_drive || ''
+          linkDrive: otData.link_drive || '',
+          razon_social: otData.cliente || document.getElementById('field-cliente-inicial').value.trim()
         },
         files: []
       };
