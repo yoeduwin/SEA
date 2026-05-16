@@ -913,34 +913,68 @@ function fase3_CrearExpediente(payload) {
     var m2 = String(info.linkDrive).match(/folders\/([a-zA-Z0-9_-]+)/);
     if (m2) { try { carpetaSucursal = DriveApp.getFolderById(m2[1]); } catch(e) {} }
   }
-  // 3) Buscar en CLIENTES_MAESTRO por RFC + sucursal
-  //    NOTA: nuevo esquema 21 columnas → link Drive en índice [20] (columna 21)
+  // 3) Buscar en CLIENTES_MAESTRO por RFC + sucursal (case-insensitive y sanitizado)
+  //    Sub-fallback: si RFC coincide pero sucursal no, usa el link más reciente por RFC.
   if (!carpetaSucursal && info.rfc) {
     try {
       var sheetCli = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_CLIENTES);
       var cliData = sheetCli.getDataRange().getValues();
       var rfcBusc = String(info.rfc).toUpperCase().trim();
-      var sucBusc = String(info.sucursal || '').trim();
+      var sucBuscNorm = sanitizeFileName(String(info.sucursal || '').trim()).toLowerCase();
+      var linkExacto = '';
+      var linkSoloRfc = '';
       for (var j = cliData.length - 1; j >= 1; j--) {
-        if (String(cliData[j][CL.RFC]).toUpperCase().trim() === rfcBusc) {
-          if (!sucBusc || String(cliData[j][CL.SUCURSAL]).trim() === sucBusc) {
-            var linkCli = cliData[j][CL.LINK_DRIVE];
-            if (linkCli) {
-              var m3 = String(linkCli).match(/folders\/([a-zA-Z0-9_-]+)/);
-              if (m3) { try { carpetaSucursal = DriveApp.getFolderById(m3[1]); } catch(e) {} }
-            }
-            break;
-          }
-        }
+        if (String(cliData[j][CL.RFC]).toUpperCase().trim() !== rfcBusc) continue;
+        var sucFilaNorm = sanitizeFileName(String(cliData[j][CL.SUCURSAL] || '').trim()).toLowerCase();
+        var linkCli = cliData[j][CL.LINK_DRIVE];
+        if (!linkSoloRfc && linkCli) linkSoloRfc = linkCli;
+        if (sucBuscNorm && sucFilaNorm === sucBuscNorm && linkCli) { linkExacto = linkCli; break; }
+        if (!sucBuscNorm && linkCli) { linkExacto = linkCli; break; }
+      }
+      var linkElegido = linkExacto || linkSoloRfc;
+      if (linkElegido) {
+        var m3 = String(linkElegido).match(/folders\/([a-zA-Z0-9_-]+)/);
+        if (m3) { try { carpetaSucursal = DriveApp.getFolderById(m3[1]); } catch(e) {} }
       }
     } catch(e) {
       Logger.log('Error buscando carpeta por RFC: ' + e.message);
     }
   }
-  // 4) Último recurso: carpeta raíz
+  // 3.5) Búsqueda directa en Drive: /FOLDER_ID/{RFC - CompanyName}/{Sucursal}
+  //      Reconstruye el nombre de carpeta con la misma lógica de fase1_RegistrarCliente.
+  if (!carpetaSucursal && info.rfc) {
+    try {
+      var rfcClean35 = String(info.rfc).toUpperCase().trim();
+      var razonOrigen = info.cliente || info.razon_social || values[otMatch.arrayIndex][CO.CLIENTE] || '';
+      var companyClean35 = cleanCompanyName(razonOrigen);
+      var parentFolderName35 = rfcClean35 + ' - ' + companyClean35;
+      var folderRaiz35 = DriveApp.getFolderById(CONFIG.FOLDER_ID);
+      var pIter35 = folderRaiz35.getFoldersByName(parentFolderName35);
+      if (pIter35.hasNext()) {
+        var parentFolder35 = pIter35.next();
+        var branchClean35 = sanitizeFileName(info.sucursal || 'Matriz');
+        var bIter35 = parentFolder35.getFoldersByName(branchClean35);
+        if (bIter35.hasNext()) {
+          carpetaSucursal = bIter35.next();
+        } else {
+          var anyBranch35 = parentFolder35.getFolders();
+          if (anyBranch35.hasNext()) carpetaSucursal = anyBranch35.next();
+        }
+        if (carpetaSucursal) Logger.log('Fallback 3.5: carpeta hallada en Drive → ' + parentFolderName35 + '/' + carpetaSucursal.getName());
+      }
+    } catch(e) {
+      Logger.log('Error fallback 3.5 (búsqueda en Drive): ' + e.message);
+    }
+  }
+  // 4) Último recurso: carpeta raíz (con log de diagnóstico ampliado)
   if (!carpetaSucursal) {
     carpetaSucursal = DriveApp.getFolderById(CONFIG.FOLDER_ID);
-    Logger.log('ADVERTENCIA: Expediente creado en carpeta raíz porque no se encontró carpeta del cliente. OT: ' + info.ot);
+    Logger.log('ADVERTENCIA: Expediente en RAÍZ. OT=' + info.ot
+      + ' | RFC=' + (info.rfc||'-')
+      + ' | sucursal=' + (info.sucursal||'-')
+      + ' | cliente=' + (info.cliente||'-')
+      + ' | linkOT=' + (linkCarpetaSucursal||'-')
+      + ' | linkPayload=' + (info.linkDrive||'-'));
   }
   var consecutivoMatch = info.numInforme.match(/-(\d{4})$/);
   var consecutivoPrefix = consecutivoMatch ? consecutivoMatch[1] : '0000';
