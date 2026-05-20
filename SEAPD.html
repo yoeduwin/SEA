@@ -65,6 +65,9 @@
     .loading-spinner { border:3px solid #f3f3f3; border-top:3px solid #1e5a3e; border-radius:50%; width:40px; height:40px; animation: spin 1s linear infinite; margin:0 auto; }
     @keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
     .loading-text { margin-top:15px; color:#1e5a3e; font-weight:500; }
+    .attachment-counter { display:inline-block; margin-bottom:14px; padding:7px 18px; background:#e8f5e9; border:1px solid #4caf50; border-radius:4px; font-size:12px; font-weight:600; color:#2e7d32; transition:background .25s, color .25s, border-color .25s; }
+    .attachment-counter.counter-warning { background:#fff8e1; border-color:#ffc107; color:#856404; }
+    .attachment-counter.counter-error { background:#f8d7da; border-color:#dc3545; color:#721c24; }
     .floating-buttons { position:fixed; bottom:30px; right:30px; display:flex; flex-direction:column; gap:15px; z-index:1000; }
     .floating-btn { width:60px; height:60px; border-radius:50%; display:flex; align-items:center; justify-content:center; text-decoration:none; font-size:28px; box-shadow:0 4px 15px rgba(0,0,0,.3); transition:all .3s ease; cursor:pointer; }
     .floating-btn:hover { transform: translateY(-5px); box-shadow:0 6px 20px rgba(0,0,0,.4); }
@@ -896,6 +899,7 @@
           </div>
         </div>
         <div class="submit-section">
+          <div id="attachmentCounter" class="attachment-counter">Archivos adjuntos: 0.0 MB / 18 MB</div>
           <button type="submit" class="btn-submit" id="submitBtn">Revisar y Enviar Información</button>
           <div class="loading" id="loading">
             <div class="loading-spinner"></div>
@@ -925,7 +929,13 @@
     // ✅ URL NUEVA ACTUALIZADA
     const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby8t7Py-cilePxLiGa-Lq7Df73XaRlmkRYV_kXbTs79HFydaJyub8muA0PBLRkPevUuXg/exec';
     
-    const MAX_FILE_SIZE = 10 * 1024 * 1024;
+    const MAX_FILE_SIZE    = 10 * 1024 * 1024;  // 10 MB por archivo
+    const MAX_TOTAL_RAW    = 18 * 1024 * 1024;  // 18 MB real total (margen preventivo por overhead de Base64/JSON)
+    const MAX_BASE64_LIMIT = 30 * 1024 * 1024;  // ~30 MB estimado en Base64 (doble seguro)
+
+    const compressedFiles = new Map(); // key: input.name → File comprimido
+    let pendingCompressions = 0;       // bloquea envío mientras se procesan imágenes
+
     const WELCOME_COOKIE_NAME = 'ea_welcome_shown';
     const WELCOME_COOKIE_DAYS = 30;
 
@@ -968,6 +978,48 @@
       return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
     }
 
+    function compressImageFile(file) {
+      if (file.type !== 'image/jpeg' && file.type !== 'image/jpg' && file.type !== 'image/png') {
+        return Promise.resolve(null);
+      }
+      return new Promise(function(resolve) {
+        var img = new Image();
+        var objectUrl = URL.createObjectURL(file);
+        img.onload = function() {
+          URL.revokeObjectURL(objectUrl);
+          var MAX_WIDTH = 1920;
+          var w = img.naturalWidth, h = img.naturalHeight;
+          if (w > MAX_WIDTH) { h = Math.round(h * MAX_WIDTH / w); w = MAX_WIDTH; }
+          var canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          canvas.toBlob(function(blob) {
+            if (!blob) { resolve(null); return; }
+            var newName = file.name.replace(/\.[^.]+$/, '.jpg');
+            resolve(new File([blob], newName, { type: 'image/jpeg' }));
+          }, 'image/jpeg', 0.72);
+        };
+        img.onerror = function() { URL.revokeObjectURL(objectUrl); resolve(null); };
+        img.src = objectUrl;
+      });
+    }
+
+    function updateAttachmentCounter() {
+      var total = 0;
+      document.querySelectorAll('input[type="file"]').forEach(function(input) {
+        var key = input.name;
+        if (input.files && input.files[0]) {
+          total += compressedFiles.has(key) ? compressedFiles.get(key).size : input.files[0].size;
+        }
+      });
+      var bar = document.getElementById('attachmentCounter');
+      if (!bar) return;
+      bar.textContent = 'Archivos adjuntos: ' + (total / 1024 / 1024).toFixed(1) + ' MB / 18 MB';
+      bar.classList.remove('counter-warning', 'counter-error');
+      if (total > MAX_TOTAL_RAW)          bar.classList.add('counter-error');
+      else if (total > 14 * 1024 * 1024) bar.classList.add('counter-warning');
+    }
+
     function clearFileUI(fileKey) {
       const input = document.querySelector(`[data-file-input="${fileKey}"]`);
       const preview = document.querySelector(`[data-preview="${fileKey}"]`);
@@ -975,6 +1027,8 @@
       if (input) input.value = '';
       if (preview) preview.classList.remove('active');
       if (uploadGroup) uploadGroup.classList.remove('has-file');
+      compressedFiles.delete(fileKey);
+      updateAttachmentCounter();
     }
 
     function clearConditionalFilesByAttr(attrValue) {
@@ -988,30 +1042,57 @@
       });
     }
 
-    document.querySelectorAll('input[type="file"]').forEach(input => {
-      input.addEventListener('change', function () {
-        const fileKey = this.dataset.fileInput;
-        const preview = document.querySelector(`[data-preview="${fileKey}"]`);
+    document.querySelectorAll('input[type="file"]').forEach(function(input) {
+      input.addEventListener('change', async function() {
+        const fileKey = this.name; // mismo valor que data-file-input en todos los campos
+        const preview    = document.querySelector(`[data-preview="${fileKey}"]`);
         const uploadGroup = document.querySelector(`[data-upload-group="${fileKey}"]`);
-        if (!preview) return;
+
+        compressedFiles.delete(fileKey);
+
+        if (!preview) { updateAttachmentCounter(); return; }
+
         if (this.files && this.files[0]) {
           const file = this.files[0];
           if (file.size > MAX_FILE_SIZE) {
-            alert('El archivo es demasiado grande. Máximo 10MB por archivo.');
+            alert('El archivo es demasiado grande. Máximo 10 MB por archivo.');
             this.value = '';
             preview.classList.remove('active');
             if (uploadGroup) uploadGroup.classList.remove('has-file');
+            updateAttachmentCounter();
             return;
           }
+
           const nameEl = preview.querySelector('.file-name');
           const sizeEl = preview.querySelector('.file-size');
           if (nameEl) nameEl.textContent = file.name;
           if (sizeEl) sizeEl.textContent = formatFileSize(file.size);
           preview.classList.add('active');
           if (uploadGroup) uploadGroup.classList.add('has-file');
+          updateAttachmentCounter();
+
+          const isImage = (file.type === 'image/jpeg' || file.type === 'image/jpg' || file.type === 'image/png');
+          if (isImage) {
+            pendingCompressions++;
+            const submitBtn = document.getElementById('submitBtn');
+            if (submitBtn) submitBtn.disabled = true;
+            try {
+              const compressed = await compressImageFile(file);
+              if (compressed && compressed.size < file.size * 0.90) {
+                compressedFiles.set(fileKey, compressed);
+                if (sizeEl) sizeEl.textContent = formatFileSize(compressed.size) + ' (comprimido)';
+              }
+            } finally {
+              pendingCompressions--;
+              if (pendingCompressions === 0 && submitBtn) submitBtn.disabled = false;
+              updateAttachmentCounter();
+            }
+          }
+
         } else {
           preview.classList.remove('active');
           if (uploadGroup) uploadGroup.classList.remove('has-file');
+          updateAttachmentCounter();
         }
       });
     });
@@ -1274,6 +1355,10 @@
 
     async function confirmAndSend() {
       closeConfirmationModal();
+      if (pendingCompressions > 0) {
+        showError('Espere a que terminen de procesar las imágenes antes de enviar.', 'Solo tarda unos segundos.');
+        return;
+      }
       const form = document.getElementById('perfilDatosForm');
       const submitBtn = document.getElementById('submitBtn');
       const loading = document.getElementById('loading');
@@ -1286,21 +1371,30 @@
       try {
         const formData = new FormData(form);
         const data = { action: 'registrarCliente' };
-        
+
+        // Paso 1: recopilar archivos y validar tamaños ANTES de convertir a Base64
         let totalFileSize = 0;
+        const filesToConvert = [];
         for (let [key, value] of formData.entries()) {
           if (value instanceof File && value.size > 0) {
-            totalFileSize += value.size;
-            data[key] = await fileToBase64(value);
-            data[key + '_filename'] = value.name;
-            data[key + '_size'] = value.size;
+            const fileToSend = compressedFiles.has(key) ? compressedFiles.get(key) : value;
+            totalFileSize += fileToSend.size;
+            filesToConvert.push({ key, file: fileToSend });
           } else {
             data[key] = value;
           }
         }
-        const MAX_TOTAL_SIZE = 25 * 1024 * 1024;
-        if (totalFileSize > MAX_TOTAL_SIZE) {
+
+        const estimatedBase64 = Math.ceil(totalFileSize * 4 / 3);
+        if (totalFileSize > MAX_TOTAL_RAW || estimatedBase64 > MAX_BASE64_LIMIT) {
           throw new Error('ARCHIVOS_MUY_GRANDES');
+        }
+
+        // Paso 2: convertir a Base64 solo si pasó validación
+        for (const { key, file } of filesToConvert) {
+          data[key] = await fileToBase64(file);
+          data[key + '_filename'] = file.name;
+          data[key + '_size'] = file.size;
         }
         console.log('Enviando datos al servidor...', { totalFileSize: (totalFileSize / 1024 / 1024).toFixed(2) + ' MB' });
         const controller = new AbortController();
@@ -1342,6 +1436,8 @@
         if (docPIPCSection) docPIPCSection.classList.remove('active');
         document.querySelectorAll('[data-conditional-required="pipc"]').forEach(f => (f.required = false));
         resetPIPCConditionals();
+        compressedFiles.clear();
+        updateAttachmentCounter();
         if (successMsg) successMsg.scrollIntoView({ behavior: 'smooth', block: 'center' });
       } catch (error) {
         console.error('Error en envío:', error);
@@ -1349,7 +1445,13 @@
         if (error.name === 'AbortError' || error.message === 'AbortError') {
           showError('La solicitud tardó demasiado tiempo. Puede ser que los archivos sean muy grandes.', 'Intente con archivos más pequeños o contáctenos directamente');
         } else if (error.message === 'ARCHIVOS_MUY_GRANDES') {
-          showError('Los archivos adjuntos son demasiado grandes en total (máx. 25MB).', 'Intente comprimir los archivos PDF o reducir el tamaño de las imágenes');
+          showError(
+            'Los archivos adjuntos superan el límite permitido para envío seguro desde este formulario. ' +
+            'Por favor, envíe primero la información general mediante el formulario y remita únicamente los archivos excedentes ' +
+            'por WhatsApp al <strong>56 5282 1561</strong>, con atención a clientes, indicando el nombre de la empresa y el servicio solicitado. ' +
+            'Esto nos permitirá integrar correctamente su expediente. ' +
+            '<a href="https://wa.me/525652821561" target="_blank" rel="noopener" style="color:#721c24;font-weight:bold;text-decoration:underline;">Enviar archivos por WhatsApp</a>'
+          );
         } else if (error.message === 'Failed to fetch' || error.message.includes('NetworkError')) {
           showError('Error de conexión. Verifique su conexión a Internet.', 'Si el problema persiste, contáctenos por WhatsApp');
         } else if (error.message.startsWith('HTTP_ERROR_')) {
@@ -1614,11 +1716,15 @@
       if (docPIPCSection) docPIPCSection.classList.remove('active');
       document.querySelectorAll('[data-conditional-required="pipc"]').forEach(f => (f.required = false));
       resetPIPCConditionals();
+      compressedFiles.clear();
+      updateAttachmentCounter();
       const rfcField = document.querySelector('input[name="rfc"]');
       if (rfcField) rfcField.style.borderColor = '';
       window._returningClientData = null;
     }
     window.clearPrefill = clearPrefill;
+
+    updateAttachmentCounter();
   </script>
 
   <!-- ── reCAPTCHA v3 (portal público de registro de clientes) ── -->
