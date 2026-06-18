@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sistema de Gestión de Expedientes - Ejecutiva Ambiental</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://unpkg.com/docx@8.5.0/build/index.js"></script>
   <style>
     :root {
       --primary: #1e5a3e;
@@ -210,6 +211,14 @@
     .inf-modal-btn { padding:8px 20px; border:none; border-radius:6px; cursor:pointer; font-size:13px; font-weight:600; }
     .inf-modal-btn-primary { background:#e74c3c; color:white; }
     .inf-modal-btn-secondary { background:#95a5a6; color:white; }
+    /* Modal Constancia de Recepción */
+    .inf-modal-header-green { background:linear-gradient(135deg,#1e5a3e,#2d7a4f); color:white; padding:1.4rem 1.5rem; border-radius:12px 12px 0 0; display:flex; align-items:center; gap:1rem; }
+    .inf-modal-btn-green { background:#1e5a3e; color:white; }
+    .constancia-resumen { background:#f8f9fa; border-radius:6px; padding:0.8rem 1rem; margin-bottom:1rem; font-size:13px; line-height:1.6; }
+    .constancia-resumen strong { color:#1e5a3e; }
+    .constancia-check-item { display:flex; align-items:center; gap:0.5rem; padding:0.4rem 0; font-size:13px; }
+    .constancia-check-item input[type="text"] { flex:1; padding:4px 6px; font-size:12px; border:1px solid var(--border); border-radius:4px; }
+    .btn-constancia { background:#1e5a3e; color:white; border:none; padding:4px 8px; border-radius:3px; font-size:10px; cursor:pointer; margin-left:4px; }
     /* Row priority colors */
     tr.row-vencido    { background:#fff5f5 !important; }
     tr.row-por-vencer { background:#fffbf0 !important; }
@@ -1034,6 +1043,7 @@ const mkRespSel = (ot, resp) => {
         <td>${slaChip}</td>
         <td>
           <a href="${escHtml(safeDriveUrl(r.linkDrive))}" target="_blank" style="text-decoration:none; background:#1e5a3e; color:white; padding:4px 8px; border-radius:3px; font-size:10px;">📁 Drive</a>
+          <button type="button" class="btn-constancia" data-ot="${escHtml(r.ot)}">📄 Constancia</button>
         </td>
       </tr>`;
     };
@@ -1047,6 +1057,12 @@ const mkRespSel = (ot, resp) => {
     box.querySelectorAll('select.sea-cambio-rapido').forEach(sel => {
       sel.addEventListener('change', function() {
         cambiarDatoRapido(this.dataset.ot, this.dataset.campo, this.value);
+      });
+    });
+    // Event delegation para botón de Constancia (evita attribute injection)
+    box.querySelectorAll('button.btn-constancia').forEach(btn => {
+      btn.addEventListener('click', function() {
+        abrirModalConstancia(this.dataset.ot);
       });
     });
     document.getElementById('table-count').textContent = data.length;
@@ -1122,6 +1138,131 @@ const mkRespSel = (ot, resp) => {
     document.getElementById('filter-vencimiento').value = '';
     filtroMetricaActivo = null;
     aplicarFiltros();
+  }
+
+  // ── Constancia de Recepción de Estudios e Informes (100% frontend, sin backend) ──
+  let _constanciaRow = null;
+
+  function abrirModalConstancia(ot) {
+    const row = allTableroData.find(r => String(r.ot).toUpperCase() === String(ot).toUpperCase());
+    if (!row) { alert('No se encontró el expediente seleccionado.'); return; }
+    _constanciaRow = row;
+    document.getElementById('constancia-resumen').innerHTML = `
+      <strong>Cliente:</strong> ${escHtml(row.cliente || '-')} &nbsp;|&nbsp; <strong>Sucursal:</strong> ${escHtml(row.sucursal || '-')}<br>
+      <strong>OT:</strong> ${escHtml(row.ot || '-')} &nbsp;|&nbsp; <strong>Informe:</strong> ${escHtml(row.numInforme || '-')}<br>
+      <strong>Servicio/NOM:</strong> ${escHtml(row.nom || '-')}<br>
+      <strong>Fecha de Servicio:</strong> ${escHtml(row.fecha || '-')} &nbsp;|&nbsp; <strong>Fecha de Entrega:</strong> ${escHtml(row.fechaEntrega || '-')}`;
+    document.getElementById('constancia-otro-check').checked = false;
+    document.getElementById('constancia-otro-texto').value = '';
+    document.querySelectorAll('.constancia-entregable').forEach(cb => { cb.checked = true; });
+    document.getElementById('constancia-modal').classList.add('show');
+  }
+
+  function cerrarModalConstancia() {
+    document.getElementById('constancia-modal').classList.remove('show');
+    _constanciaRow = null;
+  }
+
+  function sanitizarNombreArchivo(name) {
+    return String(name || '')
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[\\/:*?"<>|]/g, '_')
+      .replace(/\s+/g, '_')
+      .replace(/_+/g, '_')
+      .slice(0, 150);
+  }
+
+  async function confirmarConstancia() {
+    if (!_constanciaRow) return;
+    if (typeof docx === 'undefined') {
+      alert('No se pudo cargar el generador de Word (librería docx). Verifica tu conexión a internet e intenta de nuevo.');
+      return;
+    }
+    const btn = document.getElementById('constancia-btn-generar');
+    const textoOriginal = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Generando...';
+    try {
+      const row = _constanciaRow;
+      const entregablesFijos = Array.from(document.querySelectorAll('.constancia-entregable')).map(cb => ({ label: cb.value, checked: cb.checked }));
+      const otroCheck = document.getElementById('constancia-otro-check').checked;
+      const otroTexto = document.getElementById('constancia-otro-texto').value.trim();
+      const entregables = entregablesFijos.slice();
+      if (otroCheck && otroTexto) entregables.push({ label: 'Otro: ' + otroTexto, checked: true });
+      else if (otroCheck) entregables.push({ label: 'Otro', checked: true });
+
+      const { Document, Packer, Paragraph, TextRun, AlignmentType, Header, Footer } = docx;
+      const fechaEmision = new Date().toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
+
+      const metaLine = (label, value) => new Paragraph({
+        spacing: { after: 120 },
+        children: [ new TextRun({ text: label + ': ', bold: true }), new TextRun({ text: value || '-' }) ]
+      });
+
+      const sectionHeading = (text) => new Paragraph({
+        spacing: { before: 240, after: 120 },
+        children: [ new TextRun({ text, bold: true, color: '1e5a3e', size: 24 }) ]
+      });
+
+      const legalParagraph = (text) => new Paragraph({ spacing: { after: 180 }, children: [ new TextRun({ text }) ] });
+
+      const doc = new Document({
+        sections: [{
+          headers: {
+            default: new Header({
+              children: [ new Paragraph({ alignment: AlignmentType.CENTER, children: [ new TextRun({ text: 'EJECUTIVA AMBIENTAL', bold: true, color: '1e5a3e', size: 28 }) ] }) ]
+            })
+          },
+          footers: {
+            default: new Footer({
+              children: [ new Paragraph({ alignment: AlignmentType.CENTER, children: [ new TextRun({ text: 'Documento confidencial — Ejecutiva Ambiental. Uso exclusivo para los fines contratados.', italics: true, size: 16, color: '888888' }) ] }) ]
+            })
+          },
+          children: [
+            new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { after: 200 }, children: [ new TextRun({ text: 'Fecha de emisión: ' + fechaEmision, italics: true }) ] }),
+            new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 300 }, children: [ new TextRun({ text: 'CONSTANCIA DE RECEPCIÓN DE ESTUDIOS E INFORMES', bold: true, size: 28 }) ] }),
+            metaLine('Cliente / Razón social', row.cliente),
+            metaLine('Sucursal', row.sucursal),
+            metaLine('Orden de Trabajo', row.ot),
+            metaLine('Número de Informe', row.numInforme),
+            metaLine('Servicio / NOM', row.nom),
+            metaLine('Fecha de Servicio', row.fecha),
+            metaLine('Fecha de Entrega', row.fechaEntrega),
+
+            sectionHeading('ESTUDIOS E INFORMES ENTREGADOS'),
+            new Paragraph({ spacing: { after: 100 }, children: [ new TextRun({ text: '• ' + (row.nom || 'Servicio') + ' — Informe ' + (row.numInforme || '') }) ] }),
+
+            sectionHeading('ENTREGABLES RECIBIDOS'),
+            ...entregables.map(e => new Paragraph({ spacing: { after: 80 }, children: [ new TextRun({ text: (e.checked ? '☑ ' : '☐ ') + e.label }) ] })),
+
+            new Paragraph({ spacing: { before: 240, after: 120 }, children: [] }),
+            legalParagraph('La firma de la presente constancia acredita que el cliente recibe a entera satisfacción, para efectos administrativos y documentales de entrega, los estudios, informes, anexos y demás entregables señalados en este documento.'),
+            legalParagraph('A partir de la fecha de firma, se tendrá por realizada la entrega formal de la documentación correspondiente a la orden de trabajo y/o informe indicado.'),
+            legalParagraph('Cualquier observación relacionada exclusivamente con faltantes documentales, errores de integración o aclaraciones sobre los entregables recibidos deberá presentarse por escrito dentro de los tres días hábiles siguientes a la recepción.'),
+            legalParagraph('Transcurrido dicho plazo sin observaciones por escrito, la documentación se tendrá por recibida y aceptada para efectos de cierre administrativo de entrega.'),
+            legalParagraph('La presente constancia no obliga a Ejecutiva Ambiental a realizar modificaciones, ampliaciones, correcciones, reinterpretaciones, nuevos análisis, visitas adicionales o trabajos no contemplados en el alcance contratado, salvo que exista un error material atribuible directamente a Ejecutiva Ambiental y debidamente documentado.'),
+            legalParagraph('Los informes, anexos y documentos entregados son confidenciales y deberán utilizarse únicamente para los fines contratados. Queda prohibida su reproducción, distribución, alteración o uso no autorizado, salvo autorización expresa de Ejecutiva Ambiental o requerimiento de autoridad competente.'),
+
+            new Paragraph({ spacing: { before: 400, after: 240 }, children: [ new TextRun({ text: 'NOMBRE Y FIRMA DE QUIEN RECIBE: _______________________________' }) ] }),
+            new Paragraph({ spacing: { after: 240 }, children: [ new TextRun({ text: 'CARGO: _______________________________' }) ] }),
+            new Paragraph({ children: [ new TextRun({ text: 'FECHA: _______________________________' }) ] })
+          ]
+        }]
+      });
+
+      const blob = await Packer.toBlob(doc);
+      const fileName = sanitizarNombreArchivo(`Hoja_Entrega_${row.ot}_${row.nom}_Cliente.docx`);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = fileName;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+      cerrarModalConstancia();
+    } catch (err) {
+      console.error('[SEAINF] Error generando constancia:', err);
+      alert('Ocurrió un error al generar el documento. Intenta de nuevo.');
+    } finally {
+      btn.disabled = false; btn.textContent = textoOriginal;
+    }
   }
 
   function exportarTablero() {
@@ -1350,6 +1491,37 @@ async function cambiarDatoRapido(ot, campo, valor) {
     <div class="inf-modal-footer">
       <button class="inf-modal-btn inf-modal-btn-primary" onclick="filtrarVencidosInf()">🔴 Ver Vencidos</button>
       <button class="inf-modal-btn inf-modal-btn-secondary" onclick="cerrarAlertaInf()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<div class="inf-modal-overlay" id="constancia-modal">
+  <div class="inf-modal-content">
+    <div class="inf-modal-header-green">
+      <span style="font-size:2rem;">📄</span>
+      <div>
+        <h2 style="margin:0;font-size:1.1rem;">Constancia de Recepción</h2>
+        <p style="margin:0;font-size:0.82rem;opacity:.9;">Generar Hoja de Entrega en Word</p>
+      </div>
+    </div>
+    <div class="inf-modal-body">
+      <div class="constancia-resumen" id="constancia-resumen"></div>
+      <label class="ea-label" style="display:block; margin-bottom:0.5rem;">Entregables recibidos:</label>
+      <div class="constancia-check-item"><label><input type="checkbox" class="constancia-entregable" value="Carpeta de resultados generales" checked> Carpeta de resultados generales</label></div>
+      <div class="constancia-check-item"><label><input type="checkbox" class="constancia-entregable" value="Informe(s) de resultados" checked> Informe(s) de resultados</label></div>
+      <div class="constancia-check-item"><label><input type="checkbox" class="constancia-entregable" value="Anexos documentales" checked> Anexos documentales</label></div>
+      <div class="constancia-check-item"><label><input type="checkbox" class="constancia-entregable" value="Certificados o documentos normativos aplicables" checked> Certificados o documentos normativos aplicables</label></div>
+      <div class="constancia-check-item"><label><input type="checkbox" class="constancia-entregable" value="Respaldo digital" checked> Respaldo digital</label></div>
+      <div class="constancia-check-item">
+        <label style="display:flex; align-items:center; gap:0.5rem; flex:1;">
+          <input type="checkbox" id="constancia-otro-check"> Otro:
+          <input type="text" id="constancia-otro-texto" placeholder="Especificar...">
+        </label>
+      </div>
+    </div>
+    <div class="inf-modal-footer">
+      <button class="inf-modal-btn inf-modal-btn-green" id="constancia-btn-generar" onclick="confirmarConstancia()">📥 Generar y Descargar</button>
+      <button class="inf-modal-btn inf-modal-btn-secondary" onclick="cerrarModalConstancia()">Cancelar</button>
     </div>
   </div>
 </div>
