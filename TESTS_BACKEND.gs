@@ -12,10 +12,12 @@
 //   E07  SEAOT  → registrarOT tipo OTB (segundo tipo de orden)
 //   E08  SEADB  → updateEstatus ENTREGADO (estatus externo + fecha real)
 //   E09  SEAINF → updateEstatusInforme FINALIZADO (estatus interno del informe)
+//   E10  resolverCarpetaDestino_ → cliente multisucursal sin sucursalFolderId bloquea
+//   E11  resolverCarpetaDestino_ → RFC con formato distinto + cliente mono-sucursal resuelve
 //
 // USO
 //   Editor GAS → seleccionar runE2ETests → ▶ Ejecutar → Ver registros
-//   Para ejecutar un flujo individual: runTest_E01 … runTest_E09
+//   Para ejecutar un flujo individual: runTest_E01 … runTest_E11
 //   Para solo pruebas unitarias: runUnitTests
 //
 // LIMPIEZA
@@ -77,7 +79,8 @@ function runE2ETests() {
   var results = {
     e01: false, e02: false, e03: false,
     e04: false, e05: false, e06: false,
-    e07: false, e08: false, e09: false
+    e07: false, e08: false, e09: false,
+    e10: false, e11: false
   };
 
   try { runTest_E01(); results.e01 = true; } catch(e) { Logger.log('  E01 abortado: ' + e.message); }
@@ -89,6 +92,8 @@ function runE2ETests() {
   try { runTest_E07(); results.e07 = true; } catch(e) { Logger.log('  E07 abortado: ' + e.message); }
   try { runTest_E08(); results.e08 = true; } catch(e) { Logger.log('  E08 abortado: ' + e.message); }
   try { runTest_E09(); results.e09 = true; } catch(e) { Logger.log('  E09 abortado: ' + e.message); }
+  try { runTest_E10(); results.e10 = true; } catch(e) { Logger.log('  E10 abortado: ' + e.message); }
+  try { runTest_E11(); results.e11 = true; } catch(e) { Logger.log('  E11 abortado: ' + e.message); }
 
   Logger.log('');
   Logger.log('── LIMPIEZA ──────────────────────────────────');
@@ -108,6 +113,8 @@ function runE2ETests() {
   Logger.log('  E07 registrarOT tipo OTB   : ' + (results.e07 ? 'OK' : 'FALLO'));
   Logger.log('  E08 updateEstatus          : ' + (results.e08 ? 'OK' : 'FALLO'));
   Logger.log('  E09 updateEstatusInforme   : ' + (results.e09 ? 'OK' : 'FALLO'));
+  Logger.log('  E10 multisucursal bloquea  : ' + (results.e10 ? 'OK' : 'FALLO'));
+  Logger.log('  E11 RFC distinto + mono-suc: ' + (results.e11 ? 'OK' : 'FALLO'));
   Logger.log('══════════════════════════════════════════════');
 
   // Ejecutar también las pruebas unitarias
@@ -386,17 +393,47 @@ function runTest_E03() {
   _check_('E03-16: subcarpeta "3. CROQUIS" creada',       subFolders.indexOf('3. CROQUIS') !== -1);
   _check_('E03-17: subcarpeta "4. FOTOS" creada',         subFolders.indexOf('4. FOTOS') !== -1);
 
-  // Verificar que ORDENES_TRABAJO se actualizó
-  var sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
-  var rows  = sheet.getDataRange().getValues();
-  var filaOT = null;
-  for (var j = rows.length - 1; j >= 1; j--) {
-    if (String(rows[j][1]).trim() === TEST_FOLIO) { filaOT = rows[j]; break; }
+  // Verificar que se creó la fila correspondiente en INFORMES. fase3_CrearExpediente
+  // NUNCA escribe el link del expediente en ORDENES_TRABAJO (esa hoja solo guarda el
+  // link de la carpeta DESTINO/sucursal, no el del expediente) — ver CI.* vs CO.LINK_DRIVE.
+  var sheetInf = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_INFORMES);
+  var rowsInf  = sheetInf.getDataRange().getValues();
+  var filaInf  = null;
+  for (var ii = rowsInf.length - 1; ii >= 1; ii--) {
+    if (String(rowsInf[ii][3]).trim() === TEST_FOLIO && String(rowsInf[ii][1]).trim() === numInforme) {
+      filaInf = rowsInf[ii]; break;
+    }
   }
-  _check_('E03-18: fila OT actualizada en ORDENES_TRABAJO', filaOT !== null);
-  _eq_('E03-19: numInforme guardado en col 4 (índice 3)',  filaOT[3], numInforme);
-  _eq_('E03-20: estatus cambiado a EN PROCESO',            filaOT[12], 'EN PROCESO');
-  _check_('E03-21: link del expediente guardado en col 14', String(filaOT[13] || '').indexOf('folders/') !== -1);
+  _check_('E03-18: fila creada en INFORMES (OT + numInforme)',          filaInf !== null);
+  _eq_('E03-19: numInforme en col 2 (índice 1)',                       filaInf[1], numInforme);
+  _eq_('E03-20: ot en col 4 (índice 3)',                               filaInf[3], TEST_FOLIO);
+  _eq_('E03-21: estatus inicial "NO INICIADO" en col 14 (índice 13)',  filaInf[13], 'NO INICIADO');
+  _check_('E03-22: link del expediente en col 15 (índice 14) coincide con resultExp.url',
+    String(filaInf[14]) === resultExp.url);
+
+  // ORDENES_TRABAJO no debe ser tocada por createExpediente (separación destino/expediente).
+  var sheetOtCheck = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+  var rowsOtCheck  = sheetOtCheck.getDataRange().getValues();
+  var filaOtCheck  = null;
+  for (var jj = rowsOtCheck.length - 1; jj >= 1; jj--) {
+    if (String(rowsOtCheck[jj][1]).trim() === TEST_FOLIO) { filaOtCheck = rowsOtCheck[jj]; break; }
+  }
+  _check_('E03-23: fila OT sigue existiendo en ORDENES_TRABAJO',       filaOtCheck !== null);
+  _eq_('E03-24: link_drive (col 13, índice 12) de ORDENES_TRABAJO no cambió',
+    String(filaOtCheck[12] || ''), String(ordenTest.link_drive || ''));
+
+  // Idempotencia por OT + NOM/numInforme: una segunda llamada con el MISMO payload
+  // debe devolver el expediente ya creado, no crear uno duplicado.
+  var resultExpDup = fase3_CrearExpediente(payloadExp);
+  _check_('E03-25: segunda llamada devuelve success=true',  resultExpDup.success === true);
+  _check_('E03-26: segunda llamada marca existed=true',     resultExpDup.existed === true);
+  _eq_('E03-27: segunda llamada devuelve la misma url del expediente', resultExpDup.url, resultExp.url);
+
+  var rowsInfDup = sheetInf.getDataRange().getValues();
+  var coincidencias = rowsInfDup.filter(function(r) {
+    return String(r[3]).trim() === TEST_FOLIO && String(r[1]).trim() === numInforme;
+  });
+  _check_('E03-28: no se duplicó la fila en INFORMES tras la segunda llamada', coincidencias.length === 1);
 
   _ctx_.urlExpediente      = resultExp.url;
   _ctx_.expedienteFolderId = m[1];
@@ -669,6 +706,102 @@ function runTest_E09() {
 }
 
 // =========================================================================
+// E10 — resolverCarpetaDestino_: cliente multisucursal sin sucursalFolderId
+// =========================================================================
+// Simula el caso real disparador del bug: SEAOT registra una OT vía Excel
+// (link_drive_cliente = '' explícitamente) para un RFC que ya tiene 2+
+// sucursales distintas registradas en CLIENTES_MAESTRO. Sin un folderId real
+// y sin que el texto de sucursal calce exacto con ninguna de las registradas,
+// el sistema debe BLOQUEAR (nunca elegir "la primera que aparezca").
+function runTest_E10() {
+  Logger.log('');
+  Logger.log('── E10: resolverCarpetaDestino_ → multisucursal sin sucursalFolderId ─');
+
+  var rfcMulti = 'XMUL000000TST';
+  var folderRaiz = DriveApp.getFolderById(CONFIG.FOLDER_ID);
+  var carpetaEmpresa = folderRaiz.createFolder(rfcMulti + ' - EMPRESA MULTI TEST');
+  var carpetaSucA = carpetaEmpresa.createFolder('Sucursal Norte');
+  var carpetaSucB = carpetaEmpresa.createFolder('Sucursal Sur');
+
+  var sheetCli = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_CLIENTES);
+  var filaA = [new Date(), 'EMPRESA MULTI TEST', 'Sucursal Norte', rfcMulti, '', '', '', '', '', '', '', '', '', '', 'NO', 'NO', '', '', '', '', carpetaSucA.getUrl(), ''];
+  var filaB = [new Date(), 'EMPRESA MULTI TEST', 'Sucursal Sur',   rfcMulti, '', '', '', '', '', '', '', '', '', '', 'NO', 'NO', '', '', '', '', carpetaSucB.getUrl(), ''];
+  sheetCli.appendRow(filaA);
+  sheetCli.appendRow(filaB);
+
+  try {
+    // Sucursal en texto que no calza con ninguna de las dos registradas, sin sucursalFolderId.
+    var resolucion = resolverCarpetaDestino_({ rfc: rfcMulti, razonSocial: 'EMPRESA MULTI TEST', sucursal: 'Sucursal Que No Existe' });
+    _check_('E10-1: resolución sin éxito (bloqueada)', resolucion.success === false);
+    _eq_('E10-2: error es AMBIGUO_SUCURSAL',           resolucion.error, 'AMBIGUO_SUCURSAL');
+    _check_('E10-3: detalles incluyen las sucursales disponibles',
+      resolucion.detalles && resolucion.detalles.sucursalesDisponibles && resolucion.detalles.sucursalesDisponibles.length === 2);
+
+    // Con match exacto de texto, sí debe resolver sin ambigüedad.
+    var resolucionExacta = resolverCarpetaDestino_({ rfc: rfcMulti, razonSocial: 'EMPRESA MULTI TEST', sucursal: 'Sucursal Norte' });
+    _check_('E10-4: con coincidencia exacta de sucursal sí resuelve', resolucionExacta.success === true);
+    _eq_('E10-5: resuelve a la carpeta correcta (Sucursal Norte)', resolucionExacta.folder.getId(), carpetaSucA.getId());
+
+    Logger.log('  Cliente multisucursal sin folderId bloqueado correctamente; match exacto sí resuelve.');
+  } finally {
+    var sheetCliClean = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_CLIENTES);
+    var rowsCliClean  = sheetCliClean.getDataRange().getValues();
+    for (var i = rowsCliClean.length - 1; i >= 1; i--) {
+      if (String(rowsCliClean[i][3]).toUpperCase().trim() === rfcMulti) sheetCliClean.deleteRow(i + 1);
+    }
+    carpetaEmpresa.setTrashed(true);
+  }
+}
+
+// =========================================================================
+// E11 — resolverCarpetaDestino_: RFC con formato distinto + mono-sucursal
+// =========================================================================
+// Verifica dos reglas a la vez:
+//   - El RFC se normaliza antes de comparar (espacios/guiones/minúsculas no deben
+//     impedir el match).
+//   - Si el RFC tiene UNA sola sucursal registrada, se resuelve sin exigir
+//     coincidencia exacta de texto de sucursal (única excepción permitida a
+//     "nunca adivinar", porque no existe ninguna otra opción con la que confundirse).
+function runTest_E11() {
+  Logger.log('');
+  Logger.log('── E11: resolverCarpetaDestino_ → RFC con formato distinto + mono-sucursal ─');
+
+  var rfcSingleCanonico = 'XSIN000000TST';
+  var folderRaiz = DriveApp.getFolderById(CONFIG.FOLDER_ID);
+  var carpetaEmpresa = folderRaiz.createFolder(rfcSingleCanonico + ' - EMPRESA MONO TEST');
+  var carpetaSucUnica = carpetaEmpresa.createFolder('Matriz');
+
+  var sheetCli = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_CLIENTES);
+  var fila = [new Date(), 'EMPRESA MONO TEST', 'Matriz', rfcSingleCanonico, '', '', '', '', '', '', '', '', '', '', 'NO', 'NO', '', '', '', '', carpetaSucUnica.getUrl(), ''];
+  sheetCli.appendRow(fila);
+
+  try {
+    // RFC tecleado con formato distinto (minúsculas + guion + espacios) al registrado.
+    var rfcConFormatoDistinto = ' xsin-000000 tst ';
+    var sucursalSinCoincidenciaExacta = 'Sucursal Que No Coincide En Absoluto';
+
+    var resolucion = resolverCarpetaDestino_({
+      rfc: rfcConFormatoDistinto,
+      razonSocial: 'EMPRESA MONO TEST',
+      sucursal: sucursalSinCoincidenciaExacta
+    });
+
+    _check_('E11-1: resuelve con éxito a pesar del formato distinto de RFC', resolucion.success === true);
+    _eq_('E11-2: resuelve a la única sucursal registrada (sin exigir texto exacto)',
+      resolucion.folder.getId(), carpetaSucUnica.getId());
+
+    Logger.log('  RFC con formato distinto + cliente mono-sucursal resuelto correctamente.');
+  } finally {
+    var sheetCliClean = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_CLIENTES);
+    var rowsCliClean  = sheetCliClean.getDataRange().getValues();
+    for (var i = rowsCliClean.length - 1; i >= 1; i--) {
+      if (String(rowsCliClean[i][3]).toUpperCase().trim() === rfcSingleCanonico) sheetCliClean.deleteRow(i + 1);
+    }
+    carpetaEmpresa.setTrashed(true);
+  }
+}
+
+// =========================================================================
 // LIMPIEZA — elimina todos los datos de prueba
 // =========================================================================
 function _cleanup_() {
@@ -696,6 +829,19 @@ function _cleanup_() {
       }
     }
   } catch(e) { Logger.log('  ERROR cleanup ORDENES_TRABAJO: ' + e.message); }
+
+  // 2b. Eliminar filas de INFORMES generadas por E03 (createExpediente)
+  try {
+    var sheetInfClean = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_INFORMES);
+    var rowsInfClean  = sheetInfClean.getDataRange().getValues();
+    for (var ji = rowsInfClean.length - 1; ji >= 1; ji--) {
+      var otInf = String(rowsInfClean[ji][3]).trim();
+      if (otInf === TEST_FOLIO || otInf === TEST_FOLIO_B) {
+        sheetInfClean.deleteRow(ji + 1);
+        Logger.log('  Fila eliminada de INFORMES: ' + otInf + ' (fila ' + (ji + 1) + ')');
+      }
+    }
+  } catch(e) { Logger.log('  ERROR cleanup INFORMES: ' + e.message); }
 
   // 3. Mover a papelera la carpeta del expediente
   if (_ctx_.expedienteFolderId) {
