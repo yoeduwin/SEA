@@ -245,7 +245,7 @@
             </div>
             <div class="series-info" id="seriesInfo">Último: OT-000 | Siguiente sugerido: ...</div>
           </div>
-          <div class="form-group"><label>N° de Orden de Servicio</label><input type="text" id="wo_orderNumber" placeholder="OT2603-1"></div>
+          <div class="form-group"><label>N° de Orden de Trabajo</label><input type="text" id="wo_orderNumber" placeholder="OT2603-1"></div>
           <div class="form-group"><label>Fecha de Emisión</label><input type="date" id="wo_issueDate"></div>
         </div>
         <div class="contract-review-block">
@@ -265,6 +265,8 @@
           <div class="contract-review-date">
             <label>Fecha de revisión:</label>
             <input type="date" id="wo_contractReviewDate">
+            <label>Documento contractual de referencia:</label>
+            <input type="text" id="wo_contractRefDoc" placeholder="COT-26-0566">
           </div>
         </div>
       </div>
@@ -731,7 +733,7 @@ Tel: 222-941-7295`;
       const branch = document.getElementById('wo_branch')?.value || '';
       const rfc = document.getElementById('rfc')?.value || profileData.rfc || '';
 
-      if (!orderNumber) { showStatus('workorderStatus','Falta el N° de Orden de Servicio','error'); return; }
+      if (!orderNumber) { showStatus('workorderStatus','Falta el N° de Orden de Trabajo','error'); return; }
       if (!company) { showStatus('workorderStatus','Falta el nombre del cliente. Cargue el perfil primero.','error'); return; }
 
       const services = [], personnel = [], dates = [];
