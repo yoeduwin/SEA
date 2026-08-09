@@ -32,12 +32,7 @@ var TRAZ_CONFIG = {
 
   SHEET_OT:        'ORDENES_TRABAJO',
   SHEET_INFORMES:  'INFORMES',
-  SHEET_USUARIOS:  'USUARIOS_AUTORIZADOS',
   SHEET_AUDITORIA: 'AUDITORIA',
-
-  // Módulo de USUARIOS_AUTORIZADOS que da acceso a la trazabilidad.
-  // Se reutiliza la columna 'SEAINF' existente — NO se agrega ninguna columna.
-  MODULO_ACCESO: 'SEAINF',
 
   // Índices de columna (0-based), idénticos a CONFIG.COLUMNS del SEA.
   COL_OT: {
@@ -51,7 +46,6 @@ var TRAZ_CONFIG = {
     FECHA_ENTREGA: 11, ES_CAPACITACION: 12, ESTATUS: 13, LINK_DRIVE: 14,
     RESPONSABLE: 15, SUCURSAL: 16
   },
-  COL_USR: { EMAIL: 0, NOMBRE: 1, ROL: 2, ACTIVO: 3 },
   COL_AUD: {
     TIMESTAMP: 0, USUARIO: 1, ACCION: 2, OT: 3, CAMPO: 4,
     VALOR_ANTERIOR: 5, VALOR_NUEVO: 6
@@ -67,38 +61,21 @@ function doGet(e) {
   if (!e || !e.parameter || !e.parameter.action) {
     return ContentService.createTextOutput('TRAZ — Trazabilidad Ejecutiva Ambiental (solo lectura) activa');
   }
-  return trazRouter_(e.parameter, e.parameter.id_token || null);
+  return trazRouter_(e.parameter);
 }
 
 function doPost(e) {
   var body = {};
   try { body = JSON.parse(e.postData.contents); } catch (_) { body = {}; }
-  return trazRouter_(body, body.id_token || null);
+  return trazRouter_(body);
 }
 
 /**
- * Router único. Verifica sesión (Google Auth + whitelist) y despacha.
- * Todas las acciones son de SOLO LECTURA.
+ * Router único. Despacha las acciones (todas de SOLO LECTURA).
+ * Sin control de acceso: la app web se publica abierta (ver README).
  */
-function trazRouter_(params, idToken) {
-  var action = params.action;
-
-  // ── Autenticación (misma política que los módulos internos SEA) ──────────
-  if (action === 'verificarAcceso') {
-    var u0 = trazVerificarIdToken_(idToken);
-    var ok0 = u0 && trazVerificarUsuario_(u0.email);
-    return trazOut_({ success: !!ok0, email: u0 ? u0.email : '' });
-  }
-
-  var usuario = trazVerificarIdToken_(idToken);
-  if (!usuario) {
-    return trazOut_({ success: false, error: 'AUTH_REQUIRED', message: 'Inicia sesión con Google.' });
-  }
-  if (!trazVerificarUsuario_(usuario.email)) {
-    return trazOut_({ success: false, error: 'AUTH_REQUIRED', message: 'Tu cuenta (' + usuario.email + ') no tiene acceso a Trazabilidad.' });
-  }
-
-  switch (action) {
+function trazRouter_(params) {
+  switch (params.action) {
     case 'trazResumen': return trazOut_(trazResumen_());
     case 'trazDetalle': return trazOut_(trazDetalle_(params.ot));
     default:            return trazOut_({ success: false, error: 'Acción no reconocida.' });
@@ -107,56 +84,6 @@ function trazRouter_(params, idToken) {
 
 function trazOut_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
-}
-
-// =========================================================================
-// AUTENTICACIÓN — idéntica en enfoque a SEA (solo verifica, no escribe)
-// =========================================================================
-function trazVerificarIdToken_(idToken) {
-  if (!idToken || typeof idToken !== 'string' || idToken.length < 100) return null;
-  var cacheKey = 'traz_idtok_' + idToken.slice(-32);
-  var cache = CacheService.getScriptCache();
-  var cached = cache.get(cacheKey);
-  if (cached) { try { return JSON.parse(cached); } catch (_) {} }
-  try {
-    var url = 'https://www.googleapis.com/oauth2/v3/tokeninfo?id_token=' + encodeURIComponent(idToken);
-    var resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
-    if (resp.getResponseCode() !== 200) return null;
-    var data = JSON.parse(resp.getContentText());
-    if (data.error_description) return null;
-    var CLIENT_ID = PropertiesService.getScriptProperties().getProperty('GOOGLE_CLIENT_ID');
-    if (CLIENT_ID && data.aud !== CLIENT_ID) return null;
-    var userInfo = { email: data.email || '', name: data.name || '', sub: data.sub || '' };
-    var ttl = Math.min(600, Math.max(5, Number(data.exp) - Math.floor(Date.now() / 1000) - 60));
-    cache.put(cacheKey, JSON.stringify(userInfo), ttl);
-    return userInfo;
-  } catch (e) { return null; }
-}
-
-/**
- * Verifica que el email esté ACTIVO en USUARIOS_AUTORIZADOS y tenga acceso al
- * módulo SEAINF. SOLO LECTURA de la hoja.
- */
-function trazVerificarUsuario_(email) {
-  if (!email) return false;
-  var emailLower = String(email).toLowerCase().trim();
-  try {
-    var ss = SpreadsheetApp.openById(TRAZ_CONFIG.SPREADSHEET_ID);
-    var sheet = ss.getSheetByName(TRAZ_CONFIG.SHEET_USUARIOS);
-    if (!sheet) return false;
-    var data = sheet.getDataRange().getValues();
-    if (data.length < 2) return false;
-    var headers = data[0].map(function (h) { return String(h).toUpperCase().replace(/[^A-Z0-9]/g, ''); });
-    var moduloCol = headers.indexOf(TRAZ_CONFIG.MODULO_ACCESO.toUpperCase());
-    var CU = TRAZ_CONFIG.COL_USR;
-    for (var i = 1; i < data.length; i++) {
-      if (String(data[i][CU.EMAIL]).toLowerCase().trim() !== emailLower) continue;
-      if (data[i][CU.ACTIVO] !== true) return false;
-      if (moduloCol >= 0) return data[i][moduloCol] === true;
-      return true;
-    }
-    return false;
-  } catch (e) { return false; }
 }
 
 // =========================================================================

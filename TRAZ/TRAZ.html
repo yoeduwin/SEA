@@ -81,7 +81,6 @@
     <h1>TRAZABILIDAD</h1>
     <div class="sub">EJECUTIVA AMBIENTAL · ORDEN DE TRABAJO → EXPEDIENTE → INFORME</div>
   </div>
-  <div id="sea-user-info"></div>
 </header>
 
 <div class="wrap">
@@ -108,7 +107,7 @@
 
   async function cargarResumen(){
     try{
-      const resp = await SEAAuth.wrapFetch(`${API_URL}?action=trazResumen`);
+      const resp = await fetch(`${API_URL}?action=trazResumen`);
       const r = await resp.json();
       if(!r.success){ document.getElementById('lista').innerHTML = `<div class="loading">${esc(r.message||'Error al cargar.')}</div>`; return; }
       RESUMEN = r.data || [];
@@ -148,7 +147,7 @@
     pintarLista(RESUMEN.filter(matchFiltro));
     document.getElementById('detalle').innerHTML = `<div class="loading">Cargando trazabilidad…</div>`;
     try{
-      const resp = await SEAAuth.wrapFetch(`${API_URL}?action=trazDetalle&ot=${encodeURIComponent(ot)}`);
+      const resp = await fetch(`${API_URL}?action=trazDetalle&ot=${encodeURIComponent(ot)}`);
       const r = await resp.json();
       if(!r.success){ document.getElementById('detalle').innerHTML = `<div class="empty">${esc(r.error||'Error')}</div>`; return; }
       pintarDetalle(r);
@@ -249,12 +248,9 @@
   }
 </script>
 
-<script src="https://accounts.google.com/gsi/client" onload="onGISLoaded()" async defer></script>
-<script src="../auth.js"></script>
 <script>
-  SEAAuth.init(function(_token, _user){
-    cargarResumen();
-  }, { gasUrl: API_URL });
+  // Sin autenticación: carga la trazabilidad directamente al abrir la página.
+  cargarResumen();
 </script>
 </body>
 </html>
