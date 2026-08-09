@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TRAZABILIDAD — Ejecutiva Ambiental</title>
+<style>
+  :root{
+    --verde:#005600; --verde-osc:#003810; --verde-cl:#e3efe4;
+    --gris:#5f6368; --gris-cl:#f4f6f4; --linea:#dadfda;
+    --ok:#1e8e3e; --warn:#c77700; --pend:#9aa0a6; --rojo:#c5221f;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#202124;background:#fafbfa}
+  header{
+    background:var(--verde);color:#fff;padding:14px 22px;
+    display:flex;align-items:center;justify-content:space-between;gap:16px;
+  }
+  header h1{font-size:18px;margin:0;letter-spacing:2px;font-weight:600}
+  header .sub{font-size:11px;opacity:.85;letter-spacing:1px}
+  #sea-user-info{font-size:13px}
+  .wrap{display:grid;grid-template-columns:340px 1fr;gap:0;min-height:calc(100vh - 56px)}
+  /* Lista */
+  .side{border-right:1px solid var(--linea);background:#fff;overflow-y:auto;max-height:calc(100vh - 56px)}
+  .side .search{padding:12px}
+  .side input{width:100%;padding:9px 12px;border:1px solid var(--linea);border-radius:8px;font-size:14px}
+  .ot-item{padding:11px 14px;border-bottom:1px solid var(--gris-cl);cursor:pointer}
+  .ot-item:hover{background:var(--verde-cl)}
+  .ot-item.active{background:var(--verde-cl);border-left:4px solid var(--verde)}
+  .ot-item .folio{font-weight:600;font-size:14px;color:var(--verde-osc)}
+  .ot-item .meta{font-size:12px;color:var(--gris);margin-top:2px}
+  .chip{display:inline-block;font-size:10px;padding:1px 7px;border-radius:20px;background:var(--gris-cl);color:var(--gris);margin-top:4px}
+  .chip.warn{background:#fff3e0;color:var(--warn)}
+  .chip.ok{background:#e6f4ea;color:var(--ok)}
+  /* Detalle */
+  .main{padding:22px 26px;overflow-y:auto;max-height:calc(100vh - 56px)}
+  .empty{color:var(--gris);text-align:center;margin-top:80px;font-size:15px}
+  .card{background:#fff;border:1px solid var(--linea);border-radius:12px;padding:18px 20px;margin-bottom:18px}
+  .ot-title{font-size:20px;font-weight:700;color:var(--verde-osc);margin:0 0 2px}
+  .ot-sub{color:var(--gris);font-size:13px}
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px 20px;margin-top:12px;font-size:13px}
+  .grid2 b{color:var(--gris);font-weight:600;display:block;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+  h3{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--verde);margin:0 0 14px}
+  /* Timeline */
+  .tl{position:relative;padding-left:30px}
+  .tl::before{content:'';position:absolute;left:9px;top:6px;bottom:6px;width:2px;background:var(--linea)}
+  .tl .step{position:relative;padding:0 0 18px 8px}
+  .tl .step:last-child{padding-bottom:0}
+  .tl .dot{position:absolute;left:-29px;top:1px;width:20px;height:20px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff;background:var(--pend)}
+  .tl .step.ok .dot{background:var(--ok)}
+  .tl .step.pendiente .dot{background:var(--pend)}
+  .tl .t{font-weight:600;font-size:14px}
+  .tl .d{font-size:12px;color:var(--gris)}
+  .tl .x{font-size:12px;color:#3c4043;margin-top:1px}
+  .tl .step.pendiente .t::after{content:' · Pendiente';color:var(--warn);font-weight:400;font-size:12px}
+  /* Botón expediente */
+  .btn{display:inline-flex;align-items:center;gap:8px;background:var(--verde);color:#fff;border:0;
+    padding:10px 18px;border-radius:8px;font-size:14px;cursor:pointer;text-decoration:none;font-weight:600}
+  .btn:hover{background:var(--verde-osc)}
+  .btn.dis{background:var(--gris-cl);color:var(--pend);cursor:not-allowed}
+  /* Informes */
+  .inf{border:1px solid var(--linea);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+  .inf .folio{font-weight:700;color:var(--verde-osc)}
+  .inf .st{font-size:11px;padding:2px 9px;border-radius:20px;background:var(--gris-cl);color:var(--gris);float:right}
+  /* Bitácora */
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--gris-cl);vertical-align:top}
+  th{color:var(--gris);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+  /* Advertencias */
+  .warns{list-style:none;padding:0;margin:0}
+  .warns li{background:#fff8e1;border-left:3px solid var(--warn);padding:9px 12px;border-radius:6px;margin-bottom:7px;font-size:13px}
+  .noticia{color:var(--ok);font-size:13px}
+  .loading{color:var(--gris);padding:20px;text-align:center}
+  @media(max-width:820px){.wrap{grid-template-columns:1fr}.side{max-height:none}}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>TRAZABILIDAD</h1>
+    <div class="sub">EJECUTIVA AMBIENTAL · ORDEN DE TRABAJO → EXPEDIENTE → INFORME</div>
+  </div>
+  <div id="sea-user-info"></div>
+</header>
+
+<div class="wrap">
+  <aside class="side">
+    <div class="search"><input id="buscar" type="text" placeholder="Buscar OT, cliente o folio de informe…" oninput="filtrar()"></div>
+    <div id="lista"><div class="loading">Cargando…</div></div>
+  </aside>
+  <main class="main">
+    <div id="detalle"><div class="empty">Selecciona una Orden de Trabajo para ver su trazabilidad.</div></div>
+  </main>
+</div>
+
+<script>
+  // ── URL del despliegue de TRAZ (app web de Apps Script INDEPENDIENTE) ─────
+  // Reemplazar tras desplegar TRAZ.gs. Ver TRAZ/README.md.
+  const API_URL = 'REEMPLAZAR_CON_URL_DEL_DESPLIEGUE_TRAZ';
+
+  let RESUMEN = [];
+  let HUERFANOS = [];
+  let seleccion = null;
+
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+  function safeDriveUrl(u){ return (typeof u==='string' && u.startsWith('https://')) ? u : ''; }
+
+  async function cargarResumen(){
+    try{
+      const resp = await SEAAuth.wrapFetch(`${API_URL}?action=trazResumen`);
+      const r = await resp.json();
+      if(!r.success){ document.getElementById('lista').innerHTML = `<div class="loading">${esc(r.message||'Error al cargar.')}</div>`; return; }
+      RESUMEN = r.data || [];
+      HUERFANOS = r.huerfanos || [];
+      pintarLista(RESUMEN);
+    }catch(e){
+      document.getElementById('lista').innerHTML = `<div class="loading">No se pudo conectar con el servidor.</div>`;
+    }
+  }
+
+  function pintarLista(items){
+    const cont = document.getElementById('lista');
+    if(!items.length){ cont.innerHTML = `<div class="loading">Sin resultados.</div>`; return; }
+    cont.innerHTML = items.map(o=>{
+      const chipCarpeta = o.tiene_carpeta ? '' : '<span class="chip warn">sin expediente</span>';
+      const chipInf = o.num_informes>0 ? `<span class="chip ok">${o.num_informes} informe(s)</span>` : '<span class="chip warn">sin informe</span>';
+      return `<div class="ot-item ${seleccion===o.ot?'active':''}" onclick="abrir('${esc(o.ot).replace(/'/g,"\\'")}')">
+        <div class="folio">${esc(o.ot)}</div>
+        <div class="meta">${esc(o.cliente||'')} ${o.sucursal?('· '+esc(o.sucursal)):''}</div>
+        <div class="meta">${esc(o.nom||'')} · ${esc(o.estatus_ot||'')}</div>
+        <div>${chipInf} ${chipCarpeta}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function filtrar(){
+    const q = document.getElementById('buscar').value.toLowerCase().trim();
+    if(!q){ pintarLista(RESUMEN); return; }
+    pintarLista(RESUMEN.filter(o=>{
+      const hay = [o.ot,o.cliente,o.sucursal,o.nom,(o.folios_informe||[]).join(' ')].join(' ').toLowerCase();
+      return hay.indexOf(q)>=0;
+    }));
+  }
+
+  async function abrir(ot){
+    seleccion = ot;
+    pintarLista(RESUMEN.filter(matchFiltro));
+    document.getElementById('detalle').innerHTML = `<div class="loading">Cargando trazabilidad…</div>`;
+    try{
+      const resp = await SEAAuth.wrapFetch(`${API_URL}?action=trazDetalle&ot=${encodeURIComponent(ot)}`);
+      const r = await resp.json();
+      if(!r.success){ document.getElementById('detalle').innerHTML = `<div class="empty">${esc(r.error||'Error')}</div>`; return; }
+      pintarDetalle(r);
+    }catch(e){
+      document.getElementById('detalle').innerHTML = `<div class="empty">No se pudo cargar el detalle.</div>`;
+    }
+  }
+  function matchFiltro(o){
+    const q = document.getElementById('buscar').value.toLowerCase().trim();
+    if(!q) return true;
+    return [o.ot,o.cliente,o.sucursal,o.nom].join(' ').toLowerCase().indexOf(q)>=0;
+  }
+
+  function pintarDetalle(r){
+    const ot = r.ot;
+    const expUrl = safeDriveUrl(r.expediente);
+    const btnExp = expUrl
+      ? `<a class="btn" href="${expUrl}" target="_blank" rel="noopener">📁 ABRIR EXPEDIENTE</a>`
+      : `<span class="btn dis">📁 Sin expediente</span>`;
+
+    // Timeline
+    const tl = (r.linea_tiempo||[]).map(p=>`
+      <div class="step ${p.estado}">
+        <div class="dot">${p.estado==='ok'?'✓':'•'}</div>
+        <div class="t">${esc(p.titulo)}</div>
+        ${p.fecha?`<div class="d">${esc(p.fecha)}</div>`:''}
+        ${p.extra?`<div class="x">${esc(p.extra)}</div>`:''}
+      </div>`).join('');
+
+    // Informes
+    const infs = (r.informes||[]).map(inf=>{
+      const u = safeDriveUrl(inf.link_drive);
+      return `<div class="inf">
+        <span class="st">${esc(inf.estatus||'')}</span>
+        <div class="folio">${esc(inf.num_informe||'(sin folio)')}</div>
+        <div class="meta" style="font-size:12px;color:var(--gris)">
+          Responsable: ${esc(inf.responsable||'—')} · Servicio: ${esc(inf.fecha_servicio||'—')} · Entrega: ${esc(inf.fecha_entrega||'—')}
+        </div>
+        ${u?`<div style="margin-top:6px"><a href="${u}" target="_blank" rel="noopener" style="color:var(--verde);font-size:13px">📁 Abrir expediente del informe</a></div>`:''}
+      </div>`;
+    }).join('') || '<div class="noticia" style="color:var(--warn)">Esta OT no tiene informes registrados.</div>';
+
+    // Bitácora (AUDITORIA) — eventos reales, sin inferencia
+    const bit = (r.bitacora||[]);
+    const bitHtml = bit.length ? `<table>
+      <thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Campo</th><th>Antes → Después</th></tr></thead>
+      <tbody>${bit.map(b=>`<tr>
+        <td>${esc(b.timestamp)}</td><td>${esc(b.usuario)}</td><td>${esc(b.accion)}</td>
+        <td>${esc(b.campo)}</td><td>${esc(b.valor_anterior||'')} → ${esc(b.valor_nuevo||'')}</td>
+      </tr>`).join('')}</tbody></table>`
+      : '<div class="d" style="color:var(--gris);font-size:13px">Sin eventos registrados en la bitácora para esta OT.</div>';
+
+    // Advertencias
+    const warns = (r.advertencias||[]);
+    const warnHtml = warns.length
+      ? `<ul class="warns">${warns.map(w=>`<li>⚠ ${esc(w)}</li>`).join('')}</ul>`
+      : '<div class="noticia">✓ Sin inconsistencias detectadas con los datos disponibles.</div>';
+
+    document.getElementById('detalle').innerHTML = `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap">
+          <div>
+            <p class="ot-title">${esc(ot.folio)}</p>
+            <div class="ot-sub">${esc(ot.cliente||'')} ${ot.sucursal?('· '+esc(ot.sucursal)):''} · ${esc(ot.nom||'')}</div>
+          </div>
+          ${btnExp}
+        </div>
+        <div class="grid2">
+          <div><b>Tipo</b>${esc(ot.tipo||'—')}</div>
+          <div><b>RFC</b>${esc(ot.rfc||'—')}</div>
+          <div><b>Personal</b>${esc(ot.personal||'—')}</div>
+          <div><b>Estatus OT</b>${esc(ot.estatus||'—')}</div>
+          <div><b>Fecha visita</b>${esc(ot.fecha_visita||'—')}</div>
+          <div><b>Entrega límite</b>${esc(ot.fecha_entrega_limite||'—')}</div>
+          <div><b>Entrega real</b>${esc(ot.fecha_real_entrega||'—')}</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Línea de tiempo</h3>
+        <div class="tl">${tl}</div>
+      </div>
+
+      <div class="card">
+        <h3>Informe(s) de la OT</h3>
+        ${infs}
+      </div>
+
+      <div class="card">
+        <h3>Advertencias</h3>
+        ${warnHtml}
+      </div>
+
+      <div class="card">
+        <h3>Bitácora real (AUDITORIA)</h3>
+        ${bitHtml}
+      </div>`;
+  }
+</script>
+
+<script src="https://accounts.google.com/gsi/client" onload="onGISLoaded()" async defer></script>
+<script src="../auth.js"></script>
+<script>
+  SEAAuth.init(function(_token, _user){
+    cargarResumen();
+  }, { gasUrl: API_URL });
+</script>
+</body>
+</html>
