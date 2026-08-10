@@ -168,6 +168,7 @@ const AUTH_MODE = {
   buscarClienteRFC:       'EITHER',   // SEAOT usa Google Auth; PAIC/SEAPD (públicos) usan reCAPTCHA
   buscarClienteNombre:    'EITHER',   // igual que buscarClienteRFC
   registrarOT:            'GOOGLE',
+  getSiguienteFolioOT:    'GOOGLE',   // SEAOT: calcula el siguiente folio leyendo ORDENES_TRABAJO
   // SEAINF
   getOrdenes:             'GOOGLE',
   getConsecutivo:         'GOOGLE',
@@ -195,6 +196,7 @@ const ACTION_MODULE = {
   buscarClienteRFC:       'SEAOT',
   buscarClienteNombre:    'SEAOT',
   registrarOT:            'SEAOT',
+  getSiguienteFolioOT:    'SEAOT',
   getOrdenes:             'SEAINF',
   getConsecutivo:         'SEAINF',
   createExpediente:       'SEAINF',
@@ -590,6 +592,7 @@ function doPost(e) {
     switch(action) {
       case 'registrarCliente': return output_(fase1_RegistrarCliente(data));
       case 'registrarOT': return output_(fase2_RegistrarOT(data));
+      case 'getSiguienteFolioOT': return output_(getSiguienteFolioOT_(data));
       case 'createExpediente': return output_(fase3_CrearExpediente(data));
       case 'addFilesToExpediente': return output_(fase3_AddFilesToExpediente(data));
       case 'updateEstatus': return output_(updateEstatusSafe_(data, _usuario));
@@ -642,6 +645,7 @@ function doGet(e) {
       }
       case 'buscarClienteRFC': return output_(fase2_BuscarClienteRFC(e.parameter.rfc));
       case 'buscarClienteNombre': return output_(fase2_BuscarClienteNombre(e.parameter.nombre));
+      case 'getSiguienteFolioOT': return output_(getSiguienteFolioOT_(e.parameter));
       case 'getTablero': return output_(fase4_GetTablero());
       case 'getTableroInf': return output_(fase4_GetTableroInf());
       case 'getOrdenes': return output_(getOrdenesSafe_());
@@ -1088,6 +1092,58 @@ function getOrdenesSafe_() {
     ESTATUS_EXTERNO_TERMINALES_.indexOf(String(orden.estatus_externo || '').toUpperCase()) === -1
   );
   return { success: true, data: ordenes };
+}
+/**
+ * Calcula el siguiente folio consecutivo de OT leyendo directamente ORDENES_TRABAJO (col B).
+ * Sustituye el consecutivo que antes vivía en localStorage del navegador (no compartido entre
+ * equipos ni usuarios).
+ *
+ * Formato ACTUAL: SERIE + AAMM + '-' + consecutivo  (p.ej. OT2608-6, OTB2608-255). El regex,
+ * anclado a la serie exacta, excluye el formato viejo con guion interno (SERIE+AA-MMDD-N, p.ej.
+ * OT25-1217-121, OTB26-0109-122, OT26-0227-001) y evita que 'OT' capture folios 'OTB'.
+ *
+ * Regla "más reciente + anti-colisión": el contador se bifurcó a lo largo del tiempo (OT se
+ * reinició a su propia línea; OTB siguió la línea grande), por lo que NO se usa el máximo global
+ * (tomaría folios obsoletos como OT2607-239). En su lugar se ancla en el consecutivo del registro
+ * MÁS RECIENTE de la serie y se toma el máximo dentro de una banda alrededor de ese ancla, para no
+ * repetir folios ante filas desordenadas o duplicadas al final de la hoja.
+ *
+ * @param {{serie?:string}} params  serie = 'OT' | 'OTB' (default 'OT')
+ * @returns {{success:boolean, serie:string, folio:string, ultimo:string, consecutivo:number}}
+ */
+function getSiguienteFolioOT_(params) {
+  var serie = String((params && params.serie) || 'OT').toUpperCase().trim();
+  if (serie !== 'OT' && serie !== 'OTB') serie = 'OT';
+
+  var sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+  var values = sheet.getDataRange().getDisplayValues().slice(1);
+
+  var regex = new RegExp('^' + serie + '\\d{4}-(\\d+)$', 'i');
+  var seq = [];                 // consecutivos del formato actual, en orden de hoja (cronológico)
+  var ultimoFolio = serie + '-000';
+  values.forEach(function (row) {
+    var folio = String(row[CO.OT] || '').trim();
+    var m = folio.match(regex);
+    if (m) { seq.push(parseInt(m[1], 10) || 0); ultimoFolio = folio; }
+  });
+
+  var BANDA = 50;               // tolerancia de desorden/duplicados; << salto de un reinicio real (~236)
+  var siguiente = 1;
+  if (seq.length) {
+    var anchor = seq[seq.length - 1];       // registro MÁS RECIENTE de la serie
+    var maxCercano = anchor;
+    seq.forEach(function (n) {               // anti-colisión: máximo dentro de la banda del ancla
+      if (n >= anchor - BANDA && n <= anchor + BANDA && n > maxCercano) maxCercano = n;
+    });
+    siguiente = maxCercano + 1;
+  }
+
+  var today = new Date();
+  var yy = String(today.getFullYear()).slice(-2);
+  var mm = String(today.getMonth() + 1).padStart(2, '0');
+  var folio = serie + yy + mm + '-' + siguiente;
+
+  return { success: true, serie: serie, folio: folio, ultimo: ultimoFolio, consecutivo: siguiente };
 }
 function getConsecutivoSafe_(params) {
   // Lee de INFORMES para encontrar el mayor consecutivo registrado

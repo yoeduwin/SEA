@@ -374,7 +374,8 @@
 <script>
   // ✅ NUEVA API CENTRAL
   const SHEETS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby8t7Py-cilePxLiGa-Lq7Df73XaRlmkRYV_kXbTs79HFydaJyub8muA0PBLRkPevUuXg/exec';
-  const PREDEFINED_SERVICES = ['NOM-001-STPS','NOM-002-STPS','NOM-004-STPS','NOM-006-STPS','NOM-011-STPS','NOM-015-STPS','NOM-017-STPS','NOM-019-STPS','NOM-022-STPS','NOM-024-STPS','NOM-025-STPS','NOM-026-STPS','NOM-030-STPS','NOM-081-SEMARNAT','PROTECCIÓN CIVIL','CAPACITACIÓN','DICTAMEN ESTRUCTURAL','ESTUDIO DE RIESGO','PLAN DE EMERGENCIA','PROGRAMA INTERNO'];
+  const NOM_081 = 'NOM-081-SEMARNAT-1994';
+  const PREDEFINED_SERVICES = ['NOM-001-STPS','NOM-002-STPS','NOM-004-STPS','NOM-006-STPS','NOM-011-STPS','NOM-015-STPS','NOM-017-STPS','NOM-019-STPS','NOM-022-STPS','NOM-024-STPS','NOM-025-STPS','NOM-026-STPS','NOM-030-STPS', NOM_081,'PROTECCIÓN CIVIL','CAPACITACIÓN','DICTAMEN ESTRUCTURAL','ESTUDIO DE RIESGO','PLAN DE EMERGENCIA','PROGRAMA INTERNO'];
 
   let profileData = {};
   const excelCellMapping = {
@@ -548,28 +549,59 @@
     reader.readAsArrayBuffer(file);
   }
 
-  // ================== LÓGICA OT ORIGINAL Y FOLIOS MENSUALES ==================
+  // ================== LÓGICA OT: FOLIOS DESDE LA BASE MAESTRA (Sheets) ==================
+  // El consecutivo ya NO se guarda en localStorage (dependía del navegador/equipo).
+  // Se consulta directamente en ORDENES_TRABAJO vía la acción getSiguienteFolioOT.
   function getSelectedSeries() { const radio = document.querySelector('input[name="orderSeries"]:checked'); return radio ? radio.value : 'OT'; }
-  function getLastOrderNumber(series) { return localStorage.getItem(`lastOrder_${series}`) || `${series}-000`; }
-  function saveLastOrderNumber(series, orderNumber) { localStorage.setItem(`lastOrder_${series}`, orderNumber); }
-  
-  // Formato OTAAMM-# (ej. OTA2603-1) u OTB
-  function generateNextOrderNumber(series) {
-    const lastOrder = getLastOrderNumber(series);
-    const parts = lastOrder.split('-');
-    const lastNum = parseInt(parts[parts.length - 1], 10) || 0;
 
-    const today = new Date();
-    const yy = String(today.getFullYear()).slice(-2);
-    const mm = String(today.getMonth() + 1).padStart(2, '0');
+  // Regla estricta serie ↔ NOM-081-SEMARNAT-1994:
+  //  • Serie OT  → se coloca automáticamente (si aún no está en la tabla de servicios).
+  //  • Serie OTB → queda restringida: se retira de la tabla y se bloquea al registrar.
+  function applySeriesNomRule(series) {
+    const inputs = Array.from(document.querySelectorAll('#workTableBody .service-input'));
+    const has081 = v => String(v || '').toUpperCase().includes('NOM-081');
 
-    return `${series}${yy}${mm}-${lastNum + 1}`;
+    if (series === 'OTB') {
+      let removed = false;
+      inputs.forEach(inp => { if (has081(inp.value)) { inp.value = ''; removed = true; } });
+      if (removed) {
+        showStatus('workorderStatus', '⚠ La NOM-081-SEMARNAT-1994 no aplica a la serie OTB; se retiró de la orden.', 'warning');
+        updateDeclarationTable();
+      }
+      return;
+    }
+
+    // Serie OT → asegurar que la NOM-081 esté presente
+    if (inputs.some(inp => has081(inp.value))) return;
+    let target = inputs.find(inp => !String(inp.value || '').trim());
+    if (!target) {
+      addWorkRow();
+      const all = document.querySelectorAll('#workTableBody .service-input');
+      target = all[all.length - 1];
+    }
+    if (target) { target.value = NOM_081; updateDeclarationTable(); }
   }
-  
-  function updateOrderNumber() {
+
+  // Consulta el siguiente folio consecutivo directamente en Sheets (sin localStorage).
+  // El campo N° de Orden queda editable para poder corregirlo manualmente si hace falta.
+  async function updateOrderNumber() {
     const series = getSelectedSeries();
-    document.getElementById('seriesInfo').textContent = `Último Guardado: ${getLastOrderNumber(series)} | Formato Asignado: ${generateNextOrderNumber(series)}`;
-    document.getElementById('wo_orderNumber').value = generateNextOrderNumber(series);
+    applySeriesNomRule(series);
+    const infoEl = document.getElementById('seriesInfo');
+    const folioEl = document.getElementById('wo_orderNumber');
+    if (infoEl) infoEl.textContent = `Consultando último folio ${series} en la Base Maestra...`;
+    try {
+      const resp = await SEAAuth.wrapFetch(`${SHEETS_SCRIPT_URL}?action=getSiguienteFolioOT&serie=${encodeURIComponent(series)}`, { method: 'GET' });
+      const result = await resp.json();
+      if (result && result.success) {
+        if (folioEl) folioEl.value = result.folio;
+        if (infoEl) infoEl.textContent = `Último en Base Maestra: ${result.ultimo} | Siguiente sugerido: ${result.folio} · editable si necesitas corregirlo.`;
+      } else {
+        if (infoEl) infoEl.textContent = `⚠ No se pudo calcular el folio ${series} (${(result && result.error) || 'error'}). Escríbelo manualmente.`;
+      }
+    } catch (e) {
+      if (infoEl) infoEl.textContent = `⚠ Sin conexión con la Base Maestra. Escribe el folio ${series} manualmente.`;
+    }
   }
   
   function generateWorkOrder() {
@@ -620,7 +652,9 @@
     input.addEventListener('input', function() {
       const val = this.value.toUpperCase().trim();
       if (val.length < 2) { suggestionsDiv.classList.remove('show'); return; }
-      const filtered = PREDEFINED_SERVICES.filter(s => s.toUpperCase().includes(val));
+      let pool = PREDEFINED_SERVICES;
+      if (getSelectedSeries() === 'OTB') pool = pool.filter(s => !s.toUpperCase().includes('NOM-081'));
+      const filtered = pool.filter(s => s.toUpperCase().includes(val));
       if (filtered.length) { suggestionsDiv.innerHTML = filtered.map(s => `<div data-service="${s}">${s}</div>`).join(''); suggestionsDiv.classList.add('show'); } else { suggestionsDiv.classList.remove('show'); }
     });
     suggestionsDiv.addEventListener('click', (e) => {
@@ -746,6 +780,12 @@ Tel: 222-941-7295`;
         }
       });
 
+      // Control estricto: la NOM-081-SEMARNAT-1994 no se permite en la serie OTB
+      if (getSelectedSeries() === 'OTB' && services.some(s => s.toUpperCase().includes('NOM-081'))) {
+        showStatus('workorderStatus','❌ La NOM-081-SEMARNAT-1994 no está permitida en la serie OTB. Cámbiala a serie OT o retira esa NOM.','error');
+        return;
+      }
+
       const payload = {
         action: 'registrarOT',
         ot_folio: orderNumber,
@@ -769,12 +809,11 @@ Tel: 222-941-7295`;
       
       const result = await response.json();
       if(result.success) {
-        // El servidor devuelve el folio definitivo en caso de ajuste automático
+        // El folio definitivo (por si el backend lo ajusta automáticamente en el futuro)
         const finalFolio = result.folio || orderNumber;
-        saveLastOrderNumber(getSelectedSeries(), finalFolio);
-        document.getElementById('wo_orderNumber').value = finalFolio;
-        updateOrderNumber();
         showStatus('workorderStatus', `✅ ¡OT registrada! Folio: ${finalFolio}`, 'success');
+        // Recalcular el siguiente folio directamente desde la Base Maestra (sin localStorage)
+        updateOrderNumber();
       } else {
         showStatus('workorderStatus', '❌ Error: ' + result.error, 'error');
       }
@@ -803,7 +842,6 @@ Tel: 222-941-7295`;
     const reviewDateInput = document.getElementById('wo_contractReviewDate');
     if (reviewDateInput && !reviewDateInput.value) reviewDateInput.value = today;
     document.querySelectorAll('.service-input').forEach(setupServiceAutocomplete);
-    document.querySelectorAll('input[name="orderSeries"]').forEach(r => r.addEventListener('change', updateOrderNumber));
     updateOrderNumber();
     document.querySelectorAll('.nav-tab').forEach(tab => tab.addEventListener('click', syncData));
 
