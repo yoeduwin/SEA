@@ -1,0 +1,372 @@
+<!-- =====================================================================
+  PORTAL — Portal de Clientes (Ejecutiva Ambiental)
+  FRONTEND · servido por HtmlService · usa google.script.run
+  No modifica nada del sistema actual. Sin dependencias externas.
+====================================================================== -->
+<meta charset="utf-8">
+<style>
+  :root{
+    --verde:#1e5a3e; --verde-cl:#2d7a4f; --verde-acc:#27ae60; --verde-suave:#e8f5e9;
+    --gris:#7f8c8d; --gris-cl:#f5f7fa; --linea:#e0e0e0; --texto:#2c3e50;
+    --ok:#2e7d32; --ok-bg:#e8f5e9; --warn:#c77700; --warn-bg:#fff8e1;
+    --pausa:#8e44ad; --pausa-bg:#f3e9f8; --pend:#7f8c8d; --pend-bg:#f0f3f4;
+    --rojo:#c0392b; --rojo-bg:#fbeeee;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,sans-serif;
+    background:var(--gris-cl); color:var(--texto); line-height:1.45; -webkit-font-smoothing:antialiased;
+  }
+  .oculto{display:none !important}
+
+  /* ── Marca ── */
+  .ea-logo{
+    width:44px;height:44px;border-radius:50%;flex:0 0 44px;
+    background:#fff;color:var(--verde);display:flex;align-items:center;justify-content:center;
+    font-weight:800;font-size:17px;letter-spacing:.5px;border:2px solid var(--verde);
+  }
+
+  /* ── Acceso (login) ── */
+  .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+  .login-card{
+    width:100%;max-width:420px;background:#fff;border:1px solid var(--linea);border-radius:16px;
+    box-shadow:0 10px 40px rgba(30,90,62,.10);overflow:hidden;
+  }
+  .login-top{background:var(--verde);color:#fff;padding:26px 24px;display:flex;gap:14px;align-items:center}
+  .login-top .t1{font-weight:800;font-size:16px;letter-spacing:.3px}
+  .login-top .t2{font-size:12px;opacity:.85;letter-spacing:.5px;text-transform:uppercase}
+  .login-body{padding:24px}
+  .login-body h1{font-size:18px;margin:0 0 4px}
+  .login-body p.sub{margin:0 0 18px;color:var(--gris);font-size:14px}
+  label{display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--gris);margin:0 0 6px}
+  input[type=text]{
+    width:100%;padding:13px 14px;border:1.5px solid var(--linea);border-radius:10px;font-size:16px;
+    outline:none;transition:border-color .15s;background:#fff;color:var(--texto);
+  }
+  input[type=text]:focus{border-color:var(--verde-cl)}
+  input.codigo{letter-spacing:10px;text-align:center;font-weight:800;font-size:24px}
+  .btn{
+    width:100%;margin-top:16px;padding:13px 16px;border:0;border-radius:10px;background:var(--verde);
+    color:#fff;font-weight:700;font-size:15px;cursor:pointer;transition:background .15s;
+  }
+  .btn:hover{background:var(--verde-cl)}
+  .btn:disabled{background:#9db8ab;cursor:default}
+  .btn-sec{background:transparent;color:var(--verde);border:1.5px solid var(--linea);margin-top:10px}
+  .btn-sec:hover{background:var(--gris-cl)}
+  .msg{margin-top:14px;font-size:14px;padding:11px 13px;border-radius:9px;display:none}
+  .msg.err{display:block;background:var(--rojo-bg);color:var(--rojo);border:1px solid #f0c9c4}
+  .msg.info{display:block;background:var(--verde-suave);color:var(--ok);border:1px solid #bfe3c6}
+  .link{background:none;border:0;color:var(--verde-cl);cursor:pointer;font-size:13px;text-decoration:underline;padding:8px 0;margin-top:6px;display:inline-block}
+  .foot-nota{margin-top:18px;font-size:12px;color:var(--gris);text-align:center}
+
+  /* ── Panel ── */
+  .top{
+    background:var(--verde);color:#fff;padding:14px 18px;display:flex;align-items:center;gap:12px;
+    position:sticky;top:0;z-index:10;box-shadow:0 2px 10px rgba(0,0,0,.08);
+  }
+  .top .who{flex:1;min-width:0}
+  .top .who .n1{font-weight:800;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .top .who .n2{font-size:12px;opacity:.85}
+  .top .salir{background:rgba(255,255,255,.15);border:0;color:#fff;padding:8px 14px;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px}
+  .top .salir:hover{background:rgba(255,255,255,.28)}
+
+  .cont{max-width:1100px;margin:0 auto;padding:18px 16px 40px}
+  .barra{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+  .barra .buscar{flex:1;min-width:200px;position:relative}
+  .barra .buscar input{padding-left:38px}
+  .barra .buscar svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);opacity:.5}
+  .barra .conteo{font-size:13px;color:var(--gris);font-weight:600}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+  .card{background:#fff;border:1px solid var(--linea);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:10px;transition:box-shadow .15s,transform .15s}
+  .card:hover{box-shadow:0 6px 20px rgba(30,90,62,.08)}
+  .card .fila1{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .badge-nom{font-size:11px;font-weight:800;color:#fff;padding:4px 9px;border-radius:20px;letter-spacing:.3px}
+  .chip{font-size:11px;font-weight:800;padding:4px 10px;border-radius:20px;text-transform:uppercase;letter-spacing:.3px;margin-left:auto}
+  .chip.ok{background:var(--ok-bg);color:var(--ok)}
+  .chip.proc{background:var(--warn-bg);color:var(--warn)}
+  .chip.pausa{background:var(--pausa-bg);color:var(--pausa)}
+  .chip.pend{background:var(--pend-bg);color:var(--pend)}
+  .card .num{font-size:16px;font-weight:800;color:var(--texto);word-break:break-word}
+  .card .num.proc{color:var(--gris);font-weight:700;font-size:15px}
+  .card .meta{font-size:13px;color:var(--gris);display:flex;flex-direction:column;gap:3px}
+  .card .meta b{color:var(--texto);font-weight:600}
+  .card .acc{margin-top:4px}
+  .btn-desc{width:100%;padding:11px;border:0;border-radius:9px;background:var(--verde);color:#fff;font-weight:700;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;gap:8px}
+  .btn-desc:hover{background:var(--verde-cl)}
+  .btn-desc:disabled{background:#e7ece9;color:#9aa8a0;cursor:default}
+  .nota-min{font-size:12px;color:var(--gris);text-align:center;padding:8px 0}
+
+  .vacio{text-align:center;padding:56px 20px;color:var(--gris)}
+  .vacio .em{font-size:40px;margin-bottom:10px}
+  .cargando{text-align:center;padding:56px 20px;color:var(--gris)}
+  .spin{width:34px;height:34px;border:3px solid var(--linea);border-top-color:var(--verde);border-radius:50%;animation:g 1s linear infinite;margin:0 auto 14px}
+  @keyframes g{to{transform:rotate(360deg)}}
+  .pie{text-align:center;color:var(--gris);font-size:12px;padding:24px 16px}
+</style>
+
+<!-- ===================== ACCESO (LOGIN) ===================== -->
+<div id="vistaLogin" class="login-wrap">
+  <div class="login-card">
+    <div class="login-top">
+      <div class="ea-logo">EA</div>
+      <div>
+        <div class="t1">Ejecutiva Ambiental</div>
+        <div class="t2">Portal de Clientes</div>
+      </div>
+    </div>
+    <div class="login-body">
+      <!-- Paso 1: identificador -->
+      <div id="paso1">
+        <h1>Consulta tus informes</h1>
+        <p class="sub">Escribe tu RFC (o el correo que tienes registrado con nosotros) y te enviaremos un código de acceso.</p>
+        <label for="fId">RFC o correo</label>
+        <input type="text" id="fId" placeholder="Ej. ABC010101AB1" autocomplete="off" spellcheck="false">
+        <button class="btn" id="btnCodigo" onclick="solicitarCodigo()">Enviar código</button>
+      </div>
+      <!-- Paso 2: código -->
+      <div id="paso2" class="oculto">
+        <h1>Ingresa tu código</h1>
+        <p class="sub" id="subCodigo">Te enviamos un código de 6 dígitos.</p>
+        <label for="fCodigo">Código de acceso</label>
+        <input type="text" id="fCodigo" class="codigo" inputmode="numeric" maxlength="6" placeholder="••••••" autocomplete="one-time-code">
+        <button class="btn" id="btnEntrar" onclick="verificarCodigo()">Entrar</button>
+        <button class="link" onclick="volverPaso1()">← Cambiar RFC / correo</button>
+      </div>
+      <div id="loginMsg" class="msg"></div>
+      <div class="foot-nota">¿Problemas para entrar? Llámanos al 222 941 7295</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== PANEL ===================== -->
+<div id="vistaPanel" class="oculto">
+  <div class="top">
+    <div class="ea-logo">EA</div>
+    <div class="who">
+      <div class="n1" id="clienteNombre">Cliente</div>
+      <div class="n2">Portal de Clientes · Ejecutiva Ambiental</div>
+    </div>
+    <button class="salir" onclick="salir()">Salir</button>
+  </div>
+
+  <div class="cont">
+    <div class="barra">
+      <div class="buscar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="fBuscar" placeholder="Buscar por número, NOM o sucursal…" oninput="filtrar()">
+      </div>
+      <div class="conteo" id="conteo"></div>
+    </div>
+
+    <div id="cargando" class="cargando"><div class="spin"></div>Cargando tus informes…</div>
+    <div id="grid" class="grid oculto"></div>
+    <div id="vacio" class="vacio oculto">
+      <div class="em">🗂️</div>
+      <div>Aún no tienes informes registrados.<br>Si esperabas ver alguno, contáctanos al 222 941 7295.</div>
+    </div>
+  </div>
+  <div class="pie">© Ejecutiva Ambiental · Este portal muestra únicamente la información asociada a tu empresa.</div>
+</div>
+
+<script>
+  // ── Estado ──
+  var TOKEN_KEY = 'ea_portal_token';
+  var SERVICIOS = [];
+  var IDENT = '';
+
+  function getToken(){ try { return localStorage.getItem(TOKEN_KEY) || ''; } catch(e){ return ''; } }
+  function setToken(t){ try { localStorage.setItem(TOKEN_KEY, t); } catch(e){} }
+  function clearToken(){ try { localStorage.removeItem(TOKEN_KEY); } catch(e){} }
+
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+
+  function msg(texto, tipo){
+    var el = document.getElementById('loginMsg');
+    el.className = 'msg ' + (tipo||'err');
+    el.innerHTML = esc(texto);
+  }
+  function limpiaMsg(){ var el=document.getElementById('loginMsg'); el.className='msg'; el.textContent=''; }
+
+  // ── Arranque ──
+  window.addEventListener('DOMContentLoaded', function(){
+    var t = getToken();
+    if (t){ mostrarPanel(); cargarServicios(); }
+    else { mostrarLogin(); }
+    document.getElementById('fId').addEventListener('keydown', function(e){ if(e.key==='Enter') solicitarCodigo(); });
+    document.getElementById('fCodigo').addEventListener('keydown', function(e){ if(e.key==='Enter') verificarCodigo(); });
+    document.getElementById('fCodigo').addEventListener('input', function(e){ e.target.value = e.target.value.replace(/\D/g,''); });
+  });
+
+  function mostrarLogin(){ document.getElementById('vistaPanel').classList.add('oculto'); document.getElementById('vistaLogin').classList.remove('oculto'); }
+  function mostrarPanel(){ document.getElementById('vistaLogin').classList.add('oculto'); document.getElementById('vistaPanel').classList.remove('oculto'); }
+
+  // ── Login paso 1 ──
+  function solicitarCodigo(){
+    var id = document.getElementById('fId').value.trim();
+    if (!id){ msg('Escribe tu RFC o correo.'); return; }
+    IDENT = id;
+    limpiaMsg();
+    var btn = document.getElementById('btnCodigo'); btn.disabled = true; btn.textContent = 'Enviando…';
+    google.script.run
+      .withSuccessHandler(function(res){
+        btn.disabled = false; btn.textContent = 'Enviar código';
+        if (!res || !res.success){ msg(res && res.error ? res.error : 'No se pudo enviar el código.'); return; }
+        var destino = (res.enviadoA && res.enviadoA.length) ? res.enviadoA.join(', ') : 'tu correo registrado';
+        document.getElementById('subCodigo').innerHTML = 'Te enviamos un código de 6 dígitos a <b>' + esc(destino) + '</b>. Revisa tu bandeja (y spam).';
+        document.getElementById('paso1').classList.add('oculto');
+        document.getElementById('paso2').classList.remove('oculto');
+        limpiaMsg();
+        document.getElementById('fCodigo').focus();
+      })
+      .withFailureHandler(function(err){
+        btn.disabled = false; btn.textContent = 'Enviar código';
+        msg('Ocurrió un problema. Intenta de nuevo.');
+      })
+      .portal_solicitarCodigo({ identificador: id });
+  }
+
+  function volverPaso1(){
+    document.getElementById('paso2').classList.add('oculto');
+    document.getElementById('paso1').classList.remove('oculto');
+    document.getElementById('fCodigo').value='';
+    limpiaMsg();
+  }
+
+  // ── Login paso 2 ──
+  function verificarCodigo(){
+    var codigo = document.getElementById('fCodigo').value.trim();
+    if (codigo.length !== 6){ msg('El código son 6 dígitos.'); return; }
+    limpiaMsg();
+    var btn = document.getElementById('btnEntrar'); btn.disabled = true; btn.textContent = 'Verificando…';
+    google.script.run
+      .withSuccessHandler(function(res){
+        btn.disabled = false; btn.textContent = 'Entrar';
+        if (!res || !res.success){ msg(res && res.error ? res.error : 'Código incorrecto.'); return; }
+        setToken(res.token);
+        if (res.cliente && res.cliente.razon_social) document.getElementById('clienteNombre').textContent = res.cliente.razon_social;
+        mostrarPanel(); cargarServicios();
+      })
+      .withFailureHandler(function(err){
+        btn.disabled = false; btn.textContent = 'Entrar';
+        msg('Ocurrió un problema. Intenta de nuevo.');
+      })
+      .portal_verificarCodigo({ identificador: IDENT, codigo: codigo });
+  }
+
+  function salir(){ clearToken(); SERVICIOS=[]; document.getElementById('fId').value=''; volverPaso1(); mostrarLogin(); }
+
+  // ── Panel: cargar y pintar ──
+  function cargarServicios(){
+    document.getElementById('cargando').classList.remove('oculto');
+    document.getElementById('grid').classList.add('oculto');
+    document.getElementById('vacio').classList.add('oculto');
+    google.script.run
+      .withSuccessHandler(function(res){
+        document.getElementById('cargando').classList.add('oculto');
+        if (!res || !res.success){
+          if (res && res.error === 'AUTH_REQUIRED'){ salir(); return; }
+          document.getElementById('vacio').classList.remove('oculto');
+          document.getElementById('vacio').innerHTML = '<div class="em">⚠️</div><div>No se pudieron cargar tus informes. Intenta más tarde.</div>';
+          return;
+        }
+        if (res.cliente && res.cliente.razon_social) document.getElementById('clienteNombre').textContent = res.cliente.razon_social;
+        SERVICIOS = res.servicios || [];
+        pintar(SERVICIOS);
+      })
+      .withFailureHandler(function(err){
+        document.getElementById('cargando').classList.add('oculto');
+        document.getElementById('vacio').classList.remove('oculto');
+      })
+      .portal_misServicios(getToken());
+  }
+
+  function estatusChip(estatus, entregado){
+    var e = String(estatus||'').toUpperCase();
+    if (entregado || e==='ENTREGADO' || e==='FINALIZADO') return {cls:'ok', txt: e==='FINALIZADO' ? 'Finalizado' : 'Entregado'};
+    if (e==='EN PAUSA') return {cls:'pausa', txt:'En pausa'};
+    if (e==='EN PROCESO') return {cls:'proc', txt:'En proceso'};
+    if (e==='NO INICIADO') return {cls:'pend', txt:'En espera'};
+    return {cls:'pend', txt: estatus || 'Pendiente'};
+  }
+
+  function colorNom(nom){
+    var s = String(nom||'').toUpperCase();
+    var mapa = {'NOM-035':'#3498db','NOM-036':'#16a085','NOM-030':'#8e44ad','NOM-002':'#e67e22','NOM-017':'#2980b9','NOM-025':'#c0392b','NOM-011':'#d35400','NOM-009':'#27ae60'};
+    for (var k in mapa){ if (s.indexOf(k)!==-1) return mapa[k]; }
+    var h=0; for (var i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))%360;
+    return 'hsl('+h+',55%,42%)';
+  }
+
+  function pintar(lista){
+    var grid = document.getElementById('grid');
+    var vacio = document.getElementById('vacio');
+    document.getElementById('conteo').textContent = lista.length + (lista.length===1?' servicio':' servicios');
+    if (!lista.length){ grid.classList.add('oculto'); vacio.classList.remove('oculto'); return; }
+    vacio.classList.add('oculto'); grid.classList.remove('oculto');
+
+    grid.innerHTML = lista.map(function(s, idx){
+      var chip = estatusChip(s.estatus, s.entregado);
+      var nom = s.nom || 'Servicio';
+      var titulo = s.numInforme ? esc(s.numInforme) : 'Servicio en proceso';
+      var tituloCls = s.numInforme ? 'num' : 'num proc';
+      var acc = s.descargable
+        ? '<button class="btn-desc" onclick="descargar('+idx+', this)">⬇ Descargar informe</button>'
+        : (s.numInforme
+            ? '<div class="nota-min">El informe estará disponible al ser entregado.</div>'
+            : '<div class="nota-min">Trabajo en curso. Te avisaremos al entregarlo.</div>');
+      return ''+
+        '<div class="card">'+
+          '<div class="fila1">'+
+            '<span class="badge-nom" style="background:'+colorNom(nom)+'">'+esc(nom)+'</span>'+
+            '<span class="chip '+chip.cls+'">'+esc(chip.txt)+'</span>'+
+          '</div>'+
+          '<div class="'+tituloCls+'">'+titulo+'</div>'+
+          '<div class="meta">'+
+            (s.sucursal ? '<span>Sucursal: <b>'+esc(s.sucursal)+'</b></span>' : '')+
+            (s.fechaEntrega ? '<span>Entrega: <b>'+esc(s.fechaEntrega)+'</b></span>' : (s.fechaServicio ? '<span>Servicio: <b>'+esc(s.fechaServicio)+'</b></span>' : ''))+
+          '</div>'+
+          '<div class="acc">'+acc+'</div>'+
+        '</div>';
+    }).join('');
+  }
+
+  function filtrar(){
+    var q = document.getElementById('fBuscar').value.trim().toLowerCase();
+    if (!q){ pintar(SERVICIOS); return; }
+    pintar(SERVICIOS.filter(function(s){
+      return [(s.numInforme||''),(s.nom||''),(s.sucursal||''),(s.estatus||'')].join(' ').toLowerCase().indexOf(q)!==-1;
+    }));
+  }
+
+  // ── Descarga del informe ──
+  function descargar(idx, btn){
+    var s = SERVICIOS[idx]; if (!s) return;
+    var original = btn.innerHTML; btn.disabled = true; btn.innerHTML = 'Preparando…';
+    google.script.run
+      .withSuccessHandler(function(res){
+        btn.disabled = false; btn.innerHTML = original;
+        if (!res || !res.success){
+          if (res && res.error === 'AUTH_REQUIRED'){ salir(); return; }
+          alert(res && res.error ? res.error : 'No se pudo descargar el informe.');
+          return;
+        }
+        if (res.modo === 'archivo'){ descargarBase64(res.base64, res.nombre || (s.numInforme+'.pdf'), res.mimeType); if(res.aviso) alert(res.aviso); }
+        else if (res.modo === 'carpeta'){ if(res.aviso) alert(res.aviso); window.open(res.url, '_blank', 'noopener'); }
+      })
+      .withFailureHandler(function(err){ btn.disabled=false; btn.innerHTML=original; alert('No se pudo descargar el informe.'); })
+      .portal_descargarInforme(getToken(), s.numInforme);
+  }
+
+  function descargarBase64(b64, nombre, mime){
+    try{
+      var bin = atob(b64); var len = bin.length; var arr = new Uint8Array(len);
+      for (var i=0;i<len;i++) arr[i]=bin.charCodeAt(i);
+      var blob = new Blob([arr], {type: mime || 'application/pdf'});
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a'); a.href=url; a.download=nombre; document.body.appendChild(a); a.click();
+      setTimeout(function(){ URL.revokeObjectURL(url); if(a.parentNode) a.parentNode.removeChild(a); }, 2000);
+    }catch(e){ alert('Tu navegador bloqueó la descarga. Intenta desde otro navegador.'); }
+  }
+</script>
