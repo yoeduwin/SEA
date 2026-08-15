@@ -597,7 +597,9 @@
     'NOM-022-STPS-2015', 'NOM-009-STPS-2011', 'NOM-020-STPS-2011',
     'NOM-027-STPS-2008', 'NOM-033-STPS-2015', 'NOM-010-STPS-2014',
     'NOM-029-STPS-2011', 'NOM-015-STPS-2001', 'NOM-034-STPS-2016',
-    'NOM-028-STPS-2012', 'NOM-005-STPS-1998', 'NOM-036-2-STPS-2023'
+    'NOM-028-STPS-2012', 'NOM-005-STPS-1998', 'NOM-036-2-STPS-2023',
+    'CURSO DE MONTACARGAS', 'PROTECCIÓN CIVIL (PIPC)', 'DICTAMEN ESTRUCTURAL',
+    'PROGRAMA INTERNO DE PROTECCIÓN CIVIL'
   ];
 
   function extraerCodigoNOM(nom) {
@@ -655,7 +657,6 @@
     const field = document.getElementById('field-num-informe');
     if (!ot || !nom) { field.value = ''; return; }
     const tipoOrden = ot.startsWith('OTB') ? 'OTB' : 'OT';
-    const nomCode = extraerCodigoNOM(nom);
     field.value = 'Generando formato...';
     
     let anio, mes;
@@ -675,7 +676,9 @@
     }
     
     try {
-      const response = await SEAAuth.wrapFetch(`${SCRIPT_URL}?action=getConsecutivo&anio=${anio}&mes=${mes}&nom=${encodeURIComponent(nomCode)}&tipo=${tipoOrden}`);
+      // Se envía el servicio COMPLETO; el backend deriva la clave del folio
+      // (081, CM, PIPC, DE, código STPS…) y decide si lleva serie independiente.
+      const response = await SEAAuth.wrapFetch(`${SCRIPT_URL}?action=getConsecutivo&anio=${anio}&mes=${mes}&nom=${encodeURIComponent(nom)}&tipo=${tipoOrden}`);
       const res = await response.json();
       field.value = (res && res.success) ? res.numeroInforme : '[Automático al enviar]';
     } catch (e) {

@@ -1071,8 +1071,26 @@ function fase3_AddFilesToExpediente(payload) {
 // pueda encontrar la carpeta del cliente via fallback #3 (búsqueda por RFC)
 // =========================================================================
 function getOrdenesSafe_() {
-  const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = ss.getSheetByName(CONFIG.SHEET_OT);
   const values = sheet.getDataRange().getDisplayValues();
+
+  // OTs que YA tienen expediente (fila en INFORMES con número de informe).
+  // Regla del negocio: una OT = un expediente → una vez generado, desaparece
+  // del selector de "Nuevo Expediente".
+  const otsConInforme = {};
+  try {
+    const sheetInf = ss.getSheetByName(CONFIG.SHEET_INFORMES);
+    const infValues = sheetInf.getDataRange().getDisplayValues().slice(1);
+    infValues.forEach(row => {
+      const num = String(row[CI.NUM_INFORME] || '').trim();
+      const otInf = normalizeOtForSeainf_(row[CI.OT]);
+      if (num && otInf) otsConInforme[otInf] = true;
+    });
+  } catch (e) {
+    Logger.log('getOrdenesSafe_: no se pudo leer INFORMES para filtrar OTs con expediente: ' + e.message);
+  }
+
   const ordenes = values.slice(1).map(row => ({
     ot:             row[CO.OT],
     tipo_orden:     row[CO.TIPO],
@@ -1089,7 +1107,8 @@ function getOrdenesSafe_() {
     estatus_externo: row[CO.ESTATUS_EXTERNO]
   })).filter(orden =>
     orden.ot && orden.ot.trim() !== '' &&
-    ESTATUS_EXTERNO_TERMINALES_.indexOf(String(orden.estatus_externo || '').toUpperCase()) === -1
+    ESTATUS_EXTERNO_TERMINALES_.indexOf(String(orden.estatus_externo || '').toUpperCase()) === -1 &&
+    !otsConInforme[normalizeOtForSeainf_(orden.ot)]
   );
   return { success: true, data: ordenes };
 }
@@ -1145,25 +1164,89 @@ function getSiguienteFolioOT_(params) {
 
   return { success: true, serie: serie, folio: folio, ultimo: ultimoFolio, consecutivo: siguiente };
 }
-function getConsecutivoSafe_(params) {
-  // Lee de INFORMES para encontrar el mayor consecutivo registrado
-  const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_INFORMES);
-  const dataRange = sheet.getDataRange().getDisplayValues().slice(1);
-  const regex = /^EA-\d{4}-.+-(\d{4})$/;
-  let maxConsecutivo = 0;
-  dataRange.forEach(row => {
-    const valNum = row[CI.NUM_INFORME];
-    const valTipo = String(row[CI.TIPO_ORDEN] || '').trim().toUpperCase();
-    if (valTipo === (params.tipo || 'OTA').toUpperCase()) {
-      const match = String(valNum || '').trim().match(regex);
-      if (match) {
-        const consecutivo = parseInt(match[1], 10);
-        if (consecutivo > maxConsecutivo) maxConsecutivo = consecutivo;
+// ── Catálogo de claves de servicio ───────────────────────────────────────────
+// Fuente única de las abreviaturas que se incrustan en el número de informe
+// (EA-AAMM-{clave}-NNNN) y de qué servicios llevan SERIE INDEPENDIENTE.
+//
+// Regla de folio:
+//   • serieIndependiente:true  → el consecutivo se cuenta SOLO entre informes con
+//     esa misma clave (aislado del contador general). Hoy solo la NOM-081.
+//   • serieIndependiente:false → el consecutivo sigue el contador general por
+//     tipo de orden (OTB/OT); la clave es únicamente la etiqueta visible.
+//
+// Editar este arreglo para agregar/ajustar claves. El orden importa: se evalúa
+// de arriba hacia abajo y gana la primera coincidencia por subcadena.
+const CATALOGO_CLAVES_ = [
+  { match: ['NOM-081', '081'],             clave: '081',  serieIndependiente: true  },
+  { match: ['MONTACARGAS'],                clave: 'CM',   serieIndependiente: false },
+  { match: ['PIPC', 'PROTECC', 'PROGRAMA INTERNO'], clave: 'PIPC', serieIndependiente: false },
+  { match: ['DICTAMEN'],                   clave: 'DE',   serieIndependiente: false }
+];
+
+/**
+ * Deriva la clave del folio y si el servicio lleva serie independiente.
+ * Acepta el nombre de servicio completo (p.ej. 'NOM-081-SEMARNAT-1994',
+ * 'CURSO DE MONTACARGAS') o una clave ya corta (p.ej. '081', 'CM', '035').
+ * @param {string} nom  Nombre del servicio o clave.
+ * @returns {{clave:string, serieIndependiente:boolean}}
+ */
+function claveServicio_(nom) {
+  const raw  = String(nom == null ? '' : nom).trim();
+  const norm = raw.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  // 1) Catálogo de servicios especiales / no-norma (subcadena).
+  for (let i = 0; i < CATALOGO_CLAVES_.length; i++) {
+    const regla = CATALOGO_CLAVES_[i];
+    for (let j = 0; j < regla.match.length; j++) {
+      if (norm.indexOf(regla.match[j]) !== -1) {
+        return { clave: regla.clave, serieIndependiente: !!regla.serieIndependiente };
       }
     }
-  });
+  }
+  // 2) Norma STPS → código de 3 dígitos (mismo criterio que el frontend).
+  const mStps = norm.match(/^NOM-(\d{3}(?:-\d+)?)-STPS/);
+  if (mStps) return { clave: mStps[1], serieIndependiente: false };
+  // 3) Fallback: se conserva el texto recibido (el operador puede editarlo).
+  return { clave: raw, serieIndependiente: false };
+}
+
+function getConsecutivoSafe_(params) {
+  // Lee de INFORMES para encontrar el siguiente consecutivo.
+  const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_INFORMES);
+  const dataRange = sheet.getDataRange().getDisplayValues().slice(1);
+
+  const info = claveServicio_(params.nom);
+  const clave = info.clave;
+  let maxConsecutivo = 0;
+
+  if (info.serieIndependiente) {
+    // Serie propia: contar SOLO los informes con esta misma clave (aislado del
+    // contador general). Robusto ante filas mal cargadas en la otra serie.
+    const claveEsc = clave.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regexClave = new RegExp('^EA-\\d{4}-' + claveEsc + '-(\\d{4})$');
+    dataRange.forEach(row => {
+      const match = String(row[CI.NUM_INFORME] || '').trim().match(regexClave);
+      if (match) {
+        const c = parseInt(match[1], 10);
+        if (c > maxConsecutivo) maxConsecutivo = c;
+      }
+    });
+  } else {
+    // Contador general por tipo de orden (OTB/OT): comportamiento histórico.
+    const regex = /^EA-\d{4}-.+-(\d{4})$/;
+    dataRange.forEach(row => {
+      const valTipo = String(row[CI.TIPO_ORDEN] || '').trim().toUpperCase();
+      if (valTipo === (params.tipo || 'OTA').toUpperCase()) {
+        const match = String(row[CI.NUM_INFORME] || '').trim().match(regex);
+        if (match) {
+          const c = parseInt(match[1], 10);
+          if (c > maxConsecutivo) maxConsecutivo = c;
+        }
+      }
+    });
+  }
+
   const siguiente = String(maxConsecutivo + 1).padStart(4, '0');
-  return { success: true, numeroInforme: `EA-${params.anio}${params.mes}-${params.nom}-${siguiente}` };
+  return { success: true, numeroInforme: `EA-${params.anio}${params.mes}-${clave}-${siguiente}`, clave: clave, serieIndependiente: info.serieIndependiente };
 }
 function updateEstatusSafe_(data, usuario) {
   if (!data || !data.ot || !data.estatus) return { success: false, error: 'Faltan campos requeridos: ot, estatus.' };
