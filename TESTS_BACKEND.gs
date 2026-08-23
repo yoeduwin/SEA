@@ -215,7 +215,7 @@ function runTest_E01() {
 //   2. Usuario llena el form de OT y presiona "Registrar OT" → registrarOT
 // Verifica que:
 //   - buscarClienteRFC devuelve found: true con el link correcto (índice 20)
-//   - La OT aparece en ORDENES_TRABAJO con link_drive_cliente en col 14
+//   - La OT aparece en ORDENES_TRABAJO con link_drive_cliente en col M
 function runTest_E02() {
   Logger.log('');
   Logger.log('── E02: SEAOT → buscarClienteRFC + registrarOT ──');
@@ -246,7 +246,7 @@ function runTest_E02() {
   _eq_('E02-6: telefono_empresa (índice 6)',    sucursal.telefono_empresa,   '2220000000');
 
   var linkDrive = sucursal.link_drive_cliente || '';
-  _check_('E02-7: link_drive_cliente no está vacío (índice 15)',  linkDrive !== '');
+  _check_('E02-7: link_drive_cliente no está vacío (índice 20 de CLIENTES)',  linkDrive !== '');
   _check_('E02-8: link_drive_cliente contiene "folders/"',        linkDrive.indexOf('folders/') !== -1);
 
   // Paso 2: Registro de OT (como hace SEAOT al enviar el formulario)
@@ -279,12 +279,12 @@ function runTest_E02() {
   _check_('E02-10: fila creada en ORDENES_TRABAJO',            filaOT !== null);
   _eq_('E02-11: folio en col 2 (índice 1)',                   filaOT[1], TEST_FOLIO);
   _eq_('E02-12: tipo_orden en col 3 (índice 2)',              filaOT[2], 'OTA');
-  _eq_('E02-13: nom_servicio en col 5 (índice 4)',            filaOT[4], 'NOM-035-STPS');
-  _eq_('E02-14: rfc en col 8 (índice 7)',                     filaOT[7], TEST_RFC);
-  _eq_('E02-15: estatus inicial "NO INICIADO"',               filaOT[12], 'NO INICIADO');
+  _eq_('E02-13: nom_servicio en col D (índice 3)',            filaOT[CO.NOM], 'NOM-035-STPS');
+  _eq_('E02-14: rfc en col G (índice 6)',                     filaOT[CO.RFC], TEST_RFC);
+  _eq_('E02-15: estatus inicial en col L',                    filaOT[CO.ESTATUS_EXTERNO], 'NO INICIADO');
 
-  var linkEnOT = String(filaOT[13] || '');
-  _check_('E02-16: link_drive_cliente guardado en col 14 (índice 13)', linkEnOT !== '');
+  var linkEnOT = String(filaOT[CO.LINK_DRIVE] || '');
+  _check_('E02-16: link_drive_cliente guardado en col M (índice 12)', linkEnOT !== '');
   _check_('E02-17: link en OT coincide con link del cliente', linkEnOT === linkDrive);
 
   _ctx_.folioOT = TEST_FOLIO;
@@ -302,7 +302,7 @@ function runTest_E02() {
 //   - getOrdenes incluye la OT del test con rfc, sucursal, link_drive
 //   - getConsecutivo genera un número con formato correcto
 //   - createExpediente crea la carpeta DENTRO de la carpeta del cliente (no en raíz)
-//   - ORDENES_TRABAJO se actualiza con nuevo link y estatus EN PROCESO
+//   - INFORMES recibe el número, estatus inicial y link del expediente
 function runTest_E03() {
   Logger.log('');
   Logger.log('── E03: SEAINF → getOrdenes + getConsecutivo + createExpediente ──');
@@ -381,22 +381,27 @@ function runTest_E03() {
   var subFolders = [];
   var iter = carpetaExp.getFolders();
   while (iter.hasNext()) subFolders.push(iter.next().getName());
-  _check_('E03-14: subcarpeta "1. ORDEN_TRABAJO" creada', subFolders.indexOf('1. ORDEN_TRABAJO') !== -1);
-  _check_('E03-15: subcarpeta "2. HDC" creada',           subFolders.indexOf('2. HDC') !== -1);
-  _check_('E03-16: subcarpeta "3. CROQUIS" creada',       subFolders.indexOf('3. CROQUIS') !== -1);
-  _check_('E03-17: subcarpeta "4. FOTOS" creada',         subFolders.indexOf('4. FOTOS') !== -1);
+  _check_('E03-14: subcarpeta "1. ORDEN_TRABAJO" creada',    subFolders.indexOf('1. ORDEN_TRABAJO') !== -1);
+  _check_('E03-15: subcarpeta "2. HDC" creada',              subFolders.indexOf('2. HDC') !== -1);
+  _check_('E03-16: subcarpeta "3. CROQUIS" creada',          subFolders.indexOf('3. CROQUIS') !== -1);
+  _check_('E03-17: subcarpeta "4. FOTOS" creada',            subFolders.indexOf('4. FOTOS') !== -1);
+  _check_('E03-18: subcarpeta "5. INFORMES Y MEMORIAS"',     subFolders.indexOf('5. INFORMES Y MEMORIAS') !== -1);
+  _check_('E03-19: subcarpeta "6. INFORME PRELIMINAR"',      subFolders.indexOf('6. INFORME PRELIMINAR') !== -1);
 
-  // Verificar que ORDENES_TRABAJO se actualizó
-  var sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
-  var rows  = sheet.getDataRange().getValues();
-  var filaOT = null;
-  for (var j = rows.length - 1; j >= 1; j--) {
-    if (String(rows[j][1]).trim() === TEST_FOLIO) { filaOT = rows[j]; break; }
+  // El expediente se registra en INFORMES. ORDENES_TRABAJO conserva su
+  // estructura y el enlace de la sucursal.
+  var sheetInf = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_INFORMES);
+  var rowsInf = sheetInf.getDataRange().getValues();
+  var filaInf = null;
+  for (var j = rowsInf.length - 1; j >= 1; j--) {
+    if (normalizeOtForSeainf_(rowsInf[j][CI.OT]) === normalizeOtForSeainf_(TEST_FOLIO)) {
+      filaInf = rowsInf[j]; break;
+    }
   }
-  _check_('E03-18: fila OT actualizada en ORDENES_TRABAJO', filaOT !== null);
-  _eq_('E03-19: numInforme guardado en col 4 (índice 3)',  filaOT[3], numInforme);
-  _eq_('E03-20: estatus cambiado a EN PROCESO',            filaOT[12], 'EN PROCESO');
-  _check_('E03-21: link del expediente guardado en col 14', String(filaOT[13] || '').indexOf('folders/') !== -1);
+  _check_('E03-20: fila creada en INFORMES', filaInf !== null);
+  _eq_('E03-21: número de informe en INFORMES', filaInf[CI.NUM_INFORME], numInforme);
+  _eq_('E03-22: estatus inicial del informe', filaInf[CI.ESTATUS], 'NO INICIADO');
+  _check_('E03-23: link del expediente en INFORMES', String(filaInf[CI.LINK_DRIVE] || '').indexOf('folders/') !== -1);
 
   _ctx_.urlExpediente      = resultExp.url;
   _ctx_.expedienteFolderId = m[1];
@@ -545,10 +550,10 @@ function runTest_E07() {
   _check_('E07-2: fila OTB creada en ORDENES_TRABAJO',         filaOTB !== null);
   _eq_('E07-3: folio en col 2 (índice 1)',                    filaOTB[1], TEST_FOLIO_B);
   _eq_('E07-4: tipo_orden es OTB (índice 2)',                 filaOTB[2], 'OTB');
-  _eq_('E07-5: nom_servicio NOM-036 (índice 4)',              filaOTB[4], 'NOM-036-STPS');
-  _eq_('E07-6: rfc correcto (índice 7)',                      filaOTB[7], TEST_RFC);
-  _eq_('E07-7: estatus inicial "NO INICIADO"',                filaOTB[12], 'NO INICIADO');
-  _eq_('E07-8: estatus_informe inicial "NO INICIADO"',        filaOTB[15], 'NO INICIADO');
+  _eq_('E07-5: nom_servicio NOM-036 (col D)',                 filaOTB[CO.NOM], 'NOM-036-STPS');
+  _eq_('E07-6: rfc correcto (col G)',                         filaOTB[CO.RFC], TEST_RFC);
+  _eq_('E07-7: estatus externo inicial (col L)',              filaOTB[CO.ESTATUS_EXTERNO], 'NO INICIADO');
+  _check_('E07-8: enlace de sucursal conservado (col M)',     String(filaOTB[CO.LINK_DRIVE] || '').indexOf('folders/') !== -1);
 
   // Verificar que el consecutivo OTB es independiente del OTA
   var hoy    = new Date();
@@ -595,9 +600,9 @@ function runTest_E08() {
   }
 
   _check_('E08-2: fila OT encontrada en ORDENES_TRABAJO',       filaOT !== null);
-  _eq_('E08-3: estatus_externo (índice 12) actualizado a ENTREGADO', filaOT[12], 'ENTREGADO');
-  _check_('E08-4: fecha_real_entrega (índice 11) registrada',
-    filaOT[11] !== null && String(filaOT[11]).trim() !== '');
+  _eq_('E08-3: estatus_externo (col L) actualizado a ENTREGADO', filaOT[CO.ESTATUS_EXTERNO], 'ENTREGADO');
+  _check_('E08-4: fecha_real_entrega (col K) registrada',
+    filaOT[CO.FECHA_REAL] !== null && String(filaOT[CO.FECHA_REAL]).trim() !== '');
 
   // Ruta negativa: folio inexistente
   var resultNeg = updateEstatusSafe_({ ot: 'FOLIO-INEXISTENTE-ZZZ', estatus: 'EN PROCESO' }, 'test');
@@ -616,56 +621,59 @@ function runTest_E08() {
 // =========================================================================
 // Requiere que E02 haya creado TEST_FOLIO en ORDENES_TRABAJO.
 // Verifica que:
-//   - El estatus INTERNO del informe (col 16) se actualiza correctamente
-//   - Al marcar como FINALIZADO, la OT se excluye de getOrdenes (filtro activo)
-//   - El estatus externo (col 13) NO se modifica por esta función
+//   - El estatus INTERNO se actualiza en INFORMES (col N)
+//   - Una OT con expediente se excluye de Nuevo Expediente
+//   - El estatus externo de ORDENES_TRABAJO (col L) NO se modifica
 function runTest_E09() {
   Logger.log('');
   Logger.log('── E09: SEAINF → updateEstatusInforme FINALIZADO ─');
 
-  // Leer estatus externo ANTES de actualizar (para verificar que no cambia)
-  var sheetBefore = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
-  var rowsBefore  = sheetBefore.getDataRange().getValues();
+  var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  var sheetOt = ss.getSheetByName(CONFIG.SHEET_OT);
+  var rowsOt = sheetOt.getDataRange().getValues();
   var estatusExternoBefore = '';
-  for (var k = rowsBefore.length - 1; k >= 1; k--) {
-    if (String(rowsBefore[k][1]).trim() === TEST_FOLIO) {
-      estatusExternoBefore = String(rowsBefore[k][12]);
+  for (var k = rowsOt.length - 1; k >= 1; k--) {
+    if (normalizeOtForSeainf_(rowsOt[k][CO.OT]) === normalizeOtForSeainf_(TEST_FOLIO)) {
+      estatusExternoBefore = String(rowsOt[k][CO.ESTATUS_EXTERNO]);
       break;
     }
   }
 
-  var dataInforme = { ot: TEST_FOLIO, estatus: 'FINALIZADO' };
-  var result = updateEstatusInformeSafe_(dataInforme, 'test-automatizado');
-
+  var result = updateEstatusInformeSafe_(
+    { ot: TEST_FOLIO, estatus: 'FINALIZADO' },
+    'test-automatizado'
+  );
   _check_('E09-1: updateEstatusInforme devuelve success=true', result.success === true);
 
-  // Verificar en la hoja
-  var sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
-  var rows  = sheet.getDataRange().getValues();
-  var filaOT = null;
-  for (var i = rows.length - 1; i >= 1; i--) {
-    if (String(rows[i][1]).trim() === TEST_FOLIO) { filaOT = rows[i]; break; }
+  var sheetInf = ss.getSheetByName(CONFIG.SHEET_INFORMES);
+  var rowsInf = sheetInf.getDataRange().getValues();
+  var filaInf = null;
+  for (var i = rowsInf.length - 1; i >= 1; i--) {
+    if (normalizeOtForSeainf_(rowsInf[i][CI.OT]) === normalizeOtForSeainf_(TEST_FOLIO)) {
+      filaInf = rowsInf[i]; break;
+    }
   }
+  _check_('E09-2: fila encontrada en INFORMES', filaInf !== null);
+  _eq_('E09-3: estatus interno actualizado en INFORMES', filaInf[CI.ESTATUS], 'FINALIZADO');
 
-  _check_('E09-2: fila OT encontrada en ORDENES_TRABAJO', filaOT !== null);
-  _eq_('E09-3: estatus_informe (índice 15) actualizado a FINALIZADO', filaOT[15], 'FINALIZADO');
+  var rowsOtAfter = sheetOt.getDataRange().getValues();
+  var estatusExternoAfter = '';
+  for (var j = rowsOtAfter.length - 1; j >= 1; j--) {
+    if (normalizeOtForSeainf_(rowsOtAfter[j][CO.OT]) === normalizeOtForSeainf_(TEST_FOLIO)) {
+      estatusExternoAfter = String(rowsOtAfter[j][CO.ESTATUS_EXTERNO]);
+      break;
+    }
+  }
+  _eq_('E09-4: estatus externo de OT no fue modificado',
+    estatusExternoAfter, estatusExternoBefore);
 
-  // El estatus externo (índice 12) NO debe haber cambiado
-  _eq_('E09-4: estatus_externo (índice 12) no fue modificado por updateEstatusInforme',
-    String(filaOT[12]), estatusExternoBefore);
-
-  // La OT FINALIZADA ya no debe aparecer en getOrdenes
   var ordenesResp = getOrdenesSafe_();
   _check_('E09-5: getOrdenes devuelve success=true', ordenesResp.success === true);
   var aparece = ordenesResp.data.some(function(o) { return o.ot === TEST_FOLIO; });
-  _check_('E09-6: OT FINALIZADA excluida de getOrdenes (filtro activo)', !aparece);
+  _check_('E09-6: OT con expediente excluida de Nuevo Expediente', !aparece);
 
-  // Ruta negativa: payload incompleto
   var resultNeg = updateEstatusInformeSafe_({ ot: TEST_FOLIO }, 'test');
   _check_('E09-7: payload sin estatus devuelve success=false', resultNeg.success === false);
-
-  Logger.log('  Estatus informe actualizado a FINALIZADO.');
-  Logger.log('  Estatus externo conservado: ' + estatusExternoBefore);
 }
 
 // =========================================================================
@@ -697,7 +705,19 @@ function _cleanup_() {
     }
   } catch(e) { Logger.log('  ERROR cleanup ORDENES_TRABAJO: ' + e.message); }
 
-  // 3. Mover a papelera la carpeta del expediente
+  // 3. Eliminar filas de INFORMES del folio de prueba
+  try {
+    var sheetInf = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_INFORMES);
+    var rowsInf = sheetInf.getDataRange().getValues();
+    for (var k = rowsInf.length - 1; k >= 1; k--) {
+      if (normalizeOtForSeainf_(rowsInf[k][CI.OT]) === normalizeOtForSeainf_(TEST_FOLIO)) {
+        sheetInf.deleteRow(k + 1);
+        Logger.log('  Fila eliminada de INFORMES para: ' + TEST_FOLIO);
+      }
+    }
+  } catch(e) { Logger.log('  ERROR cleanup INFORMES: ' + e.message); }
+
+  // 4. Mover a papelera la carpeta del expediente
   if (_ctx_.expedienteFolderId) {
     try {
       DriveApp.getFolderById(_ctx_.expedienteFolderId).setTrashed(true);
@@ -705,7 +725,7 @@ function _cleanup_() {
     } catch(e) { Logger.log('  ERROR cleanup expediente: ' + e.message); }
   }
 
-  // 4. Mover a papelera la carpeta sucursal del cliente
+  // 5. Mover a papelera la carpeta sucursal del cliente
   if (_ctx_.clienteFolderId) {
     try {
       DriveApp.getFolderById(_ctx_.clienteFolderId).setTrashed(true);
@@ -713,7 +733,7 @@ function _cleanup_() {
     } catch(e) { Logger.log('  ERROR cleanup carpeta cliente: ' + e.message); }
   }
 
-  // 5. Mover a papelera la carpeta padre RFC - EMPRESA TEST
+  // 6. Mover a papelera la carpeta padre RFC - EMPRESA TEST
   try {
     var folderRaiz = DriveApp.getFolderById(CONFIG.FOLDER_ID);
     var iter = folderRaiz.getFolders();
@@ -842,27 +862,29 @@ function runUnitTests() {
   // ── Índices de columna en CONFIG ───────────────────────────────────────
   _eq_('U31: CONFIG.COLUMNS.CLIENTES.LINK_DRIVE es 20',    CONFIG.COLUMNS.CLIENTES.LINK_DRIVE,    20);
   _eq_('U32: CONFIG.COLUMNS.CLIENTES.ASESOR_CONSULTOR es 21', CONFIG.COLUMNS.CLIENTES.ASESOR_CONSULTOR, 21);
-  _eq_('U33: CONFIG.COLUMNS.ORDENES.LINK_DRIVE es 13',     CONFIG.COLUMNS.ORDENES.LINK_DRIVE,     13);
-  _eq_('U34: CONFIG.COLUMNS.ORDENES.ESTATUS_EXTERNO es 12',CONFIG.COLUMNS.ORDENES.ESTATUS_EXTERNO,12);
-  _eq_('U35: CONFIG.COLUMNS.ORDENES.ESTATUS_INFORME es 15',CONFIG.COLUMNS.ORDENES.ESTATUS_INFORME,15);
-  _eq_('U36: CONFIG.COLUMNS.ORDENES.FECHA_REAL es 11',     CONFIG.COLUMNS.ORDENES.FECHA_REAL,     11);
+  _eq_('U33: CONFIG.COLUMNS.ORDENES.LINK_DRIVE es 12',     CONFIG.COLUMNS.ORDENES.LINK_DRIVE,     12);
+  _eq_('U34: CONFIG.COLUMNS.ORDENES.ESTATUS_EXTERNO es 11',CONFIG.COLUMNS.ORDENES.ESTATUS_EXTERNO,11);
+  _eq_('U35: CONFIG.COLUMNS.ORDENES.FECHA_REAL es 10',     CONFIG.COLUMNS.ORDENES.FECHA_REAL,     10);
+  _eq_('U36: CONFIG.COLUMNS.ORDENES.OBSERVACIONES es 13',  CONFIG.COLUMNS.ORDENES.OBSERVACIONES,  13);
 
   // ── Estructura de subcarpetas en CONFIG ────────────────────────────────
-  _eq_('U37: FOLDER_STRUCTURE.ORDEN_TRABAJO',  CONFIG.FOLDER_STRUCTURE.ORDEN_TRABAJO, '1. ORDEN_TRABAJO');
-  _eq_('U38: FOLDER_STRUCTURE.HOJAS_CAMPO',    CONFIG.FOLDER_STRUCTURE.HOJAS_CAMPO,   '2. HDC');
-  _eq_('U39: FOLDER_STRUCTURE.CROQUIS',        CONFIG.FOLDER_STRUCTURE.CROQUIS,       '3. CROQUIS');
-  _eq_('U40: FOLDER_STRUCTURE.FOTOS',          CONFIG.FOLDER_STRUCTURE.FOTOS,         '4. FOTOS');
+  _eq_('U37: FOLDER_STRUCTURE.ORDEN_TRABAJO',   CONFIG.FOLDER_STRUCTURE.ORDEN_TRABAJO,   '1. ORDEN_TRABAJO');
+  _eq_('U38: FOLDER_STRUCTURE.HOJAS_CAMPO',      CONFIG.FOLDER_STRUCTURE.HOJAS_CAMPO,      '2. HDC');
+  _eq_('U39: FOLDER_STRUCTURE.CROQUIS',          CONFIG.FOLDER_STRUCTURE.CROQUIS,          '3. CROQUIS');
+  _eq_('U40: FOLDER_STRUCTURE.FOTOS',            CONFIG.FOLDER_STRUCTURE.FOTOS,            '4. FOTOS');
+  _eq_('U41: FOLDER_STRUCTURE.INFORMES_MEMORIA', CONFIG.FOLDER_STRUCTURE.INFORMES_MEMORIA, '5. INFORMES Y MEMORIAS');
+  _eq_('U42: FOLDER_STRUCTURE.INF_PRELIMINAR',   CONFIG.FOLDER_STRUCTURE.INF_PRELIMINAR,   '6. INFORME PRELIMINAR');
 
   // ── Zona horaria en CONFIG ─────────────────────────────────────────────
-  _eq_('U41: CONFIG.TIMEZONE es GMT-6', CONFIG.TIMEZONE, 'GMT-6');
+  _eq_('U43: CONFIG.TIMEZONE es GMT-6', CONFIG.TIMEZONE, 'GMT-6');
 
   // ── Validación de RFC (formato México: 13 chars alfanuméricos) ─────────
   var rfcRegex = /^[A-Z&Ñ]{3,4}[0-9]{6}[A-Z0-9]{3}$/;
-  _check_('U42: RFC persona física válido XTES000000TST',    rfcRegex.test(TEST_RFC));
-  _check_('U43: RFC persona moral válido EMP010101AAA',      rfcRegex.test('EMP010101AAA'));
-  _check_('U44: RFC persona física válido GACJ800101H12',    rfcRegex.test('GACJ800101H12'));
-  _check_('U45: RFC inválido rechazado (muy corto)',          !rfcRegex.test('EMP01'));
-  _check_('U46: RFC inválido rechazado (caracteres ilegales)',!rfcRegex.test('EMP01010#AAA'));
+  _check_('U44: RFC persona física válido XTES000000TST',    rfcRegex.test(TEST_RFC));
+  _check_('U45: RFC persona moral válido EMP010101AAA',      rfcRegex.test('EMP010101AAA'));
+  _check_('U46: RFC persona física válido GACJ800101H12',    rfcRegex.test('GACJ800101H12'));
+  _check_('U47: RFC inválido rechazado (muy corto)',          !rfcRegex.test('EMP01'));
+  _check_('U48: RFC inválido rechazado (caracteres ilegales)',!rfcRegex.test('EMP01010#AAA'));
 
   var pass = _results_.filter(function(r){ return r.indexOf('PASS') === 0; }).length;
   var fail = _results_.filter(function(r){ return r.indexOf('FAIL') === 0; }).length;
