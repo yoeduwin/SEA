@@ -12,32 +12,99 @@
 //   E07  SEAOT  → registrarOT tipo OTB (segundo tipo de orden)
 //   E08  SEADB  → updateEstatus ENTREGADO (estatus externo + fecha real)
 //   E09  SEAINF → updateEstatusInforme FINALIZADO (estatus interno del informe)
+//   E10–E17 → idempotencia, versionado, aislamiento y fallbacks seguros
 //
 // USO
-//   Editor GAS → seleccionar runE2ETests → ▶ Ejecutar → Ver registros
-//   Para ejecutar un flujo individual: runTest_E01 … runTest_E09
-//   Para solo pruebas unitarias: runUnitTests
+//   1. Configurar Script Properties de staging:
+//      SEA_E2E_ENABLED=TRUE, SEA_TEST_SPREADSHEET_ID y SEA_TEST_FOLDER_ID.
+//   2. Editor GAS → seleccionar runE2ETests → ▶ Ejecutar → Ver registros.
+//   Para ejecutar un flujo individual: runTest_E01 … runTest_E17.
+//   Para solo pruebas unitarias: runUnitTests (no requiere staging).
+//
+// SEGURIDAD
+//   Las E2E abortan si faltan las propiedades de staging o si alguno de sus
+//   IDs coincide con producción. Nunca deben ejecutarse contra datos reales.
 //
 // LIMPIEZA
-//   Los tests crean datos con RFC 'XTEST000000TST' en CLIENTES_MAESTRO y
-//   folios 'TEST-E2E-001' / 'TEST-E2E-002' en ORDENES_TRABAJO.
-//   Al terminar (éxito o falla) se eliminan automáticamente.
+//   Los tests eliminan automáticamente sus filas y envían sus carpetas de
+//   staging a la papelera al terminar, tanto en éxito como en falla.
 // =========================================================================
 
 // ─── Datos de prueba ──────────────────────────────────────────────────────
-var TEST_RFC      = 'XTES000000TST';
-var TEST_FOLIO    = 'TEST-E2E-001';
-var TEST_FOLIO_B  = 'TEST-E2E-002';
-var TEST_SUCURSAL = 'Sucursal Test E2E';
+var TEST_RFC            = 'XTES000000TST';
+var TEST_RFC_HIST       = 'HIST000000TST';
+var TEST_RFC_MISSING    = 'MISS000000TST';
+var TEST_FOLIO          = 'TEST-E2E-001';
+var TEST_FOLIO_B        = 'TEST-E2E-002';
+var TEST_FOLIO_MISSING  = 'TEST-E2E-MISSING';
+var TEST_FOLIO_EMPTY    = 'TEST-E2E-EMPTY-LINK';
+var TEST_FOLIO_GARBAGE  = 'TEST-E2E-GARBAGE-LINK';
+var TEST_FOLIO_LEGACY   = 'TEST-E2E-LEGACY';
+var TEST_SUCURSAL       = 'Sucursal Test E2E';
+var TEST_SUCURSAL_HIST  = 'Sucursal Histórica E2E';
+
+var TEST_FOLIOS_ = [
+  TEST_FOLIO, TEST_FOLIO_B, TEST_FOLIO_MISSING,
+  TEST_FOLIO_EMPTY, TEST_FOLIO_GARBAGE, TEST_FOLIO_LEGACY
+];
+var TEST_RFCS_ = [TEST_RFC, TEST_RFC_HIST, TEST_RFC_MISSING];
 
 // ─── Estado compartido entre flujos ──────────────────────────────────────
 var _ctx_ = {
-  linkDriveCliente:   '',   // resultado de E01 → input de E02/E04
-  folioOT:            '',   // resultado de E02 → input de E03/E08/E09
-  urlExpediente:      '',   // resultado de E03
-  clienteFolderId:    '',   // para cleanup E01
-  expedienteFolderId: ''    // para cleanup E03
+  linkDriveCliente:          '',
+  folioOT:                   '',
+  numInforme:                '',
+  urlExpediente:             '',
+  clienteFolderId:           '',
+  perfilFolderId:            '',
+  expedienteFolderId:        '',
+  foreignExpedienteFolderId: '',
+  legacyExpedienteFolderId:  '',
+  folderIdsToTrash:          [],
+  stagingActive:             false
 };
+
+// ─── Guard obligatorio de staging ─────────────────────────────────────────
+function _isUnsafeE2ETarget_(spreadsheetId, folderId) {
+  return !spreadsheetId || !folderId ||
+    spreadsheetId === CONFIG.SPREADSHEET_ID ||
+    folderId === CONFIG.FOLDER_ID;
+}
+
+function _activateE2EStaging_() {
+  if (_ctx_.stagingActive) return;
+
+  var props = PropertiesService.getScriptProperties();
+  var enabled = String(props.getProperty('SEA_E2E_ENABLED') || '').toUpperCase() === 'TRUE';
+  var spreadsheetId = String(props.getProperty('SEA_TEST_SPREADSHEET_ID') || '').trim();
+  var folderId = String(props.getProperty('SEA_TEST_FOLDER_ID') || '').trim();
+
+  if (!enabled || !spreadsheetId || !folderId) {
+    throw new Error(
+      'E2E bloqueadas: configura SEA_E2E_ENABLED=TRUE, ' +
+      'SEA_TEST_SPREADSHEET_ID y SEA_TEST_FOLDER_ID para staging.'
+    );
+  }
+  if (_isUnsafeE2ETarget_(spreadsheetId, folderId)) {
+    throw new Error('E2E bloqueadas: los IDs de staging no pueden coincidir con producción.');
+  }
+
+  var ss = SpreadsheetApp.openById(spreadsheetId);
+  var clientes = ss.getSheetByName(CONFIG.SHEET_CLIENTES);
+  var ordenes = ss.getSheetByName(CONFIG.SHEET_OT);
+  var informes = ss.getSheetByName(CONFIG.SHEET_INFORMES);
+  if (!clientes || clientes.getMaxColumns() < 22 ||
+      !ordenes || ordenes.getMaxColumns() < 17 ||
+      !informes || informes.getMaxColumns() < 17) {
+    throw new Error('E2E bloqueadas: el Spreadsheet de staging no cumple CLIENTES A–V, ORDENES A–Q e INFORMES A–Q.');
+  }
+
+  DriveApp.getFolderById(folderId); // valida acceso antes de cualquier escritura
+  CONFIG.SPREADSHEET_ID = spreadsheetId;
+  CONFIG.FOLDER_ID = folderId;
+  _ctx_.stagingActive = true;
+  Logger.log('  Entorno E2E aislado en staging.');
+}
 
 // ─── Mini framework ───────────────────────────────────────────────────────
 var _results_ = [];
@@ -65,6 +132,10 @@ function _neq_(msg, actual, unexpected) {
 // RUNNER PRINCIPAL
 // =========================================================================
 function runE2ETests() {
+  _activateE2EStaging_();
+  Logger.log('');
+  Logger.log('── PRE-LIMPIEZA DE STAGING ──────────────────────');
+  _cleanup_();
   _results_ = [];
   Logger.log('');
   Logger.log('══════════════════════════════════════════════');
@@ -75,20 +146,26 @@ function runE2ETests() {
   Logger.log('══════════════════════════════════════════════');
 
   var results = {
-    e01: false, e02: false, e03: false,
-    e04: false, e05: false, e06: false,
-    e07: false, e08: false, e09: false
+    e01: false, e02: false, e03: false, e04: false, e05: false, e06: false,
+    e07: false, e08: false, e09: false, e10: false, e11: false, e12: false,
+    e13: false, e14: false, e15: false, e16: false, e17: false
   };
 
-  try { runTest_E01(); results.e01 = true; } catch(e) { Logger.log('  E01 abortado: ' + e.message); }
-  try { runTest_E02(); results.e02 = true; } catch(e) { Logger.log('  E02 abortado: ' + e.message); }
-  try { runTest_E03(); results.e03 = true; } catch(e) { Logger.log('  E03 abortado: ' + e.message); }
-  try { runTest_E04(); results.e04 = true; } catch(e) { Logger.log('  E04 abortado: ' + e.message); }
-  try { runTest_E05(); results.e05 = true; } catch(e) { Logger.log('  E05 abortado: ' + e.message); }
-  try { runTest_E06(); results.e06 = true; } catch(e) { Logger.log('  E06 abortado: ' + e.message); }
-  try { runTest_E07(); results.e07 = true; } catch(e) { Logger.log('  E07 abortado: ' + e.message); }
-  try { runTest_E08(); results.e08 = true; } catch(e) { Logger.log('  E08 abortado: ' + e.message); }
-  try { runTest_E09(); results.e09 = true; } catch(e) { Logger.log('  E09 abortado: ' + e.message); }
+  var tests = [
+    runTest_E01, runTest_E02, runTest_E03, runTest_E04, runTest_E05, runTest_E06,
+    runTest_E07, runTest_E08, runTest_E09, runTest_E10, runTest_E11, runTest_E12,
+    runTest_E13, runTest_E14, runTest_E15, runTest_E16, runTest_E17
+  ];
+  for (var n = 0; n < tests.length; n++) {
+    var number = String(n + 1).padStart(2, '0');
+    var key = 'e' + number;
+    try {
+      tests[n]();
+      results[key] = true;
+    } catch (e) {
+      Logger.log('  E' + number + ' abortado: ' + e.message);
+    }
+  }
 
   Logger.log('');
   Logger.log('── LIMPIEZA ──────────────────────────────────');
@@ -108,6 +185,14 @@ function runE2ETests() {
   Logger.log('  E07 registrarOT tipo OTB   : ' + (results.e07 ? 'OK' : 'FALLO'));
   Logger.log('  E08 updateEstatus          : ' + (results.e08 ? 'OK' : 'FALLO'));
   Logger.log('  E09 updateEstatusInforme   : ' + (results.e09 ? 'OK' : 'FALLO'));
+  Logger.log('  E10 idempotencia           : ' + (results.e10 ? 'OK' : 'FALLO'));
+  Logger.log('  E11 versionado MD5         : ' + (results.e11 ? 'OK' : 'FALLO'));
+  Logger.log('  E12 aislamiento lote       : ' + (results.e12 ? 'OK' : 'FALLO'));
+  Logger.log('  E13 rechazo parcial        : ' + (results.e13 ? 'OK' : 'FALLO'));
+  Logger.log('  E14 histórico read-only    : ' + (results.e14 ? 'OK' : 'FALLO'));
+  Logger.log('  E15 bloqueo sin carpeta    : ' + (results.e15 ? 'OK' : 'FALLO'));
+  Logger.log('  E16 OT sin enlace          : ' + (results.e16 ? 'OK' : 'FALLO'));
+  Logger.log('  E17 retroajuste carpetas   : ' + (results.e17 ? 'OK' : 'FALLO'));
   Logger.log('══════════════════════════════════════════════');
 
   // Ejecutar también las pruebas unitarias
@@ -125,6 +210,7 @@ function runE2ETests() {
 //   - El link_drive_cliente (índice 20) no está vacío y apunta a Drive
 //   - La carpeta Drive existe y es accesible
 function runTest_E01() {
+  _activateE2EStaging_();
   Logger.log('');
   Logger.log('── E01: SEAPD → registrarCliente ─────────────');
 
@@ -204,6 +290,8 @@ function runTest_E01() {
   // Guardar para flujos siguientes y para cleanup
   _ctx_.linkDriveCliente = linkDrive;
   _ctx_.clienteFolderId  = m[1];
+  var perfilFolders = carpeta.getFoldersByName('01_Cliente');
+  if (perfilFolders.hasNext()) _ctx_.perfilFolderId = perfilFolders.next().getId();
   Logger.log('  linkDriveCliente: ' + linkDrive);
 }
 
@@ -217,6 +305,7 @@ function runTest_E01() {
 //   - buscarClienteRFC devuelve found: true con el link correcto (índice 20)
 //   - La OT aparece en ORDENES_TRABAJO con link_drive_cliente en col M
 function runTest_E02() {
+  _activateE2EStaging_();
   Logger.log('');
   Logger.log('── E02: SEAOT → buscarClienteRFC + registrarOT ──');
 
@@ -304,6 +393,7 @@ function runTest_E02() {
 //   - createExpediente crea la carpeta DENTRO de la carpeta del cliente (no en raíz)
 //   - INFORMES recibe el número, estatus inicial y link del expediente
 function runTest_E03() {
+  _activateE2EStaging_();
   Logger.log('');
   Logger.log('── E03: SEAINF → getOrdenes + getConsecutivo + createExpediente ──');
 
@@ -403,6 +493,7 @@ function runTest_E03() {
   _eq_('E03-22: estatus inicial del informe', filaInf[CI.ESTATUS], 'NO INICIADO');
   _check_('E03-23: link del expediente en INFORMES', String(filaInf[CI.LINK_DRIVE] || '').indexOf('folders/') !== -1);
 
+  _ctx_.numInforme         = numInforme;
   _ctx_.urlExpediente      = resultExp.url;
   _ctx_.expedienteFolderId = m[1];
   Logger.log('  Expediente creado en: ' + resultExp.url);
@@ -417,6 +508,7 @@ function runTest_E03() {
 //   - El resultado incluye el RFC, link de Drive y nombre_solicitante correctos
 //   - La búsqueda es insensible a mayúsculas/minúsculas
 function runTest_E04() {
+  _activateE2EStaging_();
   Logger.log('');
   Logger.log('── E04: SEAOT → buscarClienteNombre (positivo) ──');
 
@@ -452,6 +544,7 @@ function runTest_E04() {
 //   - NO lanza excepción
 //   - NO devuelve datos de otro cliente
 function runTest_E05() {
+  _activateE2EStaging_();
   Logger.log('');
   Logger.log('── E05: buscarClienteRFC → RFC no encontrado ─────');
 
@@ -474,6 +567,7 @@ function runTest_E05() {
 //   - 2 caracteres → error de validación
 //   - "" (vacío) → error de validación
 function runTest_E06() {
+  _activateE2EStaging_();
   Logger.log('');
   Logger.log('── E06: buscarClienteNombre → validación de entrada ─');
 
@@ -504,6 +598,7 @@ function runTest_E06() {
 //   - El estatus inicial es "NO INICIADO"
 //   - El folio secundario TEST-E2E-002 se guarda correctamente
 function runTest_E07() {
+  _activateE2EStaging_();
   Logger.log('');
   Logger.log('── E07: SEAOT → registrarOT tipo OTB ─────────────');
 
@@ -583,6 +678,7 @@ function runTest_E07() {
 //   - Al marcar como ENTREGADO, la fecha real de entrega se registra automáticamente
 //   - Intentar actualizar un folio inexistente devuelve error sin excepción
 function runTest_E08() {
+  _activateE2EStaging_();
   Logger.log('');
   Logger.log('── E08: SEADB → updateEstatus ENTREGADO ──────────');
 
@@ -625,6 +721,7 @@ function runTest_E08() {
 //   - Una OT con expediente se excluye de Nuevo Expediente
 //   - El estatus externo de ORDENES_TRABAJO (col L) NO se modifica
 function runTest_E09() {
+  _activateE2EStaging_();
   Logger.log('');
   Logger.log('── E09: SEAINF → updateEstatusInforme FINALIZADO ─');
 
@@ -677,74 +774,444 @@ function runTest_E09() {
 }
 
 // =========================================================================
+// HELPERS E2E E10–E17
+// =========================================================================
+function _createPayload_(ot, numInforme, nom, rfc, sucursal, cliente, linkDrive, files) {
+  return {
+    action: 'createExpediente',
+    data: {
+      ot: ot,
+      nom: nom,
+      numInforme: numInforme,
+      cliente: cliente,
+      sucursal: sucursal,
+      rfc: rfc,
+      linkDrive: linkDrive || '',
+      fecha: Utilities.formatDate(new Date(), 'GMT-6', 'dd/MM/yyyy'),
+      entrega: '31/12/2026',
+      tipoOrden: 'OTA',
+      solicitante: 'Prueba Automatizada',
+      telefono: '2220000000',
+      direccion: 'Dirección de staging',
+      responsable: 'Ing. Test',
+      estatus: 'NO INICIADO'
+    },
+    files: files || []
+  };
+}
+
+function _countRowsByOt_(sheet, ot, otIndex) {
+  var values = sheet.getDataRange().getValues();
+  var expected = normalizeOtForSeainf_(ot);
+  var count = 0;
+  for (var i = 1; i < values.length; i++) {
+    if (normalizeOtForSeainf_(values[i][otIndex]) === expected) count++;
+  }
+  return count;
+}
+
+function _folderFileNames_(folder) {
+  var names = [];
+  var files = folder.getFiles();
+  while (files.hasNext()) names.push(files.next().getName());
+  return names;
+}
+
+function _rootChildIds_() {
+  var root = DriveApp.getFolderById(CONFIG.FOLDER_ID);
+  var ids = [];
+  var folders = root.getFolders();
+  while (folders.hasNext()) ids.push(folders.next().getId());
+  return ids.sort();
+}
+
+function _appendOtRow_(ot, cliente, sucursal, rfc, linkDrive, nom) {
+  var sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+  sheet.appendRow([
+    new Date(), ot, 'OTA', nom || 'TEST',
+    cliente, sucursal, rfc, 'Ing. Test',
+    '01/08/2026', '31/12/2026', '',
+    'NO INICIADO', linkDrive || '', 'Fila exclusiva de staging',
+    '', '', ''
+  ]);
+}
+
+function _appendInformeRow_(ot, numInforme, cliente, sucursal, rfc, url) {
+  var sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_INFORMES);
+  sheet.appendRow([
+    new Date(), numInforme, 'OTA', ot, 'TEST', cliente,
+    'Prueba Automatizada', rfc, '2220000000', 'Dirección de staging',
+    '01/08/2026', '31/12/2026', 'NO', 'NO INICIADO',
+    url, 'Ing. Test', sucursal
+  ]);
+}
+
+// =========================================================================
+// E10 — Reintento idempotente con los mismos archivos
+// =========================================================================
+function runTest_E10() {
+  _activateE2EStaging_();
+  Logger.log('');
+  Logger.log('── E10: idempotencia de expediente y archivos ────');
+
+  _check_('E10-1: E03 dejó expediente disponible', !!_ctx_.urlExpediente && !!_ctx_.numInforme);
+  var file = {
+    name: 'idempotencia.pdf',
+    type: 'application/pdf',
+    content: 'QUJD',
+    category: 'ORDEN_TRABAJO'
+  };
+  var payload = _createPayload_(
+    TEST_FOLIO, _ctx_.numInforme, 'NOM035', TEST_RFC, TEST_SUCURSAL,
+    'EMPRESA TEST E2E SA DE CV', _ctx_.linkDriveCliente, [file]
+  );
+
+  var first = fase3_CrearExpediente(payload);
+  var second = fase3_CrearExpediente(payload);
+  _check_('E10-2: primer reintento reutiliza expediente', first.success && first.alreadyExists === true);
+  _eq_('E10-3: primer reintento guarda el archivo faltante', first.acceptedFiles, 1);
+  _check_('E10-4: segundo reintento reutiliza expediente', second.success && second.alreadyExists === true);
+  _eq_('E10-5: mismo archivo se omite por contenido idéntico', second.skippedFiles, 1);
+  _eq_('E10-6: segundo reintento no crea archivo', second.acceptedFiles, 0);
+  _eq_('E10-7: ambos reintentos conservan la misma URL', second.url, first.url);
+
+  var sheetInf = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_INFORMES);
+  _eq_('E10-8: existe una sola fila INFORMES para la OT',
+    _countRowsByOt_(sheetInf, TEST_FOLIO, CI.OT), 1);
+}
+
+// =========================================================================
+// E11 — Mismo nombre y contenido diferente crea versión
+// =========================================================================
+function runTest_E11() {
+  _activateE2EStaging_();
+  Logger.log('');
+  Logger.log('── E11: versionado real por MD5 ──────────────────');
+
+  var first = fase3_AddFilesToExpediente({
+    ot: TEST_FOLIO,
+    expedienteUrl: _ctx_.urlExpediente,
+    files: [{ name: 'foto-versionada.jpg', type: 'image/jpeg', content: 'QUJD', category: 'FOTOS' }]
+  });
+  var second = fase3_AddFilesToExpediente({
+    ot: TEST_FOLIO,
+    expedienteUrl: _ctx_.urlExpediente,
+    files: [{ name: 'foto-versionada.jpg', type: 'image/jpeg', content: 'REVG', category: 'FOTOS' }]
+  });
+
+  _check_('E11-1: primer archivo fue guardado', first.success && first.acceptedFiles === 1);
+  _check_('E11-2: segundo contenido fue versionado', second.success && second.versionedFiles === 1);
+
+  var expediente = DriveApp.getFolderById(_ctx_.expedienteFolderId);
+  var fotos = expediente.getFoldersByName('4. FOTOS').next();
+  var names = _folderFileNames_(fotos);
+  _check_('E11-3: se conserva el archivo original', names.indexOf('foto-versionada.jpg') !== -1);
+  _check_('E11-4: existe foto (v2).jpg', names.indexOf('foto-versionada (v2).jpg') !== -1);
+}
+
+// =========================================================================
+// E12 — URL de otra OT no puede recibir el lote
+// =========================================================================
+function runTest_E12() {
+  _activateE2EStaging_();
+  Logger.log('');
+  Logger.log('── E12: aislamiento OT–expediente ────────────────');
+
+  var cons = getConsecutivoSafe_({ anio: '26', mes: '08', nom: 'NOM036', tipo: 'OTB' });
+  _check_('E12-1: se obtuvo consecutivo para expediente ajeno', cons.success === true);
+  var foreign = fase3_CrearExpediente(_createPayload_(
+    TEST_FOLIO_B, cons.numeroInforme, 'NOM036', TEST_RFC, TEST_SUCURSAL,
+    'EMPRESA TEST E2E SA DE CV', _ctx_.linkDriveCliente, []
+  ));
+  _check_('E12-2: expediente de la segunda OT creado', foreign.success === true);
+  _ctx_.foreignExpedienteFolderId = extractDriveFolderId_(foreign.url);
+  _ctx_.folderIdsToTrash.push(_ctx_.foreignExpedienteFolderId);
+
+  var result = fase3_AddFilesToExpediente({
+    ot: TEST_FOLIO,
+    expedienteUrl: foreign.url,
+    files: [{ name: 'NO-DEBE-GUARDARSE.pdf', type: 'application/pdf', content: 'QUJD', category: 'FOTOS' }]
+  });
+  _check_('E12-3: URL de otra OT es rechazada', result.success === false);
+
+  var foreignFolder = DriveApp.getFolderById(_ctx_.foreignExpedienteFolderId);
+  var foreignFotos = foreignFolder.getFoldersByName('4. FOTOS').next();
+  _check_('E12-4: no se escribió en la carpeta ajena',
+    !foreignFotos.getFilesByName('NO-DEBE-GUARDARSE.pdf').hasNext());
+}
+
+// =========================================================================
+// E13 — Lote parcial conserva los archivos válidos
+// =========================================================================
+function runTest_E13() {
+  _activateE2EStaging_();
+  Logger.log('');
+  Logger.log('── E13: rechazo parcial recuperable ──────────────');
+
+  var result = fase3_AddFilesToExpediente({
+    ot: TEST_FOLIO,
+    expedienteUrl: _ctx_.urlExpediente,
+    files: [
+      { name: 'parcial-a.pdf', type: 'application/pdf', content: 'QUJD', category: 'ORDEN_TRABAJO' },
+      { name: 'parcial-b.heic', type: 'image/heic', content: 'REVG', category: 'FOTOS' },
+      { name: 'parcial-c.txt', type: 'text/plain', content: 'R0hJ', category: 'FOTOS' }
+    ]
+  });
+
+  _check_('E13-1: lote mixto devuelve success=true', result.success === true);
+  _check_('E13-2: respuesta marca partial=true', result.partial === true);
+  _eq_('E13-3: reporta un archivo rechazado', result.rejectedFiles.length, 1);
+  _eq_('E13-4: identifica el archivo rechazado', result.rejectedFiles[0].name, 'parcial-c.txt');
+  _eq_('E13-5: guarda los dos archivos válidos', result.acceptedFiles, 2);
+
+  var expediente = DriveApp.getFolderById(_ctx_.expedienteFolderId);
+  var otFolder = expediente.getFoldersByName('1. ORDEN_TRABAJO').next();
+  var fotos = expediente.getFoldersByName('4. FOTOS').next();
+  _check_('E13-6: PDF válido existe en Drive', otFolder.getFilesByName('parcial-a.pdf').hasNext());
+  _check_('E13-7: HEIC válido existe en Drive', fotos.getFilesByName('parcial-b.heic').hasNext());
+  _check_('E13-8: TXT rechazado no existe en Drive', !fotos.getFilesByName('parcial-c.txt').hasNext());
+}
+
+// =========================================================================
+// E14 — Cliente histórico sin Link Drive se resuelve sin escribir la celda
+// =========================================================================
+function runTest_E14() {
+  _activateE2EStaging_();
+  Logger.log('');
+  Logger.log('── E14: resolución read-only de cliente histórico ─');
+
+  var root = DriveApp.getFolderById(CONFIG.FOLDER_ID);
+  var parent = root.createFolder(TEST_RFC_HIST + ' - CLIENTE HISTORICO E2E');
+  var branch = parent.createFolder(TEST_SUCURSAL_HIST);
+  _ctx_.folderIdsToTrash.push(parent.getId());
+
+  var row = Array(22).fill('');
+  row[CL.FECHA_REGISTRO] = new Date();
+  row[CL.RAZON_SOCIAL] = 'CLIENTE HISTORICO E2E SA DE CV';
+  row[CL.SUCURSAL] = TEST_SUCURSAL_HIST;
+  row[CL.RFC] = TEST_RFC_HIST;
+  row[CL.LINK_DRIVE] = '';
+  var sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_CLIENTES);
+  sheet.appendRow(row);
+  var sheetRow = sheet.getLastRow();
+
+  var result = fase2_ResolverCarpetaCliente_(
+    TEST_RFC_HIST, TEST_SUCURSAL_HIST, 'CLIENTE HISTORICO E2E SA DE CV'
+  );
+  _check_('E14-1: cliente histórico fue encontrado', result.success && result.found);
+  _eq_('E14-2: URL resuelta corresponde a la sucursal exacta',
+    extractDriveFolderId_(result.linkDrive), branch.getId());
+  _eq_('E14-3: LINK_DRIVE permanece vacío',
+    sheet.getRange(sheetRow, CL.LINK_DRIVE + 1).getValue(), '');
+}
+
+// =========================================================================
+// E15 — Sin carpeta exacta no se crea expediente ni fallback en raíz
+// =========================================================================
+function runTest_E15() {
+  _activateE2EStaging_();
+  Logger.log('');
+  Logger.log('── E15: bloqueo seguro sin carpeta ───────────────');
+
+  _appendOtRow_(
+    TEST_FOLIO_MISSING, 'CLIENTE SIN CARPETA E2E', 'Sucursal Inexistente',
+    TEST_RFC_MISSING, '', 'TEST'
+  );
+  var before = JSON.stringify(_rootChildIds_());
+  var result = fase3_CrearExpediente(_createPayload_(
+    TEST_FOLIO_MISSING, 'EA-2608-TEST-9991', 'TEST',
+    TEST_RFC_MISSING, 'Sucursal Inexistente', 'CLIENTE SIN CARPETA E2E', '', []
+  ));
+  var after = JSON.stringify(_rootChildIds_());
+
+  _check_('E15-1: createExpediente bloquea carpeta inexistente', result.success === false);
+  _eq_('E15-2: no cambió la lista de carpetas en la raíz', after, before);
+  var sheetInf = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_INFORMES);
+  _eq_('E15-3: no se creó fila INFORMES',
+    _countRowsByOt_(sheetInf, TEST_FOLIO_MISSING, CI.OT), 0);
+}
+
+// =========================================================================
+// E16 — Registrar OT exige enlace Drive válido
+// =========================================================================
+function runTest_E16() {
+  _activateE2EStaging_();
+  Logger.log('');
+  Logger.log('── E16: OT sin enlace válido ─────────────────────');
+
+  function payload(folio, link) {
+    return {
+      ot_folio: folio,
+      tipo_orden: 'OTA',
+      nom_servicio: 'TEST',
+      cliente_razon_social: 'CLIENTE LINK E2E',
+      sucursal: TEST_SUCURSAL,
+      rfc: TEST_RFC,
+      personal_asignado: 'Ing. Test',
+      fecha_visita: '01/08/2026',
+      fecha_entrega_limite: '31/12/2026',
+      link_drive_cliente: link,
+      observaciones: 'Debe rechazarse'
+    };
+  }
+
+  var empty = fase2_RegistrarOT(payload(TEST_FOLIO_EMPTY, ''));
+  var garbage = fase2_RegistrarOT(payload(TEST_FOLIO_GARBAGE, 'https://example.com/no-drive'));
+  _check_('E16-1: enlace vacío es rechazado', empty.success === false);
+  _check_('E16-2: enlace basura es rechazado', garbage.success === false);
+
+  var sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+  _eq_('E16-3: no se escribió OT con enlace vacío',
+    _countRowsByOt_(sheet, TEST_FOLIO_EMPTY, CO.OT), 0);
+  _eq_('E16-4: no se escribió OT con enlace basura',
+    _countRowsByOt_(sheet, TEST_FOLIO_GARBAGE, CO.OT), 0);
+}
+
+// =========================================================================
+// E17 — Expediente antiguo de cuatro subcarpetas se completa a seis
+// =========================================================================
+function runTest_E17() {
+  _activateE2EStaging_();
+  Logger.log('');
+  Logger.log('── E17: retroajuste de subcarpetas ───────────────');
+
+  var otResult = fase2_RegistrarOT({
+    ot_folio: TEST_FOLIO_LEGACY,
+    tipo_orden: 'OTA',
+    nom_servicio: 'TEST',
+    cliente_razon_social: 'EMPRESA TEST E2E SA DE CV',
+    sucursal: TEST_SUCURSAL,
+    rfc: TEST_RFC,
+    personal_asignado: 'Ing. Test',
+    fecha_visita: '01/08/2026',
+    fecha_entrega_limite: '31/12/2026',
+    link_drive_cliente: _ctx_.linkDriveCliente,
+    observaciones: 'Expediente legado de staging'
+  });
+  _check_('E17-1: OT legado creada', otResult.success === true);
+
+  var clientFolder = DriveApp.getFolderById(_ctx_.clienteFolderId);
+  var legacy = clientFolder.createFolder('02_Expediente_LEGACY_TEST');
+  ['1. ORDEN_TRABAJO', '2. HDC', '3. CROQUIS', '4. FOTOS'].forEach(function(name) {
+    legacy.createFolder(name);
+  });
+  _ctx_.legacyExpedienteFolderId = legacy.getId();
+  _ctx_.folderIdsToTrash.push(legacy.getId());
+  _appendInformeRow_(
+    TEST_FOLIO_LEGACY, 'EA-2608-TEST-9993', 'EMPRESA TEST E2E SA DE CV',
+    TEST_SUCURSAL, TEST_RFC, legacy.getUrl()
+  );
+
+  var result = fase3_AddFilesToExpediente({
+    ot: TEST_FOLIO_LEGACY,
+    expedienteUrl: legacy.getUrl(),
+    files: []
+  });
+  _check_('E17-2: addFiles completa expediente legado', result.success === true);
+
+  var counts = {};
+  var folders = legacy.getFolders();
+  while (folders.hasNext()) {
+    var name = folders.next().getName();
+    counts[name] = (counts[name] || 0) + 1;
+  }
+  Object.keys(CONFIG.FOLDER_STRUCTURE).forEach(function(key) {
+    var expected = CONFIG.FOLDER_STRUCTURE[key];
+    _eq_('E17: existe una sola subcarpeta ' + expected, counts[expected] || 0, 1);
+  });
+}
+
+// =========================================================================
 // LIMPIEZA — elimina todos los datos de prueba
 // =========================================================================
 function _cleanup_() {
-  // 1. Eliminar fila de CLIENTES_MAESTRO
+  _activateE2EStaging_();
+  var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+
+  // 1. Eliminar filas de CLIENTES_MAESTRO para todos los RFC de prueba.
   try {
-    var sheetCli = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_CLIENTES);
-    var rowsCli  = sheetCli.getDataRange().getValues();
+    var sheetCli = ss.getSheetByName(CONFIG.SHEET_CLIENTES);
+    var rowsCli = sheetCli.getDataRange().getValues();
     for (var i = rowsCli.length - 1; i >= 1; i--) {
-      if (String(rowsCli[i][3]).toUpperCase().trim() === TEST_RFC) {
+      var rfc = String(rowsCli[i][CL.RFC] || '').toUpperCase().trim();
+      if (TEST_RFCS_.indexOf(rfc) !== -1) {
         sheetCli.deleteRow(i + 1);
-        Logger.log('  Fila eliminada de CLIENTES_MAESTRO (fila ' + (i + 1) + ')');
+        Logger.log('  Fila CLIENTES eliminada para RFC: ' + rfc);
       }
     }
-  } catch(e) { Logger.log('  ERROR cleanup CLIENTES_MAESTRO: ' + e.message); }
+  } catch (e) { Logger.log('  ERROR cleanup CLIENTES_MAESTRO: ' + e.message); }
 
-  // 2. Eliminar filas de ORDENES_TRABAJO (folio principal y secundario)
+  // 2. Eliminar todas las OTs de prueba.
   try {
-    var sheetOT = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
-    var rowsOT  = sheetOT.getDataRange().getValues();
+    var sheetOT = ss.getSheetByName(CONFIG.SHEET_OT);
+    var rowsOT = sheetOT.getDataRange().getValues();
     for (var j = rowsOT.length - 1; j >= 1; j--) {
-      var folio = String(rowsOT[j][1]).trim();
-      if (folio === TEST_FOLIO || folio === TEST_FOLIO_B) {
+      var folio = String(rowsOT[j][CO.OT] || '').trim();
+      if (TEST_FOLIOS_.indexOf(folio) !== -1) {
         sheetOT.deleteRow(j + 1);
-        Logger.log('  Fila eliminada de ORDENES_TRABAJO: ' + folio + ' (fila ' + (j + 1) + ')');
+        Logger.log('  Fila ORDENES eliminada: ' + folio);
       }
     }
-  } catch(e) { Logger.log('  ERROR cleanup ORDENES_TRABAJO: ' + e.message); }
+  } catch (e) { Logger.log('  ERROR cleanup ORDENES_TRABAJO: ' + e.message); }
 
-  // 3. Eliminar filas de INFORMES del folio de prueba
+  // 3. Eliminar todas las filas INFORMES de ambas OTs y casos auxiliares.
   try {
-    var sheetInf = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_INFORMES);
+    var sheetInf = ss.getSheetByName(CONFIG.SHEET_INFORMES);
     var rowsInf = sheetInf.getDataRange().getValues();
     for (var k = rowsInf.length - 1; k >= 1; k--) {
-      if (normalizeOtForSeainf_(rowsInf[k][CI.OT]) === normalizeOtForSeainf_(TEST_FOLIO)) {
+      var otInf = String(rowsInf[k][CI.OT] || '').trim();
+      if (TEST_FOLIOS_.indexOf(otInf) !== -1) {
         sheetInf.deleteRow(k + 1);
-        Logger.log('  Fila eliminada de INFORMES para: ' + TEST_FOLIO);
+        Logger.log('  Fila INFORMES eliminada: ' + otInf);
       }
     }
-  } catch(e) { Logger.log('  ERROR cleanup INFORMES: ' + e.message); }
+  } catch (e) { Logger.log('  ERROR cleanup INFORMES: ' + e.message); }
 
-  // 4. Mover a papelera la carpeta del expediente
-  if (_ctx_.expedienteFolderId) {
-    try {
-      DriveApp.getFolderById(_ctx_.expedienteFolderId).setTrashed(true);
-      Logger.log('  Carpeta expediente movida a papelera');
-    } catch(e) { Logger.log('  ERROR cleanup expediente: ' + e.message); }
-  }
-
-  // 5. Mover a papelera la carpeta sucursal del cliente
-  if (_ctx_.clienteFolderId) {
-    try {
-      DriveApp.getFolderById(_ctx_.clienteFolderId).setTrashed(true);
-      Logger.log('  Carpeta sucursal del cliente movida a papelera');
-    } catch(e) { Logger.log('  ERROR cleanup carpeta cliente: ' + e.message); }
-  }
-
-  // 6. Mover a papelera la carpeta padre RFC - EMPRESA TEST
+  // 4. Eliminar trazas de auditoría de las OTs de prueba.
   try {
-    var folderRaiz = DriveApp.getFolderById(CONFIG.FOLDER_ID);
-    var iter = folderRaiz.getFolders();
-    while (iter.hasNext()) {
-      var f = iter.next();
-      if (f.getName().indexOf(TEST_RFC) !== -1) {
-        f.setTrashed(true);
-        Logger.log('  Carpeta padre "' + f.getName() + '" movida a papelera');
+    var audit = ss.getSheetByName(CONFIG.SHEET_AUDITORIA);
+    if (audit) {
+      var auditRows = audit.getDataRange().getValues();
+      for (var a = auditRows.length - 1; a >= 1; a--) {
+        if (TEST_FOLIOS_.indexOf(String(auditRows[a][3] || '').trim()) !== -1) {
+          audit.deleteRow(a + 1);
+        }
       }
     }
-  } catch(e) { Logger.log('  ERROR cleanup carpeta raíz: ' + e.message); }
+  } catch (e) { Logger.log('  ERROR cleanup AUDITORIA: ' + e.message); }
+
+  // 5. Enviar a papelera carpetas conocidas, incluida 01_Cliente.
+  var ids = [
+    _ctx_.perfilFolderId,
+    _ctx_.expedienteFolderId,
+    _ctx_.foreignExpedienteFolderId,
+    _ctx_.legacyExpedienteFolderId,
+    _ctx_.clienteFolderId
+  ].concat(_ctx_.folderIdsToTrash || []);
+  var seen = {};
+  ids.forEach(function(id) {
+    if (!id || seen[id]) return;
+    seen[id] = true;
+    try {
+      DriveApp.getFolderById(id).setTrashed(true);
+      Logger.log('  Carpeta de staging enviada a papelera: ' + id);
+    } catch (e) { Logger.log('  ERROR cleanup carpeta ' + id + ': ' + e.message); }
+  });
+
+  // 6. Defensa final: eliminar padres RFC de prueba que hayan sobrevivido.
+  try {
+    var root = DriveApp.getFolderById(CONFIG.FOLDER_ID);
+    TEST_RFCS_.forEach(function(testRfc) {
+      var parents = root.searchFolders(buildClientParentFolderQuery_(testRfc, 'CLIENTE HISTORICO E2E SA DE CV'));
+      while (parents.hasNext()) {
+        var parent = parents.next();
+        if (isParentFolderForRfc_(parent.getName(), testRfc)) {
+          parent.setTrashed(true);
+          Logger.log('  Carpeta padre de staging enviada a papelera: ' + parent.getName());
+        }
+      }
+    });
+  } catch (e) { Logger.log('  ERROR cleanup carpeta raíz: ' + e.message); }
 }
 
 // =========================================================================
@@ -902,6 +1369,70 @@ function runUnitTests() {
   _check_('U55: MP4 permitido', validarArchivo_('QUJD', 'video/mp4', 'evidencia.mp4').valid);
   _check_('U56: extensión ejecutable rechazada aunque declare PDF',
     !validarArchivo_('QUJD', 'application/pdf', 'archivo.exe').valid);
+
+  // ── Lotes parciales: un archivo inválido no descarta los válidos ─────────
+  var mixto = validateDriveFiles_([
+    { name: 'ot.pdf',    type: 'application/pdf', content: 'QUJD' },
+    { name: 'foto.heic', type: 'image/heic',      content: 'QUJD' },
+    { name: 'nota.txt',  type: 'text/plain',      content: 'QUJD' }
+  ]);
+  _eq_('U57: lote mixto conserva los válidos', mixto.valid.length, 2);
+  _eq_('U58: lote mixto reporta el rechazado', mixto.rejected.length, 1);
+  _eq_('U59: el rechazo identifica el archivo', mixto.rejected[0].name, 'nota.txt');
+
+  // ── Versionado de nombres con stub de Folder ─────────────────────────────
+  var folderStub = {
+    getFilesByName: function(name) {
+      return { hasNext: function() { return name.indexOf('(v2)') !== -1; } };
+    }
+  };
+  _eq_('U60: salta a (v3) si (v2) ya existe',
+    versionedFileName_(folderStub, 'foto.jpg'), 'foto (v3).jpg');
+
+  // ── Casos límite de nombres de archivo ───────────────────────────────────
+  _eq_('U61: conserva doble extensión', sanitizeDriveFileName_('archivo.tar.gz'), 'archivo.tar.gz');
+  _check_('U62: extensión inválida no deja punto final',
+    !/[.]$/.test(sanitizeDriveFileName_('raro.%%%')));
+  var longPdf = sanitizeDriveFileName_(Array(201).join('x') + '.pdf');
+  _check_('U63: nombre largo no supera 180 caracteres y conserva .pdf',
+    longPdf.length <= 180 && /[.]pdf$/i.test(longPdf));
+  _eq_('U64: conserva nombre sin extensión',
+    sanitizeDriveFileName_('sin_extension'), 'sin_extension');
+
+  // ── Identidad de carpetas y normalización simétrica ──────────────────────
+  _check_('U65: RFC de 12 no coincide con carpeta de RFC de 13',
+    !isParentFolderForRfc_('ABC010101AB1X - OTRA', 'ABC010101AB1'));
+  var parentDone = false;
+  var branchStub = {
+    getName: function() { return 'Planta Norte - Puebla'; },
+    getParents: function() {
+      return {
+        hasNext: function() { return !parentDone; },
+        next: function() {
+          parentDone = true;
+          return { getName: function() { return 'ABC010101AB1 - EMPRESA'; } };
+        }
+      };
+    }
+  };
+  _check_('U66: sucursal normalizada acepta guion en Drive y diagonal en hoja',
+    folderMatchesClientBranch_(branchStub, 'ABC010101AB1', 'Planta Norte / Puebla', 'EMPRESA'));
+
+  // ── Consulta acotada a la raíz ───────────────────────────────────────────
+  _eq_('U67: RFC real usa búsqueda por prefijo',
+    buildClientParentFolderQuery_('ABC010101AB1', 'EMPRESA'),
+    "title contains 'ABC010101AB1' and trashed = false");
+  _eq_('U68: SIN_RFC usa nombre exacto de empresa',
+    buildClientParentFolderQuery_('SIN_RFC', 'EMPRESA SA DE CV'),
+    "title = 'SIN_RFC - EMPRESA' and trashed = false");
+  _eq_('U69: valores de consulta escapan barra y apóstrofe',
+    escapeDriveQueryValue_("A\\B'C"), "A\\\\B\\'C");
+
+  // ── El arnés E2E falla cerrado ante IDs productivos ──────────────────────
+  _check_('U70: staging rechaza el Spreadsheet productivo',
+    _isUnsafeE2ETarget_(CONFIG.SPREADSHEET_ID, 'folder-staging') === true);
+  _check_('U71: IDs distintos de producción son elegibles para staging',
+    _isUnsafeE2ETarget_('sheet-staging', 'folder-staging') === false);
 
   var pass = _results_.filter(function(r){ return r.indexOf('PASS') === 0; }).length;
   var fail = _results_.filter(function(r){ return r.indexOf('FAIL') === 0; }).length;
