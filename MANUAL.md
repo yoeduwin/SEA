@@ -269,7 +269,9 @@ El backend exige una coincidencia exacta de **RFC + sucursal**:
 2. **ORDENES_TRABAJO, columna M** — se acepta únicamente si el nombre de la carpeta y su padre coinciden con la sucursal y el RFC.
 3. **Ruta exacta en Drive** — búsqueda por padre con prefijo RFC y nombre exacto de sucursal.
 
-Si ninguna ruta coincide, la operación se detiene sin crear carpetas. El sistema nunca elige otra sucursal ni utiliza la carpeta raíz como fallback.
+Si ninguna ruta coincide, la operación se detiene sin crear carpetas. El sistema nunca elige otra sucursal ni utiliza la carpeta raíz como fallback. La comparación de nombres aplica la misma normalización segura usada al crear las carpetas, para tolerar caracteres que Drive haya sanitizado.
+
+Para clientes con el centinela `SIN_RFC`, la carpeta padre solo se reutiliza cuando también coincide exactamente la razón social; `SIN_RFC` nunca se considera una identidad compartida entre empresas. Cuando una fila histórica no tiene enlace, SEAOT puede resolver la ruta exacta RFC + sucursal en modo de solo lectura, sin escribir ni completar celdas en el Spreadsheet.
 
 ---
 
@@ -365,7 +367,7 @@ Si ninguna ruta coincide, la operación se detiene sin crear carpetas. El sistem
 
 ### 4.2 Hoja ORDENES_TRABAJO
 
-> **Contrato inmutable:** el sistema usa exactamente las columnas A–N existentes. El código no agrega, elimina, renombra ni reordena columnas y no migra información histórica.
+> **Contrato inmutable:** el sistema usa exactamente las columnas A–Q existentes. El código no agrega, elimina, renombra ni reordena columnas y no migra información histórica. Las validaciones de código solamente comprueban que esa estructura ya exista.
 
 | # Col | Índice | Campo | Descripción |
 |---|---|---|---|
@@ -383,8 +385,11 @@ Si ninguna ruta coincide, la operación se detiene sin crear carpetas. El sistem
 | 12 | 11 | Estatus Externo | Estado visible en SEADB |
 | 13 | **12** | **Link Drive** | **URL de la carpeta de la sucursal** |
 | 14 | 13 | Observaciones | Notas adicionales |
+| 15 | 14 | Fecha Pausa | Fecha en que se pausó la OT |
+| 16 | 15 | Motivo Pausa | Motivo registrado para la pausa |
+| 17 | 16 | Fecha Info Completa | Fecha de recepción de la información completa |
 
-Los datos propios del expediente —número de informe, estatus interno y enlace del expediente— se almacenan en la hoja **INFORMES**, sin modificar la estructura de ORDENES_TRABAJO.
+Los datos propios del expediente —número de informe, estatus interno y enlace del expediente— se almacenan en la hoja **INFORMES**, sin modificar la estructura A–Q de ORDENES_TRABAJO.
 
 ### 4.3 Hoja USUARIOS_AUTORIZADOS
 
@@ -607,14 +612,22 @@ Crea de forma idempotente la carpeta del expediente en Drive y registra el exped
 
 **Respuesta:**
 ```javascript
-{ success: true, url: 'https://drive.google.com/drive/folders/...' }
+{
+  success: true,
+  url: 'https://drive.google.com/drive/folders/...',
+  alreadyExists: false,
+  uploadedFiles: 3,
+  rejectedFiles: [] // puede contener archivos rechazados si los demás sí se guardaron
+}
 ```
+
+La operación es idempotente por OT. Si el expediente ya existe, el backend reutiliza la carpeta registrada y carga únicamente los archivos recibidos que aún falten. Los archivos válidos no se pierden porque otro archivo sea rechazado; la interfaz muestra la advertencia y conserva el formulario para reemplazar los rechazados y reintentar sobre el mismo expediente.
 
 ---
 
 #### `fase3_AddFilesToExpediente(payload)`
 
-Agrega archivos a un expediente existente.
+Agrega archivos a un expediente existente. La carpeta autorizada siempre se obtiene del registro de la OT en **INFORMES**. Si el cliente envía `expedienteUrl`, su ID debe coincidir con ese registro; una URL de otro expediente se rechaza antes de escribir en Drive.
 
 **Payload:**
 ```javascript
@@ -658,6 +671,7 @@ Estas funciones son invocadas desde `doPost()` después de validar autenticació
 | `buscarClienteRFC` | EITHER | SEAOT / PAIC |
 | `buscarClienteNombre` | EITHER | SEAOT / PAIC |
 | `registrarOT` | GOOGLE | SEAOT |
+| `resolverCarpetaCliente` | GOOGLE | SEAOT |
 | `getOrdenes` | GOOGLE | SEAINF |
 | `getConsecutivo` | GOOGLE | SEAINF |
 | `createExpediente` | GOOGLE | SEAINF |
@@ -685,9 +699,12 @@ Estas funciones son invocadas desde `doPost()` después de validar autenticació
 ### 7.4 Validación de archivos
 
 El backend valida todos los archivos subidos antes de guardarlos en Drive:
-- Tipos permitidos: PDF, JPG, JPEG, PNG, XLSX, XLS, DOC, DOCX
-- Tamaño máximo: 10 MB por archivo
-- Nombres sanitizados con `sanitizeFileName()` (sin caracteres especiales, máx. 50 chars)
+
+- Tipos permitidos: PDF, JPG/JPEG, PNG, HEIC/HEIF, XLS/XLSX, DOC/DOCX, ZIP/RAR, DWG/DXF y MP4/MOV.
+- Tamaño máximo: 50 MB por archivo.
+- Los nombres se sanitizan conservando la extensión y los guiones, con un máximo de 180 caracteres.
+- Si un nombre ya existe con contenido distinto, se crea una versión `(v2)`, `(v3)`, etc.; los reintentos idénticos no duplican el archivo.
+- Cuando un envío mezcla archivos válidos y rechazados, se guardan los válidos y la respuesta enumera los rechazados. SEAINF muestra la advertencia y conserva el formulario para completar el mismo expediente.
 
 ---
 
