@@ -499,7 +499,37 @@
   function showStatus(elementId, message, type = 'success') {
     const el = document.getElementById(elementId); if (!el) return;
     el.innerHTML = `<span class="status-message status-${type}">${message}</span>`;
-    setTimeout(() => { el.innerHTML = ''; }, 3000);
+    setTimeout(() => { el.innerHTML = ''; }, 5000);
+  }
+
+  function normalizeBranchKey(value) {
+    return String(value || 'Matriz')
+      .replace(/[^a-z0-9áéíóúñü ]/gi, '_')
+      .substring(0, 50)
+      .toLowerCase();
+  }
+
+  async function resolveDriveLinkForCurrentProfile_() {
+    const rfc = (document.getElementById('rfc')?.value || '').trim().toUpperCase();
+    const branch = (document.getElementById('branch')?.value || '').trim() || 'Matriz';
+    if (!rfc) return '';
+
+    try {
+      const response = await SEAAuth.wrapFetch(
+        `${SHEETS_SCRIPT_URL}?action=buscarClienteRFC&rfc=${encodeURIComponent(rfc)}`
+      );
+      const result = await response.json();
+      if (!result.found || !Array.isArray(result.sucursales)) return '';
+      const expectedBranch = normalizeBranchKey(branch);
+      const exact = result.sucursales.find(item =>
+        normalizeBranchKey(item.sucursal || 'Matriz') === expectedBranch &&
+        String(item.rfc || '').trim().toUpperCase() === rfc
+      );
+      return exact && exact.link_drive_cliente ? exact.link_drive_cliente : '';
+    } catch (error) {
+      console.error('No se pudo validar la carpeta exacta del cliente:', error);
+      return '';
+    }
   }
   function showSyncIndicator() {
     const el = document.getElementById('syncIndicator');
@@ -536,14 +566,19 @@
     const input = document.getElementById('profileFile'); const file = input?.files[0];
     if (!file) { showStatus('profileStatus','Selecciona un archivo Excel','warning'); return; }
     const reader = new FileReader();
-    reader.onload = e => {
+    reader.onload = async e => {
       try {
         const data = new Uint8Array(e.target.result); const wb = XLSX.read(data, {type:'array'}); const ws = wb.Sheets[wb.SheetNames[0]];
         Object.keys(excelCellMapping).forEach(id => {
           const el = document.getElementById(id); if (el) el.value = String(getCellValue(ws, excelCellMapping[id]));
         });
-        profileData.link_drive_cliente = ''; // Manual excel = no drive link
-        syncData(); showStatus('profileStatus','Perfil cargado exitosamente','success');
+        syncData();
+        profileData.link_drive_cliente = await resolveDriveLinkForCurrentProfile_();
+        if (profileData.link_drive_cliente) {
+          showStatus('profileStatus','Perfil cargado y carpeta exacta de la sucursal validada','success');
+        } else {
+          showStatus('profileStatus','Perfil cargado, pero el cliente/sucursal debe registrarse primero en SEAPD','warning');
+        }
       } catch(err) { showStatus('profileStatus','Error al leer archivo Excel','error'); }
     };
     reader.readAsArrayBuffer(file);
@@ -769,6 +804,15 @@ Tel: 222-941-7295`;
 
       if (!orderNumber) { showStatus('workorderStatus','Falta el N° de Orden de Trabajo','error'); return; }
       if (!company) { showStatus('workorderStatus','Falta el nombre del cliente. Cargue el perfil primero.','error'); return; }
+
+      // Resolver siempre el enlace exacto RFC+sucursal en el momento de registrar.
+      // Nunca reutilizar un enlace conservado de otro cliente o de otra sucursal.
+      const exactDriveLink = await resolveDriveLinkForCurrentProfile_();
+      if (!exactDriveLink) {
+        showStatus('workorderStatus','No existe una carpeta exacta para este RFC y sucursal. Registra primero el cliente en SEAPD.','error');
+        return;
+      }
+      profileData.link_drive_cliente = exactDriveLink;
 
       const services = [], personnel = [], dates = [];
       document.querySelectorAll('#workTableBody tr').forEach(row => {
