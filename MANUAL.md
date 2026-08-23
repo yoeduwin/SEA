@@ -253,20 +253,23 @@ EA-AAMM-NOMXXX-0000
 /Carpeta_Cliente_(RFC)/
   /Sucursal/
     /02_Expediente_0042_OT-001_NOM035/
-      /1. ORDEN_TRABAJO/   ← OT, contratos
-      /2. HDC/             ← Hojas de Campo
-      /3. CROQUIS/         ← Planos y croquis
-      /4. FOTOS/           ← Fotografías de campo
+      /1. ORDEN_TRABAJO/       ← OT, contratos
+      /2. HDC/                  ← Hojas de Campo
+      /3. CROQUIS/              ← Planos y croquis
+      /4. FOTOS/                ← Fotografías de campo
+      /5. INFORMES Y MEMORIAS/  ← Informes y memorias técnicas
+      /6. INFORME PRELIMINAR/   ← Versiones preliminares
 ```
 
 #### Cadena de búsqueda de carpeta del cliente
 
-El backend usa 4 niveles de fallback para siempre encontrar la carpeta correcta:
+El backend exige una coincidencia exacta de **RFC + sucursal**:
 
-1. **Columna 14 de ORDENES_TRABAJO** — link guardado al crear la OT (más confiable)
-2. **Payload del frontend** — link enviado por SEAINF al cargar
-3. **Búsqueda en CLIENTES_MAESTRO** por RFC + sucursal
-4. **Carpeta raíz** (último recurso, genera advertencia en log)
+1. **CLIENTES_MAESTRO** — enlace exacto del RFC y la sucursal.
+2. **ORDENES_TRABAJO, columna M** — se acepta únicamente si el nombre de la carpeta y su padre coinciden con la sucursal y el RFC.
+3. **Ruta exacta en Drive** — búsqueda por padre con prefijo RFC y nombre exacto de sucursal.
+
+Si ninguna ruta coincide, la operación se detiene sin crear carpetas. El sistema nunca elige otra sucursal ni utiliza la carpeta raíz como fallback.
 
 ---
 
@@ -362,24 +365,26 @@ El backend usa 4 niveles de fallback para siempre encontrar la carpeta correcta:
 
 ### 4.2 Hoja ORDENES_TRABAJO
 
+> **Contrato inmutable:** el sistema usa exactamente las columnas A–N existentes. El código no agrega, elimina, renombra ni reordena columnas y no migra información histórica.
+
 | # Col | Índice | Campo | Descripción |
 |---|---|---|---|
 | 1 | 0 | Fecha | Fecha de creación de la OT |
 | 2 | 1 | OT (Folio) | Identificador único |
 | 3 | 2 | Tipo | OTA / OTB |
-| 4 | 3 | Núm. Informe | Consecutivo EA-AAMM-NOM-0000 |
-| 5 | 4 | Servicio NOM | Norma aplicada |
-| 6 | 5 | Cliente | Razón social |
-| 7 | 6 | Sucursal | Planta o sucursal |
-| 8 | 7 | RFC | RFC del cliente |
-| 9 | 8 | Personal Asignado | Técnico responsable |
-| 10 | 9 | Fecha Visita | Fecha de visita de campo |
-| 11 | 10 | Fecha Entrega Límite | Fecha máxima de entrega |
-| 12 | 11 | Fecha Real Entrega | Fecha real de entrega |
-| 13 | 12 | Estatus Externo | Estado visible al cliente (SEADB) |
-| 14 | **13** | **Link Drive** | **URL del expediente en Drive** |
-| 15 | 14 | Observaciones | Notas adicionales |
-| 16 | 15 | Estatus Informe | Estado interno del departamento |
+| 4 | 3 | Servicio NOM | Norma aplicada |
+| 5 | 4 | Cliente | Razón social |
+| 6 | 5 | Sucursal | Planta o sucursal |
+| 7 | 6 | RFC | RFC del cliente |
+| 8 | 7 | Personal Asignado | Técnico responsable |
+| 9 | 8 | Fecha Visita | Fecha de visita de campo |
+| 10 | 9 | Fecha Entrega Límite | Fecha máxima de entrega |
+| 11 | 10 | Fecha Real Entrega | Fecha real de entrega |
+| 12 | 11 | Estatus Externo | Estado visible en SEADB |
+| 13 | **12** | **Link Drive** | **URL de la carpeta de la sucursal** |
+| 14 | 13 | Observaciones | Notas adicionales |
+
+Los datos propios del expediente —número de informe, estatus interno y enlace del expediente— se almacenan en la hoja **INFORMES**, sin modificar la estructura de ORDENES_TRABAJO.
 
 ### 4.3 Hoja USUARIOS_AUTORIZADOS
 
@@ -415,6 +420,8 @@ Registro automático de todos los cambios de estatus. Se crea automáticamente a
         /2. HDC/
         /3. CROQUIS/
         /4. FOTOS/
+        /5. INFORMES Y MEMORIAS/
+        /6. INFORME PRELIMINAR/
     /Planta Norte/
       /02_Expediente_0002_.../
 ```
@@ -564,7 +571,7 @@ Crea una nueva Orden de Trabajo en ORDENES_TRABAJO.
 
 #### `fase3_CrearExpediente(payload)`
 
-Crea la carpeta del expediente en Drive y actualiza la OT.
+Crea de forma idempotente la carpeta del expediente en Drive y registra el expediente en **INFORMES**. No altera la estructura de ORDENES_TRABAJO.
 
 **Payload:**
 ```javascript
@@ -592,7 +599,7 @@ Crea la carpeta del expediente en Drive y actualiza la OT.
       content: '<base64>',   // contenido en Base64
       type: 'application/pdf',
       name: 'orden_trabajo.pdf',
-      category: 'ORDEN_TRABAJO'  // 'ORDEN_TRABAJO'|'HOJAS_CAMPO'|'CROQUIS'|'FOTOS'
+      category: 'ORDEN_TRABAJO'  // ORDEN_TRABAJO|HOJAS_CAMPO|CROQUIS|FOTOS|INFORMES_MEMORIA|INF_PRELIMINAR|PERFIL_DATOS
     }
   ]
 }
@@ -613,6 +620,7 @@ Agrega archivos a un expediente existente.
 ```javascript
 {
   ot: 'EA-2026-001',
+  expedienteUrl: 'https://drive.google.com/drive/folders/...',
   files: [ /* igual que en createExpediente */ ]
 }
 ```
@@ -906,14 +914,15 @@ Cada línea `[FAIL]` incluye el valor esperado y el valor obtenido para facilita
 
 ## 12. Solución de Problemas
 
-### Error: "Carpeta creada en raíz en vez de en la carpeta del cliente"
+### Error: "No se encontró una carpeta exacta para el RFC y la sucursal"
 
-**Causa:** La OT no tiene el link de Drive del cliente en la columna 14 de ORDENES_TRABAJO.
+**Causa:** El cliente/sucursal no está registrado en SEAPD, el enlace de Drive no es accesible o no coincide exactamente con el RFC y la sucursal de la OT.
 
 **Solución:**
-1. Verificar que al registrar la OT en SEAOT se buscó el cliente por RFC antes de enviar el formulario
-2. Si la OT ya existe, editar manualmente la columna 14 con la URL correcta de Drive
-3. En el log de GAS buscar: `ADVERTENCIA: Expediente creado en carpeta raíz`
+1. Verificar en SEAPD que exista el RFC con la sucursal correcta.
+2. Volver a seleccionar el cliente en SEAOT para validar su carpeta exacta.
+3. No editar, insertar ni reordenar columnas manualmente en el Excel productivo.
+4. El backend detiene la operación; no crea expedientes en otra sucursal ni en la raíz.
 
 ---
 
