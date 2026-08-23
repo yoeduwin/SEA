@@ -367,11 +367,11 @@
               </div>
               <div class="ea-form-group">
                 <label class="ea-label">3. Croquis</label>
-                <div class="ea-file-zone"><input type="file" id="up-croquis" multiple accept=".pdf,.jpg,.jpeg,.png,.dwg"></div>
+                <div class="ea-file-zone"><input type="file" id="up-croquis" multiple accept=".pdf,.jpg,.jpeg,.png,.dwg,.dxf"></div>
               </div>
               <div class="ea-form-group">
                 <label class="ea-label">4. Fotos</label>
-                <div class="ea-file-zone"><input type="file" id="up-fotos" multiple accept=".pdf,.jpg,.jpeg,.png,.zip"></div>
+                <div class="ea-file-zone"><input type="file" id="up-fotos" multiple accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.zip,.rar,.mp4,.mov"></div>
               </div>
               <div class="ea-form-group">
                 <label class="ea-label">5. Informes y memorias</label>
@@ -762,6 +762,14 @@
       rd.readAsDataURL(file);
     });
 
+    let createdExpedienteUrl = '';
+    const uploadWarnings = [];
+    const collectWarnings = result => {
+      (result.rejectedFiles || []).forEach(file => {
+        uploadWarnings.push((file.name || 'archivo') + ': ' + (file.error || 'rechazado'));
+      });
+    };
+
     try {
       const otData = ordenesMap[ot] || {};
       const basePayload = {
@@ -793,7 +801,12 @@
         for (const item of priority) basePayload.files.push(await fileToB64(item.file, item.category));
         const mainResp = await SEAAuth.wrapFetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(basePayload) });
         const mainResult = await mainResp.json();
-        if (!mainResult.success) throw new Error(mainResult.error || 'Error al crear expediente');
+        if (!mainResult.success) {
+          const rejected = (mainResult.rejectedFiles || []).map(f => f.name + ': ' + f.error).join('\n');
+          throw new Error((mainResult.error || 'Error al crear expediente') + (rejected ? '\n' + rejected : ''));
+        }
+        createdExpedienteUrl = mainResult.url || '';
+        collectWarnings(mainResult);
         await new Promise(r => setTimeout(r, 3000));
         let currentBatch = [], currentSize = 0, batches = [];
         for (const item of others) {
@@ -802,39 +815,61 @@
         }
         if (currentBatch.length > 0) batches.push(currentBatch);
         for (let b of batches) {
-          const batchPayload = { action: 'addFilesToExpediente', ot: ot, files: [] };
+          const batchPayload = {
+            action: 'addFilesToExpediente',
+            ot: ot,
+            expedienteUrl: createdExpedienteUrl,
+            files: []
+          };
           for (const item of b) batchPayload.files.push(await fileToB64(item.file, item.category));
           const batchResp = await SEAAuth.wrapFetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(batchPayload) });
           const batchResult = await batchResp.json();
-          if (!batchResult.success) console.warn('Error en lote de archivos:', batchResult.error);
+          if (!batchResult.success) {
+            const rejected = (batchResult.rejectedFiles || []).map(f => f.name + ': ' + f.error).join('\n');
+            throw new Error((batchResult.error || 'Error en lote de archivos') + (rejected ? '\n' + rejected : ''));
+          }
+          collectWarnings(batchResult);
           await new Promise(r => setTimeout(r, 2000));
         }
       } else {
         for (const item of allFiles) basePayload.files.push(await fileToB64(item.file, item.category));
         const resp = await SEAAuth.wrapFetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(basePayload) });
         const result = await resp.json();
-        if (!result.success) throw new Error(result.error || 'Error al crear expediente');
+        if (!result.success) {
+          const rejected = (result.rejectedFiles || []).map(f => f.name + ': ' + f.error).join('\n');
+          throw new Error((result.error || 'Error al crear expediente') + (rejected ? '\n' + rejected : ''));
+        }
+        createdExpedienteUrl = result.url || '';
+        collectWarnings(result);
       }
       clearInterval(timerInterval);
       document.getElementById('progress-bar').style.width = '100%';
       setTimeout(() => {
         document.getElementById('main-loader').style.display = 'none';
-        mostrarSuccessOverlay();
-        cargarTablero(); limpiarFormulario();
+        mostrarSuccessOverlay(createdExpedienteUrl, uploadWarnings);
+        cargarTablero();
+        // Si hubo rechazos, conservar el formulario para que el operador pueda
+        // reemplazar esos archivos y reenviar; el backend completará el mismo expediente.
+        if (uploadWarnings.length === 0) limpiarFormulario();
         btn.disabled = false;
       }, 800);
     } catch (err) {
       clearInterval(timerInterval);
       document.getElementById('main-loader').style.display = 'none';
-      alert(`❌ Error: ${err.message}`); btn.disabled = false;
+      const recovery = createdExpedienteUrl
+        ? '\n\nEl expediente parcial permanece disponible. Corrige el archivo o la conexión y presiona nuevamente Enviar para completarlo:\n' + createdExpedienteUrl
+        : '';
+      alert(`❌ Error: ${err.message}${recovery}`); btn.disabled = false;
     }
   }
 
-  function mostrarSuccessOverlay(driveUrl) {
+  function mostrarSuccessOverlay(driveUrl, warnings = []) {
     const overlay = document.getElementById('success-overlay');
     const msg = document.getElementById('success-message');
     const link = document.getElementById('success-link');
-    msg.textContent = 'El expediente fue creado y la carpeta está lista en Google Drive.';
+    msg.textContent = warnings.length
+      ? 'El expediente fue creado con archivos pendientes. Reemplaza los archivos indicados y vuelve a enviar: ' + warnings.join(' | ')
+      : 'El expediente fue creado y la carpeta está lista en Google Drive.';
     if (driveUrl) {
       link.href = driveUrl;
       link.style.display = 'inline';
@@ -1530,16 +1565,20 @@ async function cambiarDatoRapido(ot, campo, valor) {
 
     const originalLimpiarFormulario = window.limpiarFormulario;
     window.limpiarFormulario = function() {
-      const sectionNuevo = document.getElementById('section-nuevo');
-      if (sectionNuevo) {
-        sectionNuevo.querySelectorAll('input:not([type="hidden"])').forEach(i => i.value = '');
-        sectionNuevo.querySelectorAll('select').forEach(s => s.selectedIndex = 0);
-        const infoBox = document.getElementById('ot-autofill-box');
-        if (infoBox) infoBox.style.display = 'none';
-        if (typeof window.validarProgreso === 'function') window.validarProgreso();
-      } else if (typeof originalLimpiarFormulario === 'function') {
+      if (typeof originalLimpiarFormulario === 'function') {
         originalLimpiarFormulario.apply(this, arguments);
+      } else {
+        const sectionNuevo = document.getElementById('section-nuevo');
+        if (sectionNuevo) {
+          sectionNuevo.querySelectorAll('input:not([type="hidden"])').forEach(i => i.value = '');
+          sectionNuevo.querySelectorAll('select').forEach(s => s.selectedIndex = 0);
+        }
       }
+      // Regla de aislamiento: nunca conservar el Excel del expediente anterior.
+      perfilDataFile = null;
+      const infoBox = document.getElementById('ot-autofill-box');
+      if (infoBox) infoBox.style.display = 'none';
+      if (typeof window.validarProgreso === 'function') window.validarProgreso();
     };
 
     const originalValidarProgreso = window.validarProgreso;

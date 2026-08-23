@@ -253,20 +253,25 @@ EA-AAMM-NOMXXX-0000
 /Carpeta_Cliente_(RFC)/
   /Sucursal/
     /02_Expediente_0042_OT-001_NOM035/
-      /1. ORDEN_TRABAJO/   ← OT, contratos
-      /2. HDC/             ← Hojas de Campo
-      /3. CROQUIS/         ← Planos y croquis
-      /4. FOTOS/           ← Fotografías de campo
+      /1. ORDEN_TRABAJO/       ← OT, contratos
+      /2. HDC/                  ← Hojas de Campo
+      /3. CROQUIS/              ← Planos y croquis
+      /4. FOTOS/                ← Fotografías de campo
+      /5. INFORMES Y MEMORIAS/  ← Informes y memorias técnicas
+      /6. INFORME PRELIMINAR/   ← Versiones preliminares
 ```
 
 #### Cadena de búsqueda de carpeta del cliente
 
-El backend usa 4 niveles de fallback para siempre encontrar la carpeta correcta:
+El backend exige una coincidencia exacta de **RFC + sucursal**:
 
-1. **Columna 14 de ORDENES_TRABAJO** — link guardado al crear la OT (más confiable)
-2. **Payload del frontend** — link enviado por SEAINF al cargar
-3. **Búsqueda en CLIENTES_MAESTRO** por RFC + sucursal
-4. **Carpeta raíz** (último recurso, genera advertencia en log)
+1. **CLIENTES_MAESTRO** — enlace exacto del RFC y la sucursal.
+2. **ORDENES_TRABAJO, columna M** — se acepta únicamente si el nombre de la carpeta y su padre coinciden con la sucursal y el RFC.
+3. **Ruta exacta en Drive** — búsqueda por padre con prefijo RFC y nombre exacto de sucursal.
+
+Si ninguna ruta coincide, la operación se detiene sin crear carpetas. El sistema nunca elige otra sucursal ni utiliza la carpeta raíz como fallback. La comparación de nombres aplica la misma normalización segura usada al crear las carpetas, para tolerar caracteres que Drive haya sanitizado.
+
+Para clientes con el centinela `SIN_RFC`, la carpeta padre solo se reutiliza cuando también coincide exactamente la razón social; `SIN_RFC` nunca se considera una identidad compartida entre empresas. Cuando una fila histórica no tiene enlace, SEAOT puede resolver la ruta exacta RFC + sucursal en modo de solo lectura, sin escribir ni completar celdas en el Spreadsheet.
 
 ---
 
@@ -362,24 +367,29 @@ El backend usa 4 niveles de fallback para siempre encontrar la carpeta correcta:
 
 ### 4.2 Hoja ORDENES_TRABAJO
 
+> **Contrato inmutable:** el sistema usa exactamente las columnas A–Q existentes. El código no agrega, elimina, renombra ni reordena columnas y no migra información histórica. Las validaciones de código solamente comprueban que esa estructura ya exista.
+
 | # Col | Índice | Campo | Descripción |
 |---|---|---|---|
 | 1 | 0 | Fecha | Fecha de creación de la OT |
 | 2 | 1 | OT (Folio) | Identificador único |
 | 3 | 2 | Tipo | OTA / OTB |
-| 4 | 3 | Núm. Informe | Consecutivo EA-AAMM-NOM-0000 |
-| 5 | 4 | Servicio NOM | Norma aplicada |
-| 6 | 5 | Cliente | Razón social |
-| 7 | 6 | Sucursal | Planta o sucursal |
-| 8 | 7 | RFC | RFC del cliente |
-| 9 | 8 | Personal Asignado | Técnico responsable |
-| 10 | 9 | Fecha Visita | Fecha de visita de campo |
-| 11 | 10 | Fecha Entrega Límite | Fecha máxima de entrega |
-| 12 | 11 | Fecha Real Entrega | Fecha real de entrega |
-| 13 | 12 | Estatus Externo | Estado visible al cliente (SEADB) |
-| 14 | **13** | **Link Drive** | **URL del expediente en Drive** |
-| 15 | 14 | Observaciones | Notas adicionales |
-| 16 | 15 | Estatus Informe | Estado interno del departamento |
+| 4 | 3 | Servicio NOM | Norma aplicada |
+| 5 | 4 | Cliente | Razón social |
+| 6 | 5 | Sucursal | Planta o sucursal |
+| 7 | 6 | RFC | RFC del cliente |
+| 8 | 7 | Personal Asignado | Técnico responsable |
+| 9 | 8 | Fecha Visita | Fecha de visita de campo |
+| 10 | 9 | Fecha Entrega Límite | Fecha máxima de entrega |
+| 11 | 10 | Fecha Real Entrega | Fecha real de entrega |
+| 12 | 11 | Estatus Externo | Estado visible en SEADB |
+| 13 | **12** | **Link Drive** | **URL de la carpeta de la sucursal** |
+| 14 | 13 | Observaciones | Notas adicionales |
+| 15 | 14 | Fecha Pausa | Fecha en que se pausó la OT |
+| 16 | 15 | Motivo Pausa | Motivo registrado para la pausa |
+| 17 | 16 | Fecha Info Completa | Fecha de recepción de la información completa |
+
+Los datos propios del expediente —número de informe, estatus interno y enlace del expediente— se almacenan en la hoja **INFORMES**, sin modificar la estructura A–Q de ORDENES_TRABAJO.
 
 ### 4.3 Hoja USUARIOS_AUTORIZADOS
 
@@ -415,6 +425,8 @@ Registro automático de todos los cambios de estatus. Se crea automáticamente a
         /2. HDC/
         /3. CROQUIS/
         /4. FOTOS/
+        /5. INFORMES Y MEMORIAS/
+        /6. INFORME PRELIMINAR/
     /Planta Norte/
       /02_Expediente_0002_.../
 ```
@@ -564,7 +576,7 @@ Crea una nueva Orden de Trabajo en ORDENES_TRABAJO.
 
 #### `fase3_CrearExpediente(payload)`
 
-Crea la carpeta del expediente en Drive y actualiza la OT.
+Crea de forma idempotente la carpeta del expediente en Drive y registra el expediente en **INFORMES**. No altera la estructura de ORDENES_TRABAJO.
 
 **Payload:**
 ```javascript
@@ -592,7 +604,7 @@ Crea la carpeta del expediente en Drive y actualiza la OT.
       content: '<base64>',   // contenido en Base64
       type: 'application/pdf',
       name: 'orden_trabajo.pdf',
-      category: 'ORDEN_TRABAJO'  // 'ORDEN_TRABAJO'|'HOJAS_CAMPO'|'CROQUIS'|'FOTOS'
+      category: 'ORDEN_TRABAJO'  // ORDEN_TRABAJO|HOJAS_CAMPO|CROQUIS|FOTOS|INFORMES_MEMORIA|INF_PRELIMINAR|PERFIL_DATOS
     }
   ]
 }
@@ -600,19 +612,28 @@ Crea la carpeta del expediente en Drive y actualiza la OT.
 
 **Respuesta:**
 ```javascript
-{ success: true, url: 'https://drive.google.com/drive/folders/...' }
+{
+  success: true,
+  url: 'https://drive.google.com/drive/folders/...',
+  alreadyExists: false,
+  uploadedFiles: 3,
+  rejectedFiles: [] // puede contener archivos rechazados si los demás sí se guardaron
+}
 ```
+
+La operación es idempotente por OT. Si el expediente ya existe, el backend reutiliza la carpeta registrada y carga únicamente los archivos recibidos que aún falten. Los archivos válidos no se pierden porque otro archivo sea rechazado; la interfaz muestra la advertencia y conserva el formulario para reemplazar los rechazados y reintentar sobre el mismo expediente.
 
 ---
 
 #### `fase3_AddFilesToExpediente(payload)`
 
-Agrega archivos a un expediente existente.
+Agrega archivos a un expediente existente. La carpeta autorizada siempre se obtiene del registro de la OT en **INFORMES**. Si el cliente envía `expedienteUrl`, su ID debe coincidir con ese registro; una URL de otro expediente se rechaza antes de escribir en Drive.
 
 **Payload:**
 ```javascript
 {
   ot: 'EA-2026-001',
+  expedienteUrl: 'https://drive.google.com/drive/folders/...',
   files: [ /* igual que en createExpediente */ ]
 }
 ```
@@ -650,6 +671,7 @@ Estas funciones son invocadas desde `doPost()` después de validar autenticació
 | `buscarClienteRFC` | EITHER | SEAOT / PAIC |
 | `buscarClienteNombre` | EITHER | SEAOT / PAIC |
 | `registrarOT` | GOOGLE | SEAOT |
+| `resolverCarpetaCliente` | GOOGLE | SEAOT |
 | `getOrdenes` | GOOGLE | SEAINF |
 | `getConsecutivo` | GOOGLE | SEAINF |
 | `createExpediente` | GOOGLE | SEAINF |
@@ -677,9 +699,12 @@ Estas funciones son invocadas desde `doPost()` después de validar autenticació
 ### 7.4 Validación de archivos
 
 El backend valida todos los archivos subidos antes de guardarlos en Drive:
-- Tipos permitidos: PDF, JPG, JPEG, PNG, XLSX, XLS, DOC, DOCX
-- Tamaño máximo: 10 MB por archivo
-- Nombres sanitizados con `sanitizeFileName()` (sin caracteres especiales, máx. 50 chars)
+
+- Tipos permitidos: PDF, JPG/JPEG, PNG, HEIC/HEIF, XLS/XLSX, DOC/DOCX, ZIP/RAR, DWG/DXF y MP4/MOV.
+- Tamaño máximo: 50 MB por archivo.
+- Los nombres se sanitizan conservando la extensión y los guiones, con un máximo de 180 caracteres.
+- Si un nombre ya existe con contenido distinto, se crea una versión `(v2)`, `(v3)`, etc.; los reintentos idénticos no duplican el archivo.
+- Cuando un envío mezcla archivos válidos y rechazados, se guardan los válidos y la respuesta enumera los rechazados. SEAINF muestra la advertencia y conserva el formulario para completar el mismo expediente.
 
 ---
 
@@ -834,86 +859,96 @@ Cambiar la celda `Activo` de `TRUE` a `FALSE`. El sistema bloqueará el acceso e
 
 | Tipo | Descripción |
 |---|---|
-| E2E (End-to-End) | Pruebas completas que usan Drive y Sheets reales |
-| Unitarias | Pruebas de lógica pura sin efectos secundarios |
-| Correo | Prueba de envío de correos (ejecutar manualmente) |
+| Unitarias | 74 comprobaciones de lógica pura, sin Drive ni Sheets |
+| E2E | Pruebas completas contra recursos exclusivos de staging |
+| Correo | Prueba manual de envío; no forma parte del runner E2E |
 
-### 11.2 Pruebas E2E disponibles
+### 11.2 Seguridad obligatoria para E2E
 
-| ID | Módulo | Función | Descripción |
-|---|---|---|---|
-| E01 | SEAPD | `registrarCliente` | Registro de cliente + carpeta Drive + fila en Sheets |
-| E02 | SEAOT | `buscarClienteRFC` + `registrarOT` | Búsqueda y creación de OT |
-| E03 | SEAINF | `getOrdenes` + `getConsecutivo` + `createExpediente` | Creación completa de expediente |
-| E04 | SEAOT | `buscarClienteNombre` | Búsqueda por nombre parcial (requiere E01) |
-| E05 | SEAOT | `buscarClienteRFC` | RFC no encontrado (ruta negativa) |
-| E06 | SEAOT | `buscarClienteNombre` | Nombre demasiado corto — validación |
-| E07 | SEAOT | `registrarOT` | OT tipo OTB (brigada) |
-| E08 | SEADB | `updateEstatus` | Cambio de estatus externo a ENTREGADO |
-| E09 | SEAINF | `updateEstatusInforme` | Cambio de estatus interno a FINALIZADO |
+Las E2E se niegan a comenzar si no existen estas Script Properties:
 
-### 11.3 Cómo ejecutar las pruebas
-
-**Pruebas completas (E01–E09 + Unitarias):**
-1. Abrir el editor de Google Apps Script
-2. Seleccionar la función `runE2ETests` en el menú desplegable
-3. Hacer clic en ▶ **Ejecutar**
-4. Ver resultados en **Ver → Registros** (Ctrl+Enter)
-
-**Prueba individual:**
-- Seleccionar `runTest_E01`, `runTest_E02`, etc. y ejecutar
-
-**Solo pruebas unitarias:**
-- Seleccionar `runUnitTests` y ejecutar
-
-**Prueba de correo (manual):**
-- Seleccionar `runTest_Email` y ejecutar
-- El correo llegará a tu propia cuenta de Google
-
-### 11.4 Datos de prueba
-
-| Dato | Valor |
+| Propiedad | Valor |
 |---|---|
-| RFC de prueba | `XTES000000TST` |
-| Folio OT principal | `TEST-E2E-001` |
-| Folio OT secundario | `TEST-E2E-002` |
+| `SEA_E2E_ENABLED` | `TRUE` |
+| `SEA_TEST_SPREADSHEET_ID` | ID de una copia de staging del Spreadsheet |
+| `SEA_TEST_FOLDER_ID` | ID de una carpeta raíz exclusiva de staging |
+
+El Spreadsheet de staging debe conservar los contratos `CLIENTES_MAESTRO` A–V, `ORDENES_TRABAJO` A–Q e `INFORMES` A–Q. El runner aborta si falta una hoja, si el ancho es menor o si alguno de los IDs de staging coincide con producción.
+
+> Las E2E nunca deben apuntar al Spreadsheet ni a la carpeta Drive productivos. `runUnitTests()` no requiere ninguna propiedad de staging y no produce efectos secundarios.
+
+### 11.3 Pruebas E2E disponibles
+
+| ID | Módulo | Descripción |
+|---|---|---|
+| E01 | SEAPD | Registro de cliente, `01_Cliente`, carpeta Drive y fila CLIENTES |
+| E02 | SEAOT | Búsqueda por RFC y creación de OT |
+| E03 | SEAINF | Creación completa del expediente y sus seis subcarpetas |
+| E04 | SEAOT | Búsqueda positiva por nombre |
+| E05 | SEAOT | RFC inexistente |
+| E06 | SEAOT | Validación de nombre demasiado corto |
+| E07 | SEAOT | Registro de OT tipo OTB |
+| E08 | SEADB | Cambio de estatus externo y fecha real |
+| E09 | SEAINF | Cambio de estatus interno |
+| E10 | SEAINF | Reintento idempotente: misma URL, mismo archivo omitido y una sola fila INFORMES |
+| E11 | Drive | Mismo nombre con contenido distinto crea `(v2)` conservando el original |
+| E12 | Seguridad | Una URL perteneciente a otra OT no recibe archivos |
+| E13 | SEAINF | Lote parcial guarda válidos y reporta el rechazado |
+| E14 | SEAOT | Cliente histórico sin enlace se resuelve sin escribir la celda |
+| E15 | Seguridad | RFC+sucursal inexistentes no crean carpeta ni fila INFORMES |
+| E16 | SEAOT | Enlace vacío o inválido bloquea el alta de la OT |
+| E17 | Drive | Expediente legado de cuatro subcarpetas se completa a seis sin duplicados |
+
+### 11.4 Cómo ejecutar
+
+**Solo unitarias, sin efectos secundarios:**
+
+1. Seleccionar `runUnitTests`.
+2. Ejecutar y revisar el registro: el resultado esperado es `74 PASS | 0 FAIL`.
+
+**E2E completas, únicamente después de configurar staging:**
+
+1. Confirmar las tres Script Properties de staging.
+2. Seleccionar `runE2ETests`.
+3. Ejecutar y revisar los resultados E01–E17.
+4. El runner realiza limpieza previa y final. Elimina filas de prueba en CLIENTES, ORDENES, INFORMES y AUDITORIA, y envía sus carpetas de staging —incluida `01_Cliente`— a la papelera.
+
+Cada `runTest_E01` … `runTest_E17` vuelve a comprobar el guard de staging cuando se ejecuta individualmente.
+
+### 11.5 Datos reservados para pruebas
+
+| Dato | Valor principal |
+|---|---|
+| RFC | `XTES000000TST` |
+| Folios | `TEST-E2E-001`, `TEST-E2E-002` y auxiliares `TEST-E2E-*` |
 | Sucursal | `Sucursal Test E2E` |
 | Empresa | `EMPRESA TEST E2E SA DE CV` |
 
-Todos los datos de prueba se **eliminan automáticamente** al terminar (éxito o falla). Las carpetas de Drive creadas se mueven a la papelera.
+### 11.6 Verificaciones manuales previas al despliegue
 
-### 11.5 Interpretar los resultados
+Estas comprobaciones son de solo lectura salvo la prueba de humo, que debe realizarse exclusivamente en staging:
 
-```
-══════════════════════════════════════════════
-  TESTS E2E — EA Backend v3.0
-══════════════════════════════════════════════
-[PASS] E01-1: respuesta success=true
-[PASS] E01-2: sin error en respuesta
-...
-[FAIL] E02-11: folio en col 2 | esperado: "TEST-E2E-001" | obtenido: ""
-══════════════════════════════════════════════
-  RESULTADO: 18 PASS  |  1 FAIL
-  E01 registrarCliente : OK
-  E02 registrarOT      : FALLO
-  E03 createExpediente : OK
-══════════════════════════════════════════════
-```
+- Inventariar filas de CLIENTES cuyo Link Drive no contenga `/folders/`.
+- Comparar nombres de sucursal en Drive con la normalización de `sanitizeFileName()`.
+- Confirmar que ORDENES_TRABAJO e INFORMES llegan como mínimo hasta la columna Q y que INFORMES existe.
+- Probar en staging un MP4 real de teléfono cercano al límite permitido.
+- Cronometrar en staging el alta de una OT histórica sin enlace para establecer una línea base de rendimiento.
 
-Cada línea `[FAIL]` incluye el valor esperado y el valor obtenido para facilitar el diagnóstico.
+Poblar enlaces históricos o renombrar carpetas sería una migración separada y no forma parte de este PR.
 
 ---
 
 ## 12. Solución de Problemas
 
-### Error: "Carpeta creada en raíz en vez de en la carpeta del cliente"
+### Error: "No se encontró una carpeta exacta para el RFC y la sucursal"
 
-**Causa:** La OT no tiene el link de Drive del cliente en la columna 14 de ORDENES_TRABAJO.
+**Causa:** El cliente/sucursal no está registrado en SEAPD, el enlace de Drive no es accesible o no coincide exactamente con el RFC y la sucursal de la OT.
 
 **Solución:**
-1. Verificar que al registrar la OT en SEAOT se buscó el cliente por RFC antes de enviar el formulario
-2. Si la OT ya existe, editar manualmente la columna 14 con la URL correcta de Drive
-3. En el log de GAS buscar: `ADVERTENCIA: Expediente creado en carpeta raíz`
+1. Verificar en SEAPD que exista el RFC con la sucursal correcta.
+2. Volver a seleccionar el cliente en SEAOT para validar su carpeta exacta.
+3. No editar, insertar ni reordenar columnas manualmente en el Excel productivo.
+4. El backend detiene la operación; no crea expedientes en otra sucursal ni en la raíz.
 
 ---
 
