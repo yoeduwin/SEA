@@ -859,73 +859,82 @@ Cambiar la celda `Activo` de `TRUE` a `FALSE`. El sistema bloqueará el acceso e
 
 | Tipo | Descripción |
 |---|---|
-| E2E (End-to-End) | Pruebas completas que usan Drive y Sheets reales |
-| Unitarias | Pruebas de lógica pura sin efectos secundarios |
-| Correo | Prueba de envío de correos (ejecutar manualmente) |
+| Unitarias | 74 comprobaciones de lógica pura, sin Drive ni Sheets |
+| E2E | Pruebas completas contra recursos exclusivos de staging |
+| Correo | Prueba manual de envío; no forma parte del runner E2E |
 
-### 11.2 Pruebas E2E disponibles
+### 11.2 Seguridad obligatoria para E2E
 
-| ID | Módulo | Función | Descripción |
-|---|---|---|---|
-| E01 | SEAPD | `registrarCliente` | Registro de cliente + carpeta Drive + fila en Sheets |
-| E02 | SEAOT | `buscarClienteRFC` + `registrarOT` | Búsqueda y creación de OT |
-| E03 | SEAINF | `getOrdenes` + `getConsecutivo` + `createExpediente` | Creación completa de expediente |
-| E04 | SEAOT | `buscarClienteNombre` | Búsqueda por nombre parcial (requiere E01) |
-| E05 | SEAOT | `buscarClienteRFC` | RFC no encontrado (ruta negativa) |
-| E06 | SEAOT | `buscarClienteNombre` | Nombre demasiado corto — validación |
-| E07 | SEAOT | `registrarOT` | OT tipo OTB (brigada) |
-| E08 | SEADB | `updateEstatus` | Cambio de estatus externo a ENTREGADO |
-| E09 | SEAINF | `updateEstatusInforme` | Cambio de estatus interno a FINALIZADO |
+Las E2E se niegan a comenzar si no existen estas Script Properties:
 
-### 11.3 Cómo ejecutar las pruebas
-
-**Pruebas completas (E01–E09 + Unitarias):**
-1. Abrir el editor de Google Apps Script
-2. Seleccionar la función `runE2ETests` en el menú desplegable
-3. Hacer clic en ▶ **Ejecutar**
-4. Ver resultados en **Ver → Registros** (Ctrl+Enter)
-
-**Prueba individual:**
-- Seleccionar `runTest_E01`, `runTest_E02`, etc. y ejecutar
-
-**Solo pruebas unitarias:**
-- Seleccionar `runUnitTests` y ejecutar
-
-**Prueba de correo (manual):**
-- Seleccionar `runTest_Email` y ejecutar
-- El correo llegará a tu propia cuenta de Google
-
-### 11.4 Datos de prueba
-
-| Dato | Valor |
+| Propiedad | Valor |
 |---|---|
-| RFC de prueba | `XTES000000TST` |
-| Folio OT principal | `TEST-E2E-001` |
-| Folio OT secundario | `TEST-E2E-002` |
+| `SEA_E2E_ENABLED` | `TRUE` |
+| `SEA_TEST_SPREADSHEET_ID` | ID de una copia de staging del Spreadsheet |
+| `SEA_TEST_FOLDER_ID` | ID de una carpeta raíz exclusiva de staging |
+
+El Spreadsheet de staging debe conservar los contratos `CLIENTES_MAESTRO` A–V, `ORDENES_TRABAJO` A–Q e `INFORMES` A–Q. El runner aborta si falta una hoja, si el ancho es menor o si alguno de los IDs de staging coincide con producción.
+
+> Las E2E nunca deben apuntar al Spreadsheet ni a la carpeta Drive productivos. `runUnitTests()` no requiere ninguna propiedad de staging y no produce efectos secundarios.
+
+### 11.3 Pruebas E2E disponibles
+
+| ID | Módulo | Descripción |
+|---|---|---|
+| E01 | SEAPD | Registro de cliente, `01_Cliente`, carpeta Drive y fila CLIENTES |
+| E02 | SEAOT | Búsqueda por RFC y creación de OT |
+| E03 | SEAINF | Creación completa del expediente y sus seis subcarpetas |
+| E04 | SEAOT | Búsqueda positiva por nombre |
+| E05 | SEAOT | RFC inexistente |
+| E06 | SEAOT | Validación de nombre demasiado corto |
+| E07 | SEAOT | Registro de OT tipo OTB |
+| E08 | SEADB | Cambio de estatus externo y fecha real |
+| E09 | SEAINF | Cambio de estatus interno |
+| E10 | SEAINF | Reintento idempotente: misma URL, mismo archivo omitido y una sola fila INFORMES |
+| E11 | Drive | Mismo nombre con contenido distinto crea `(v2)` conservando el original |
+| E12 | Seguridad | Una URL perteneciente a otra OT no recibe archivos |
+| E13 | SEAINF | Lote parcial guarda válidos y reporta el rechazado |
+| E14 | SEAOT | Cliente histórico sin enlace se resuelve sin escribir la celda |
+| E15 | Seguridad | RFC+sucursal inexistentes no crean carpeta ni fila INFORMES |
+| E16 | SEAOT | Enlace vacío o inválido bloquea el alta de la OT |
+| E17 | Drive | Expediente legado de cuatro subcarpetas se completa a seis sin duplicados |
+
+### 11.4 Cómo ejecutar
+
+**Solo unitarias, sin efectos secundarios:**
+
+1. Seleccionar `runUnitTests`.
+2. Ejecutar y revisar el registro: el resultado esperado es `74 PASS | 0 FAIL`.
+
+**E2E completas, únicamente después de configurar staging:**
+
+1. Confirmar las tres Script Properties de staging.
+2. Seleccionar `runE2ETests`.
+3. Ejecutar y revisar los resultados E01–E17.
+4. El runner realiza limpieza previa y final. Elimina filas de prueba en CLIENTES, ORDENES, INFORMES y AUDITORIA, y envía sus carpetas de staging —incluida `01_Cliente`— a la papelera.
+
+Cada `runTest_E01` … `runTest_E17` vuelve a comprobar el guard de staging cuando se ejecuta individualmente.
+
+### 11.5 Datos reservados para pruebas
+
+| Dato | Valor principal |
+|---|---|
+| RFC | `XTES000000TST` |
+| Folios | `TEST-E2E-001`, `TEST-E2E-002` y auxiliares `TEST-E2E-*` |
 | Sucursal | `Sucursal Test E2E` |
 | Empresa | `EMPRESA TEST E2E SA DE CV` |
 
-Todos los datos de prueba se **eliminan automáticamente** al terminar (éxito o falla). Las carpetas de Drive creadas se mueven a la papelera.
+### 11.6 Verificaciones manuales previas al despliegue
 
-### 11.5 Interpretar los resultados
+Estas comprobaciones son de solo lectura salvo la prueba de humo, que debe realizarse exclusivamente en staging:
 
-```
-══════════════════════════════════════════════
-  TESTS E2E — EA Backend v3.0
-══════════════════════════════════════════════
-[PASS] E01-1: respuesta success=true
-[PASS] E01-2: sin error en respuesta
-...
-[FAIL] E02-11: folio en col 2 | esperado: "TEST-E2E-001" | obtenido: ""
-══════════════════════════════════════════════
-  RESULTADO: 18 PASS  |  1 FAIL
-  E01 registrarCliente : OK
-  E02 registrarOT      : FALLO
-  E03 createExpediente : OK
-══════════════════════════════════════════════
-```
+- Inventariar filas de CLIENTES cuyo Link Drive no contenga `/folders/`.
+- Comparar nombres de sucursal en Drive con la normalización de `sanitizeFileName()`.
+- Confirmar que ORDENES_TRABAJO e INFORMES llegan como mínimo hasta la columna Q y que INFORMES existe.
+- Probar en staging un MP4 real de teléfono cercano al límite permitido.
+- Cronometrar en staging el alta de una OT histórica sin enlace para establecer una línea base de rendimiento.
 
-Cada línea `[FAIL]` incluye el valor esperado y el valor obtenido para facilitar el diagnóstico.
+Poblar enlaces históricos o renombrar carpetas sería una migración separada y no forma parte de este PR.
 
 ---
 
