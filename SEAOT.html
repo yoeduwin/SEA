@@ -512,6 +512,7 @@
   async function resolveDriveLinkForCurrentProfile_() {
     const rfc = (document.getElementById('rfc')?.value || '').trim().toUpperCase();
     const branch = (document.getElementById('branch')?.value || '').trim() || 'Matriz';
+    const company = (document.getElementById('companyName')?.value || '').trim();
     if (!rfc) return '';
 
     try {
@@ -519,13 +520,23 @@
         `${SHEETS_SCRIPT_URL}?action=buscarClienteRFC&rfc=${encodeURIComponent(rfc)}`
       );
       const result = await response.json();
-      if (!result.found || !Array.isArray(result.sucursales)) return '';
       const expectedBranch = normalizeBranchKey(branch);
-      const exact = result.sucursales.find(item =>
-        normalizeBranchKey(item.sucursal || 'Matriz') === expectedBranch &&
-        String(item.rfc || '').trim().toUpperCase() === rfc
+      const exact = result.found && Array.isArray(result.sucursales)
+        ? result.sucursales.find(item =>
+            normalizeBranchKey(item.sucursal || 'Matriz') === expectedBranch &&
+            String(item.rfc || '').trim().toUpperCase() === rfc
+          )
+        : null;
+      const storedLink = exact && exact.link_drive_cliente ? String(exact.link_drive_cliente) : '';
+      if (/\/folders\/[a-zA-Z0-9_-]+/.test(storedLink)) return storedLink;
+
+      // Compatibilidad read-only para filas históricas cuyo Link Drive está
+      // vacío: el backend busca la ruta exacta RFC+sucursal sin modificar Excel.
+      const fallbackResponse = await SEAAuth.wrapFetch(
+        `${SHEETS_SCRIPT_URL}?action=resolverCarpetaCliente&rfc=${encodeURIComponent(rfc)}&sucursal=${encodeURIComponent(branch)}&razon_social=${encodeURIComponent(company)}`
       );
-      return exact && exact.link_drive_cliente ? exact.link_drive_cliente : '';
+      const fallback = await fallbackResponse.json();
+      return fallback && fallback.found && fallback.linkDrive ? fallback.linkDrive : '';
     } catch (error) {
       console.error('No se pudo validar la carpeta exacta del cliente:', error);
       return '';
