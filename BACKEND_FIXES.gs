@@ -1013,13 +1013,31 @@ function findExactClientBranchFolder_(rfc, sucursal, razonSocial) {
   return null;
 }
 
+function escapeDriveQueryValue_(value) {
+  return String(value || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'");
+}
+
+function buildClientParentFolderQuery_(rfc, razonSocial) {
+  const expectedRfc = String(rfc || '').toUpperCase().trim();
+  const expectedSinRfcParent = 'SIN_RFC - ' + cleanCompanyName(razonSocial || 'Cliente');
+  const expectedName = expectedRfc === 'SIN_RFC' ? expectedSinRfcParent : expectedRfc;
+  const operator = expectedRfc === 'SIN_RFC' ? ' = ' : ' contains ';
+  return "title" + operator + "'" + escapeDriveQueryValue_(expectedName) + "' and trashed = false";
+}
+
 function findClientBranchByExactPath_(rfc, razonSocial, sucursal) {
   if (!rfc || !sucursal) return null;
   const root = DriveApp.getFolderById(CONFIG.FOLDER_ID);
   const expectedRfc = String(rfc).toUpperCase().trim();
   const expectedBranch = sanitizeFileName(sucursal || 'Matriz').toLowerCase();
   const expectedSinRfcParent = 'SIN_RFC - ' + cleanCompanyName(razonSocial || 'Cliente');
-  const parents = root.getFolders();
+
+  // Folder.searchFolders limita la consulta a los hijos directos de la raíz.
+  // Drive filtra por nombre antes de devolver el iterador: no enumeramos los N
+  // clientes cada vez que una fila histórica carece de Link Drive.
+  const parents = root.searchFolders(buildClientParentFolderQuery_(expectedRfc, razonSocial));
 
   while (parents.hasNext()) {
     const parent = parents.next();
@@ -1029,6 +1047,8 @@ function findClientBranchByExactPath_(rfc, razonSocial, sucursal) {
       continue;
     }
 
+    // Las sucursales de un cliente son pocas. Aquí se conserva la comparación
+    // normalizada para tolerar nombres históricos creados manualmente.
     const branches = parent.getFolders();
     while (branches.hasNext()) {
       const branch = branches.next();
@@ -1137,12 +1157,15 @@ function sanitizeFolderName_(name) {
 function sanitizeDriveFileName_(fileName) {
   const raw = String(fileName || 'archivo').trim();
   const lastDot = raw.lastIndexOf('.');
-  const ext = lastDot > 0 ? raw.substring(lastDot).replace(/[^a-z0-9.]/gi, '') : '';
-  const base = (lastDot > 0 ? raw.substring(0, lastDot) : raw)
+  const extCandidate = lastDot > 0 ? raw.substring(lastDot).replace(/[^a-z0-9.]/gi, '') : '';
+  const ext = /^\.[a-z0-9]+$/i.test(extCandidate) ? extCandidate : '';
+  const sourceBase = ext && lastDot > 0 ? raw.substring(0, lastDot) : raw;
+  const base = sourceBase
     .replace(/[^a-z0-9áéíóúñü ._-]/gi, '_')
+    .replace(/[. ]+$/g, '')
     .trim() || 'archivo';
   const maxBase = Math.max(1, 180 - ext.length);
-  return base.substring(0, maxBase) + ext.substring(0, 20);
+  return base.substring(0, maxBase).replace(/[. ]+$/g, '') + ext.substring(0, 20);
 }
 
 function validateDriveFiles_(files) {
