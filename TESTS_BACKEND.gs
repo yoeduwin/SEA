@@ -866,6 +866,9 @@ function runUnitTests() {
   _eq_('U34: CONFIG.COLUMNS.ORDENES.ESTATUS_EXTERNO es 11',CONFIG.COLUMNS.ORDENES.ESTATUS_EXTERNO,11);
   _eq_('U35: CONFIG.COLUMNS.ORDENES.FECHA_REAL es 10',     CONFIG.COLUMNS.ORDENES.FECHA_REAL,     10);
   _eq_('U36: CONFIG.COLUMNS.ORDENES.OBSERVACIONES es 13',  CONFIG.COLUMNS.ORDENES.OBSERVACIONES,  13);
+  _eq_('U36A: CONFIG.COLUMNS.ORDENES.FECHA_PAUSA es 14',      CONFIG.COLUMNS.ORDENES.FECHA_PAUSA,      14);
+  _eq_('U36B: CONFIG.COLUMNS.ORDENES.MOTIVO_PAUSA es 15',     CONFIG.COLUMNS.ORDENES.MOTIVO_PAUSA,     15);
+  _eq_('U36C: CONFIG.COLUMNS.ORDENES.FECHA_INFO_COMPLETA es 16', CONFIG.COLUMNS.ORDENES.FECHA_INFO_COMPLETA, 16);
 
   // ── Estructura de subcarpetas en CONFIG ────────────────────────────────
   _eq_('U37: FOLDER_STRUCTURE.ORDEN_TRABAJO',   CONFIG.FOLDER_STRUCTURE.ORDEN_TRABAJO,   '1. ORDEN_TRABAJO');
@@ -885,6 +888,20 @@ function runUnitTests() {
   _check_('U46: RFC persona física válido GACJ800101H12',    rfcRegex.test('GACJ800101H12'));
   _check_('U47: RFC inválido rechazado (muy corto)',          !rfcRegex.test('EMP01'));
   _check_('U48: RFC inválido rechazado (caracteres ilegales)',!rfcRegex.test('EMP01010#AAA'));
+
+  // ── Reglas de seguridad agregadas en PR #94 ─────────────────────────────
+  _check_('U49: SIN_RFC no se reutiliza como identidad estable',
+    canReuseParentByRfc_('SIN_RFC') === false);
+  _check_('U50: RFC real sí permite reutilización de carpeta padre',
+    canReuseParentByRfc_('EMP010101AAA') === true);
+  _eq_('U51: nombre de archivo conserva extensión y guion',
+    sanitizeDriveFileName_('IMG-001.jpg'), 'IMG-001.jpg');
+  _check_('U52: HEIC permitido', validarArchivo_('QUJD', 'image/heic', 'foto.heic').valid);
+  _check_('U53: DXF permitido sin MIME', validarArchivo_('QUJD', '', 'croquis.dxf').valid);
+  _check_('U54: RAR permitido', validarArchivo_('QUJD', 'application/vnd.rar', 'planos.rar').valid);
+  _check_('U55: MP4 permitido', validarArchivo_('QUJD', 'video/mp4', 'evidencia.mp4').valid);
+  _check_('U56: extensión ejecutable rechazada aunque declare PDF',
+    !validarArchivo_('QUJD', 'application/pdf', 'archivo.exe').valid);
 
   var pass = _results_.filter(function(r){ return r.indexOf('PASS') === 0; }).length;
   var fail = _results_.filter(function(r){ return r.indexOf('FAIL') === 0; }).length;
