@@ -169,6 +169,7 @@ const AUTH_MODE = {
   // SEAOT
   buscarClienteRFC:       'EITHER',   // SEAOT usa Google Auth; PAIC/SEAPD (públicos) usan reCAPTCHA
   buscarClienteNombre:    'EITHER',   // igual que buscarClienteRFC
+  resolverCarpetaCliente:  'GOOGLE',   // resolución read-only para clientes históricos
   registrarOT:            'GOOGLE',
   getSiguienteFolioOT:    'GOOGLE',   // SEAOT: calcula el siguiente folio leyendo ORDENES_TRABAJO
   // SEAINF
@@ -197,6 +198,7 @@ const ACTION_MODULE = {
   updateRespInf:          'SEAINF',
   buscarClienteRFC:       'SEAOT',
   buscarClienteNombre:    'SEAOT',
+  resolverCarpetaCliente:  'SEAOT',
   registrarOT:            'SEAOT',
   getSiguienteFolioOT:    'SEAOT',
   getOrdenes:             'SEAINF',
@@ -421,14 +423,14 @@ function setupSheets() {
   // ── 2. ORDENES_TRABAJO ─────────────────────────────────────────────────
   if (!ss.getSheetByName(CONFIG.SHEET_OT)) {
     const s = ss.insertSheet(CONFIG.SHEET_OT);
-    // Contrato vigente A-N. Esta función sólo crea una hoja inexistente:
+    // Contrato vigente A-Q. Esta función sólo crea una hoja inexistente:
     // nunca modifica, migra ni reordena una hoja productiva existente.
     const headers = [
       'Fecha Alta', 'OT Folio', 'Tipo Orden', 'NOM / Servicio',
       'Cliente Inicial (Razón Social)', 'Cliente Final (Sucursal)', 'RFC',
       'Personal Asignado', 'Fecha Visita', 'Fecha Entrega Límite',
       'Fecha Real Entrega', 'Estatus (Externo SEADB)', 'Link Drive',
-      'Observaciones'
+      'Observaciones', 'Fecha Pausa', 'Motivo Pausa', 'Fecha Info Completa'
     ];
     s.appendRow(headers);
     headerStyle(s.getRange(1, 1, 1, headers.length));
@@ -613,6 +615,7 @@ function doPost(e) {
       }
       case 'buscarClienteRFC': return output_(fase2_BuscarClienteRFC(data.rfc));
       case 'buscarClienteNombre': return output_(fase2_BuscarClienteNombre(data.nombre));
+      case 'resolverCarpetaCliente': return output_(fase2_ResolverCarpetaCliente_(data.rfc, data.sucursal, data.razon_social || data.cliente));
       case 'getTablero': return output_(fase4_GetTablero());
       case 'getTableroInf': return output_(fase4_GetTableroInf());
       case 'getOrdenes': return output_(getOrdenesSafe_());
@@ -649,6 +652,7 @@ function doGet(e) {
       }
       case 'buscarClienteRFC': return output_(fase2_BuscarClienteRFC(e.parameter.rfc));
       case 'buscarClienteNombre': return output_(fase2_BuscarClienteNombre(e.parameter.nombre));
+      case 'resolverCarpetaCliente': return output_(fase2_ResolverCarpetaCliente_(e.parameter.rfc, e.parameter.sucursal, e.parameter.razon_social || e.parameter.cliente));
       case 'getSiguienteFolioOT': return output_(getSiguienteFolioOT_(e.parameter));
       case 'getTablero': return output_(fase4_GetTablero());
       case 'getTableroInf': return output_(fase4_GetTableroInf());
@@ -686,7 +690,7 @@ function fase1_RegistrarCliente(data) {
     // se detiene antes de crear carpetas o archivos.
     const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
     const sheet = ss.getSheetByName(CONFIG.SHEET_CLIENTES);
-    if (!sheet || sheet.getLastColumn() < 22) {
+    if (!sheet || sheet.getMaxColumns() < 22) {
       return { success: false, error: 'CLIENTES_MAESTRO no cumple el contrato existente de 22 campos. No se modificó Excel ni Drive.' };
     }
 
@@ -702,7 +706,9 @@ function fase1_RegistrarCliente(data) {
     if (pIter.hasNext()) {
       parentFolder = pIter.next();
       addLog(`Carpeta Padre encontrada: ${parentFolderName}`);
-    } else {
+    } else if (canReuseParentByRfc_(rfcClean)) {
+      // SIN_RFC es un centinela compartido, no una identidad estable. Para ese
+      // caso sólo se reutiliza la coincidencia exacta RFC+empresa.
       const allParents = folderRaiz.getFolders();
       while (allParents.hasNext()) {
         const candidate = allParents.next();
@@ -904,11 +910,11 @@ function fase2_RegistrarOT(data) {
   }
 
   const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
-  if (!sheet || sheet.getMaxColumns() < 14) {
-    return { success: false, error: 'La hoja ORDENES_TRABAJO no cumple el contrato vigente A-N. No se escribió ningún dato.' };
+  if (!sheet || sheet.getMaxColumns() < 17) {
+    return { success: false, error: 'La hoja ORDENES_TRABAJO no cumple el contrato vigente A-Q. No se escribió ningún dato.' };
   }
 
-  // Contrato inmutable A-N: no se agregan, eliminan ni reordenan columnas.
+  // Contrato inmutable A-Q: no se agregan, eliminan ni reordenan columnas.
   sheet.appendRow([
     new Date(),
     data.ot_folio || '',
@@ -923,7 +929,10 @@ function fase2_RegistrarOT(data) {
     '',               // K: FECHA_REAL
     'NO INICIADO',    // L: ESTATUS_EXTERNO
     linkDrive,        // M: LINK_DRIVE
-    data.observaciones || '' // N: OBSERVACIONES
+    data.observaciones || '', // N: OBSERVACIONES
+    '',               // O: FECHA_PAUSA
+    '',               // P: MOTIVO_PAUSA
+    ''                // Q: FECHA_INFO_COMPLETA
   ]);
   return { success: true, message: 'OT Registrada correctamente' };
 }
@@ -950,6 +959,11 @@ function getFolderByDriveLinkSafe_(link) {
   try { return DriveApp.getFolderById(id); } catch (e) { return null; }
 }
 
+function canReuseParentByRfc_(rfc) {
+  const normalized = String(rfc || '').toUpperCase().trim();
+  return !!normalized && normalized !== 'SIN_RFC';
+}
+
 function isParentFolderForRfc_(folderName, rfc) {
   const name = String(folderName || '').toUpperCase().trim();
   const expectedRfc = String(rfc || '').toUpperCase().trim();
@@ -958,33 +972,43 @@ function isParentFolderForRfc_(folderName, rfc) {
   return /[^A-Z0-9Ñ&]/.test(name.charAt(expectedRfc.length));
 }
 
-function folderMatchesClientBranch_(folder, rfc, sucursal) {
+function folderMatchesClientBranch_(folder, rfc, sucursal, razonSocial) {
   if (!folder) return false;
   const expectedBranch = sanitizeFileName(sucursal || 'Matriz').toLowerCase();
-  if (String(folder.getName()).toLowerCase() !== expectedBranch) return false;
+  const actualBranch = sanitizeFileName(folder.getName() || 'Matriz').toLowerCase();
+  if (actualBranch !== expectedBranch) return false;
 
   const expectedRfc = String(rfc || '').toUpperCase().trim();
   if (!expectedRfc) return false;
+  const expectedSinRfcParent = 'SIN_RFC - ' + cleanCompanyName(razonSocial || 'Cliente');
   const parents = folder.getParents();
   while (parents.hasNext()) {
-    if (isParentFolderForRfc_(parents.next().getName(), expectedRfc)) return true;
+    const parentName = parents.next().getName();
+    if (expectedRfc === 'SIN_RFC') {
+      if (razonSocial && parentName === expectedSinRfcParent) return true;
+    } else if (isParentFolderForRfc_(parentName, expectedRfc)) {
+      return true;
+    }
   }
   return false;
 }
 
-function findExactClientBranchFolder_(rfc, sucursal) {
+function findExactClientBranchFolder_(rfc, sucursal, razonSocial) {
   if (!rfc || !sucursal) return null;
   const sheetCli = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_CLIENTES);
   if (!sheetCli) return null;
   const rows = sheetCli.getDataRange().getValues();
   const expectedRfc = String(rfc).toUpperCase().trim();
   const expectedBranch = sanitizeFileName(sucursal || 'Matriz').toLowerCase();
+  const expectedCompany = cleanCompanyName(razonSocial || '');
 
   for (let i = rows.length - 1; i >= 1; i--) {
     if (String(rows[i][CL.RFC]).toUpperCase().trim() !== expectedRfc) continue;
     if (sanitizeFileName(rows[i][CL.SUCURSAL] || 'Matriz').toLowerCase() !== expectedBranch) continue;
+    if (expectedRfc === 'SIN_RFC' &&
+        (!expectedCompany || cleanCompanyName(rows[i][CL.RAZON_SOCIAL] || '') !== expectedCompany)) continue;
     const folder = getFolderByDriveLinkSafe_(rows[i][CL.LINK_DRIVE]);
-    if (folder && folderMatchesClientBranch_(folder, expectedRfc, sucursal)) return folder;
+    if (folder && folderMatchesClientBranch_(folder, expectedRfc, sucursal, razonSocial)) return folder;
   }
   return null;
 }
@@ -993,37 +1017,62 @@ function findClientBranchByExactPath_(rfc, razonSocial, sucursal) {
   if (!rfc || !sucursal) return null;
   const root = DriveApp.getFolderById(CONFIG.FOLDER_ID);
   const expectedRfc = String(rfc).toUpperCase().trim();
-  const branchName = sanitizeFileName(sucursal || 'Matriz');
+  const expectedBranch = sanitizeFileName(sucursal || 'Matriz').toLowerCase();
+  const expectedSinRfcParent = 'SIN_RFC - ' + cleanCompanyName(razonSocial || 'Cliente');
   const parents = root.getFolders();
 
   while (parents.hasNext()) {
     const parent = parents.next();
-    if (!isParentFolderForRfc_(parent.getName(), expectedRfc)) continue;
-    const branches = parent.getFoldersByName(branchName);
-    if (branches.hasNext()) return branches.next();
+    if (expectedRfc === 'SIN_RFC') {
+      if (parent.getName() !== expectedSinRfcParent) continue;
+    } else if (!isParentFolderForRfc_(parent.getName(), expectedRfc)) {
+      continue;
+    }
+
+    const branches = parent.getFolders();
+    while (branches.hasNext()) {
+      const branch = branches.next();
+      if (sanitizeFileName(branch.getName() || 'Matriz').toLowerCase() === expectedBranch) return branch;
+    }
   }
   return null;
 }
 
+function fase2_ResolverCarpetaCliente_(rfc, sucursal, razonSocial) {
+  const expectedRfc = String(rfc || '').toUpperCase().trim();
+  const expectedBranch = String(sucursal || '').trim();
+  const expectedCompany = String(razonSocial || '').trim();
+  if (!expectedRfc || !expectedBranch || (expectedRfc === 'SIN_RFC' && !expectedCompany)) {
+    return { success: false, found: false };
+  }
+
+  let folder = findExactClientBranchFolder_(expectedRfc, expectedBranch, expectedCompany);
+  if (!folder) folder = findClientBranchByExactPath_(expectedRfc, expectedCompany, expectedBranch);
+  if (!folder) return { success: true, found: false };
+  return { success: true, found: true, linkDrive: folder.getUrl() };
+}
+
 function resolveClientBranchFolder_(info, otRow) {
+  const company = info.cliente || info.razon_social || '';
+
   // Fuente canónica: coincidencia exacta RFC+sucursal en CLIENTES_MAESTRO.
-  const exact = findExactClientBranchFolder_(info.rfc, info.sucursal);
+  const exact = findExactClientBranchFolder_(info.rfc, info.sucursal, company);
   if (exact) return exact;
 
   // Compatibilidad con OTs existentes: aceptamos enlaces guardados únicamente
-  // si la carpeta y su padre coinciden con la sucursal y RFC esperados.
+  // si la carpeta, su padre y —para SIN_RFC— la empresa coinciden.
   const candidates = [
     otRow ? otRow[CO.LINK_DRIVE] : '',
     info.linkDrive || ''
   ];
   for (let i = 0; i < candidates.length; i++) {
     const folder = getFolderByDriveLinkSafe_(candidates[i]);
-    if (folderMatchesClientBranch_(folder, info.rfc, info.sucursal)) return folder;
+    if (folderMatchesClientBranch_(folder, info.rfc, info.sucursal, company)) return folder;
   }
 
   // Último intento seguro: ruta exacta por RFC+sucursal. Nunca se elige otra
   // sucursal y nunca se utiliza la carpeta raíz.
-  return findClientBranchByExactPath_(info.rfc, info.cliente || info.razon_social || '', info.sucursal);
+  return findClientBranchByExactPath_(info.rfc, company, info.sucursal);
 }
 
 /**
@@ -1085,6 +1134,17 @@ function sanitizeFolderName_(name) {
     .substring(0, 180);
 }
 
+function sanitizeDriveFileName_(fileName) {
+  const raw = String(fileName || 'archivo').trim();
+  const lastDot = raw.lastIndexOf('.');
+  const ext = lastDot > 0 ? raw.substring(lastDot).replace(/[^a-z0-9.]/gi, '') : '';
+  const base = (lastDot > 0 ? raw.substring(0, lastDot) : raw)
+    .replace(/[^a-z0-9áéíóúñü ._-]/gi, '_')
+    .trim() || 'archivo';
+  const maxBase = Math.max(1, 180 - ext.length);
+  return base.substring(0, maxBase) + ext.substring(0, 20);
+}
+
 function validateDriveFiles_(files) {
   const valid = [];
   const rejected = [];
@@ -1103,65 +1163,136 @@ function validateDriveFiles_(files) {
   return { valid: valid, rejected: rejected };
 }
 
-function createFileIfMissing_(folder, blob) {
-  const existing = folder.getFilesByName(blob.getName());
-  if (existing.hasNext()) return false;
+function versionedFileName_(folder, fileName) {
+  const lastDot = fileName.lastIndexOf('.');
+  const base = lastDot > 0 ? fileName.substring(0, lastDot) : fileName;
+  const ext = lastDot > 0 ? fileName.substring(lastDot) : '';
+  let version = 2;
+  let candidate = base + ' (v' + version + ')' + ext;
+  while (folder.getFilesByName(candidate).hasNext()) {
+    version++;
+    candidate = base + ' (v' + version + ')' + ext;
+  }
+  return candidate;
+}
+
+function driveFileMatchesBlob_(file, blob) {
+  if (Number(file.getSize()) !== Number(blob.getBytes().length)) return false;
+  try {
+    const currentDigest = Utilities.computeDigest(
+      Utilities.DigestAlgorithm.MD5,
+      file.getBlob().getBytes()
+    );
+    const incomingDigest = Utilities.computeDigest(
+      Utilities.DigestAlgorithm.MD5,
+      blob.getBytes()
+    );
+    return currentDigest.join(',') === incomingDigest.join(',');
+  } catch (err) {
+    // Ante una comparación inconclusa se conserva el archivo entrante como
+    // versión; nunca se descarta por asumir que es un reintento.
+    Logger.log('No se pudo comparar contenido de "' + file.getName() + '": ' + err.message);
+    return false;
+  }
+}
+
+function storeBlobSafely_(folder, blob) {
+  const safeName = sanitizeDriveFileName_(blob.getName());
+  blob.setName(safeName);
+  const existing = folder.getFilesByName(safeName);
+  if (existing.hasNext()) {
+    const current = existing.next();
+    if (driveFileMatchesBlob_(current, blob)) {
+      return { created: false, skipped: true, versioned: false, name: safeName };
+    }
+    const versionedName = versionedFileName_(folder, safeName);
+    blob.setName(versionedName);
+    folder.createFile(blob);
+    return { created: true, skipped: false, versioned: true, name: versionedName };
+  }
   folder.createFile(blob);
-  return true;
+  return { created: true, skipped: false, versioned: false, name: safeName };
+}
+
+function uploadValidatedFiles_(expedienteFolder, folders, validFiles) {
+  const summary = { accepted: 0, skipped: 0, versioned: 0 };
+  (validFiles || []).forEach(function(file) {
+    const decoded = Utilities.base64Decode(file.content);
+    const mime = normalizedMimeType_(file.type || '', file.name || '');
+    const blob = Utilities.newBlob(decoded, mime, sanitizeDriveFileName_(file.name || 'archivo'));
+    const target = folders[file.category] || expedienteFolder;
+    const stored = storeBlobSafely_(target, blob);
+    if (stored.skipped) summary.skipped++;
+    if (stored.created) summary.accepted++;
+    if (stored.versioned) summary.versioned++;
+  });
+  return summary;
 }
 
 function fase3_CrearExpediente(payload) {
   const info = payload && payload.data ? payload.data : {};
   const files = payload && payload.files ? payload.files : [];
 
-  if (!info.ot || !info.numInforme || !info.rfc || !info.sucursal) {
-    return { success: false, error: 'Faltan OT, número de informe, RFC o sucursal.' };
+  if (!info.ot || !info.numInforme) {
+    return { success: false, error: 'Faltan OT o número de informe.' };
   }
   if (!/^EA-.*-\d{4}$/.test(String(info.numInforme).trim())) {
     return { success: false, error: 'Número de informe inválido.' };
   }
 
-  const validation = validateDriveFiles_(files);
-  if (validation.rejected.length) {
-    return {
-      success: false,
-      error: 'Uno o más archivos fueron rechazados. No se creó el expediente.',
-      rejectedFiles: validation.rejected
-    };
-  }
-
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   const sheet = ss.getSheetByName(CONFIG.SHEET_OT);
   const sheetInf = ss.getSheetByName(CONFIG.SHEET_INFORMES);
-  if (!sheet || sheet.getMaxColumns() < 14 || !sheetInf || sheetInf.getMaxColumns() < 17) {
-    return { success: false, error: 'El contrato actual de ORDENES_TRABAJO o INFORMES no coincide. No se modificó ninguna hoja.' };
+  if (!sheet || sheet.getMaxColumns() < 17 || !sheetInf || sheetInf.getMaxColumns() < 17) {
+    return { success: false, error: 'El contrato actual A-Q de ORDENES_TRABAJO o A-Q de INFORMES no coincide. No se modificó ninguna hoja.' };
   }
 
   const values = sheet.getDataRange().getValues();
   const otMatch = findOtRowForSeainf_(values, info.ot, { minSheetRow: 2 });
   if (!otMatch) return { success: false, error: 'OT no encontrada.' };
 
-  // Idempotencia por OT: un reintento devuelve la carpeta ya registrada.
+  const otRow = values[otMatch.arrayIndex];
+  // Normalizar primero desde la fuente canónica; después validar.
+  info.rfc = String(otRow[CO.RFC] || info.rfc || '').trim();
+  info.sucursal = String(otRow[CO.SUCURSAL] || info.sucursal || '').trim();
+  info.cliente = String(otRow[CO.CLIENTE] || info.cliente || '').trim();
+  if (!info.rfc || !info.sucursal) {
+    return { success: false, error: 'La OT no contiene RFC o sucursal. No se creó el expediente.' };
+  }
+
+  const validation = validateDriveFiles_(files);
+  if (files.length > 0 && validation.valid.length === 0) {
+    return {
+      success: false,
+      error: 'Ningún archivo del lote es compatible.',
+      rejectedFiles: validation.rejected
+    };
+  }
+
+  // Idempotencia recuperable: un reintento carga los archivos faltantes en el
+  // expediente registrado, en vez de descartarlos.
   const existingExpediente = findExistingExpediente_(sheetInf, info.ot);
   if (existingExpediente.found) {
     if (!existingExpediente.folder) {
       return { success: false, error: 'La OT ya tiene un expediente registrado, pero su enlace de Drive no es accesible.' };
     }
-    ensureExpedienteSubfolders_(existingExpediente.folder);
-    return {
-      success: true,
-      alreadyExists: true,
-      url: existingExpediente.folder.getUrl(),
-      acceptedFiles: 0,
-      skippedFiles: validation.valid.length
-    };
+    const existingFolders = ensureExpedienteSubfolders_(existingExpediente.folder);
+    try {
+      const summary = uploadValidatedFiles_(existingExpediente.folder, existingFolders, validation.valid);
+      return {
+        success: true,
+        partial: validation.rejected.length > 0,
+        alreadyExists: true,
+        url: existingExpediente.folder.getUrl(),
+        acceptedFiles: summary.accepted,
+        skippedFiles: summary.skipped,
+        versionedFiles: summary.versioned,
+        rejectedFiles: validation.rejected
+      };
+    } catch (err) {
+      return { success: false, partial: true, error: 'No se pudo completar el expediente existente: ' + err.message, url: existingExpediente.folder.getUrl() };
+    }
   }
-
-  const otRow = values[otMatch.arrayIndex];
-  // La información canónica de cliente/sucursal/RFC proviene de la OT.
-  info.rfc = String(otRow[CO.RFC] || info.rfc || '').trim();
-  info.sucursal = String(otRow[CO.SUCURSAL] || info.sucursal || '').trim();
-  info.cliente = String(otRow[CO.CLIENTE] || info.cliente || '').trim();
 
   const branchFolder = resolveClientBranchFolder_(info, otRow);
   if (!branchFolder) {
@@ -1177,30 +1308,19 @@ function fase3_CrearExpediente(payload) {
     '02_Expediente_' + consecutivoPrefix + '_' + info.ot + '_' + info.nom
   );
 
-  // Reutiliza una carpeta huérfana del mismo nombre si una ejecución anterior
-  // alcanzó Drive pero falló antes de registrar INFORMES.
   const sameName = branchFolder.getFoldersByName(folderName);
   const expedienteFolder = sameName.hasNext() ? sameName.next() : branchFolder.createFolder(folderName);
   const folders = ensureExpedienteSubfolders_(expedienteFolder);
 
-  let accepted = 0;
-  let skipped = 0;
+  let summary;
   try {
-    validation.valid.forEach(function(file) {
-      const decoded = Utilities.base64Decode(file.content);
-      const mime = normalizedMimeType_(file.type || '', file.name || '');
-      const blob = Utilities.newBlob(decoded, mime, sanitizeFileName(file.name || 'archivo'));
-      const target = folders[file.category] || expedienteFolder;
-      if (createFileIfMissing_(target, blob)) accepted++; else skipped++;
-    });
+    summary = uploadValidatedFiles_(expedienteFolder, folders, validation.valid);
   } catch (err) {
     return {
       success: false,
       partial: true,
       error: 'La carpeta fue creada, pero falló la carga de archivos: ' + err.message,
-      url: expedienteFolder.getUrl(),
-      acceptedFiles: accepted,
-      skippedFiles: skipped
+      url: expedienteFolder.getUrl()
     };
   }
 
@@ -1226,10 +1346,12 @@ function fase3_CrearExpediente(payload) {
 
   return {
     success: true,
+    partial: validation.rejected.length > 0,
     url: expedienteFolder.getUrl(),
-    acceptedFiles: accepted,
-    skippedFiles: skipped,
-    rejectedFiles: []
+    acceptedFiles: summary.accepted,
+    skippedFiles: summary.skipped,
+    versionedFiles: summary.versioned,
+    rejectedFiles: validation.rejected
   };
 }
 
@@ -1238,58 +1360,54 @@ function fase3_AddFilesToExpediente(payload) {
   const files = payload && payload.files ? payload.files : [];
   if (!ot) return { success: false, error: 'Falta OT' };
 
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheetInf = ss.getSheetByName(CONFIG.SHEET_INFORMES);
+  const existing = findExistingExpediente_(sheetInf, ot);
+  if (!existing.found || !existing.folder) {
+    return { success: false, error: 'No se encontró el expediente registrado para OT: ' + ot };
+  }
+
+  // La URL del lote es sólo una confirmación: debe ser exactamente la misma
+  // carpeta registrada en INFORMES para la OT solicitada.
+  const suppliedUrl = String(payload.expedienteUrl || '').trim();
+  const suppliedId = extractDriveFolderId_(suppliedUrl);
+  if (suppliedUrl && !suppliedId) {
+    return { success: false, error: 'La URL del lote no es una carpeta válida de Drive.' };
+  }
+  if (suppliedId && suppliedId !== existing.folder.getId()) {
+    return { success: false, error: 'La URL del lote no corresponde al expediente registrado para la OT.' };
+  }
+  const expedienteFolder = existing.folder;
+
   const validation = validateDriveFiles_(files);
-  if (validation.rejected.length) {
+  if (files.length > 0 && validation.valid.length === 0) {
     return {
       success: false,
-      error: 'Uno o más archivos fueron rechazados. El lote no se cargó.',
+      error: 'Ningún archivo del lote es compatible.',
       rejectedFiles: validation.rejected
     };
   }
 
-  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-  const sheetInf = ss.getSheetByName(CONFIG.SHEET_INFORMES);
-  let expedienteFolder = getFolderByDriveLinkSafe_(payload.expedienteUrl || '');
-
-  if (expedienteFolder && String(expedienteFolder.getName()).indexOf('02_Expediente_') !== 0) {
-    expedienteFolder = null;
-  }
-  if (!expedienteFolder) {
-    const existing = findExistingExpediente_(sheetInf, ot);
-    expedienteFolder = existing.folder || null;
-  }
-  if (!expedienteFolder) {
-    return { success: false, error: 'No se encontró el expediente exacto para OT: ' + ot };
-  }
-
   const folders = ensureExpedienteSubfolders_(expedienteFolder);
-  let accepted = 0;
-  let skipped = 0;
   try {
-    validation.valid.forEach(function(file) {
-      const decoded = Utilities.base64Decode(file.content);
-      const mime = normalizedMimeType_(file.type || '', file.name || '');
-      const blob = Utilities.newBlob(decoded, mime, sanitizeFileName(file.name || 'archivo'));
-      const target = folders[file.category] || expedienteFolder;
-      if (createFileIfMissing_(target, blob)) accepted++; else skipped++;
-    });
+    const summary = uploadValidatedFiles_(expedienteFolder, folders, validation.valid);
+    return {
+      success: true,
+      partial: validation.rejected.length > 0,
+      url: expedienteFolder.getUrl(),
+      acceptedFiles: summary.accepted,
+      skippedFiles: summary.skipped,
+      versionedFiles: summary.versioned,
+      rejectedFiles: validation.rejected
+    };
   } catch (err) {
     return {
       success: false,
       partial: true,
       error: 'El lote quedó incompleto: ' + err.message,
-      acceptedFiles: accepted,
-      skippedFiles: skipped
+      url: expedienteFolder.getUrl()
     };
   }
-
-  return {
-    success: true,
-    url: expedienteFolder.getUrl(),
-    acceptedFiles: accepted,
-    skippedFiles: skipped,
-    rejectedFiles: []
-  };
 }
 // =========================================================================
 // getOrdenesSafe_ — devuelve el contrato vigente para SEAINF, incluido el
@@ -1982,7 +2100,13 @@ function normalizedMimeType_(mimeType, fileName) {
     doc: 'application/msword',
     docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     zip: 'application/zip',
-    dwg: 'application/vnd.dwg'
+    rar: 'application/vnd.rar',
+    dwg: 'application/vnd.dwg',
+    dxf: 'application/dxf',
+    heic: 'image/heic',
+    heif: 'image/heif',
+    mp4: 'video/mp4',
+    mov: 'video/quicktime'
   };
   return byExtension[ext] || mime;
 }
@@ -1991,7 +2115,8 @@ function validarArchivo_(content, mimeType, fileName) {
   const MAX_BYTES = 50 * 1024 * 1024;
   const ALLOWED_EXTENSIONS = [
     'pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp',
-    'xls', 'xlsx', 'doc', 'docx', 'zip', 'dwg'
+    'xls', 'xlsx', 'doc', 'docx', 'zip', 'rar', 'dwg', 'dxf',
+    'heic', 'heif', 'mp4', 'mov'
   ];
   const ALLOWED_MIMES = [
     'application/pdf',
@@ -2001,8 +2126,12 @@ function validarArchivo_(content, mimeType, fileName) {
     'application/msword',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'application/zip', 'application/x-zip-compressed',
+    'application/vnd.rar', 'application/x-rar-compressed',
     'application/vnd.dwg', 'image/vnd.dwg', 'application/dwg',
-    'application/acad', 'application/x-acad'
+    'application/acad', 'application/x-acad',
+    'application/dxf', 'image/vnd.dxf', 'application/x-dxf',
+    'image/heic', 'image/heif',
+    'video/mp4', 'video/quicktime'
   ];
 
   const estimatedBytes = Math.ceil((content || '').length * 0.75);
