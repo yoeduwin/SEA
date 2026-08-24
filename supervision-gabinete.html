@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EA-FSDG-12.01 – Supervisión y Trazabilidad</title>
+    <style>
+        :root {
+            --ea-primary: #005600;
+            --ea-secondary: #007836;
+            --ea-accent: #e8f5e9;
+            --ea-bg: #f0f4f1;
+            --text-dark: #1e293b;
+            --border-light: #cbd5e1;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--ea-bg);
+            color: var(--text-dark);
+            font-size: 11px;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 850px; margin: 0 auto; background: white; padding: 20px 25px;
+            border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        }
+
+        /* Encabezado */
+        .header-table { width: 100%; border-collapse: collapse; border: 2px solid var(--ea-primary); margin-bottom: 12px; }
+        .header-table td { border: 1px solid var(--ea-primary); padding: 6px 10px; vertical-align: middle; }
+        .header-logo { width: 110px; text-align: center; font-weight: bold; color: var(--ea-primary); }
+        .header-title { text-align: center; background: linear-gradient(135deg, var(--ea-primary) 0%, var(--ea-secondary) 100%); color: white; font-size: 14px; font-weight: 700; text-transform: uppercase; }
+        .header-info { width: 160px; font-size: 9px; line-height: 1.5; }
+        .lab-subtitle { text-align: center; font-size: 9px; color: #555; font-weight: 600; padding: 3px; }
+
+        /* Campos superiores */
+        .campos-superiores { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 24px; margin-bottom: 12px; padding: 8px 12px; border: 1px solid var(--border-light); border-radius: 4px; background: #fafafa; }
+        .campo { display: flex; align-items: center; gap: 8px; }
+        .campo label { font-weight: 700; font-size: 10px; }
+        .campo input { flex: 1; border: none; border-bottom: 1px solid var(--border-light); font-size: 11px; background: transparent; outline: none; }
+
+        /* Tabla principal */
+        .main-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 10px; }
+        .main-table th, .main-table td { border: 1px solid var(--border-light); padding: 4px 6px; vertical-align: middle; }
+        .main-table thead th { background: var(--ea-primary); color: white; font-weight: 600; text-align: center; font-size: 10px; padding: 5px; }
+        
+        .col-no { width: 30px; text-align: center; font-weight: bold; }
+        .col-check { width: 30px; text-align: center; }
+        
+        .section-row td { background: var(--ea-accent); color: var(--ea-primary); font-weight: 700; font-size: 10px; border-top: 2px solid var(--ea-primary); }
+        
+        .sub-row td { font-size: 8.5px; padding: 2px 6px; color: #334155; font-style: italic; }
+        .sub-row .col-no { font-size: 8.5px; font-weight: normal; }
+        
+        .radio-box { width: 10px; height: 10px; border: 1px solid #888; display: inline-block; border-radius: 2px; vertical-align: middle; }
+        
+        /* Fases y Firmas */
+        .fase-header td { background: #334155 !important; color: white !important; font-size: 10px; font-weight: 700; text-align: center; padding: 4px !important; }
+        .fase-inner-table { width: 100%; border-collapse: collapse; }
+        .fase-inner-table th { background: #f1f5f9; font-size: 9px; padding: 4px; border: 1px solid var(--border-light); }
+        .fase-inner-table td { border: 1px solid var(--border-light); height: 40px; vertical-align: bottom; }
+        
+        .espacio-firma { border-top: 1px dashed #94a3b8; color: #64748b; font-size: 8px; text-align: center; width: 85%; margin: 0 auto 4px auto; }
+        .fecha-hora-cell { text-align: center; vertical-align: middle !important; font-size: 9px; color: #555; }
+        .fecha-hora-content { margin-bottom: 6px; }
+        
+        /* Impresión (Escala automática al 97%) */
+        @media print {
+            @page { size: letter portrait; margin: 8mm; }
+            body { 
+                padding: 0; 
+                background: white; 
+                -webkit-print-color-adjust: exact; 
+                print-color-adjust: exact; 
+                zoom: 0.97; /* Escala al 97% para Chrome/Edge */
+            }
+            @-moz-document url-prefix() { /* Respaldo para Firefox */
+                .container { transform: scale(0.97); transform-origin: top center; width: 103%; }
+            }
+            .container { box-shadow: none; max-width: 100%; width: 100%; }
+            .no-print { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="no-print" style="text-align: right; margin-bottom: 10px;">
+        <button onclick="window.print()" style="padding: 8px 16px; cursor: pointer; background: var(--ea-primary); color: white; border: none; border-radius: 4px; font-weight: bold;">🖨️ Imprimir Formato</button>
+    </div>
+
+    <div class="container">
+        <table class="header-table">
+            <tr>
+                <td class="header-logo" rowspan="2"><img src="assets/logo.png" alt="Ejecutiva Ambiental" style="max-width: 100%; height: auto;" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjE4MCIgdmlld0JveD0iMCAwIDMwMCAxODAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxjaXJjbGUgY3g9IjUwIiBjeT0iOTAiIHI9IjQ1IiBzdHJva2U9IiMyZTdkMzIiIHN0cm9rZS13aWR0aD0iMyIgZmlsbD0ibm9uZSIvPgo8dGV4dCB4PSIxMTAiIHk9IjU1IiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjQiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSIjMzMzIj5FSkVDVVRJVkE8L3RleHQ+Cjx0ZXh0IHg9IjExMCIgeT0iODAiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIyOCIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IiMyZTdkMzIiPkFNQklFTlRBTDwvdGV4dD4KPC9zdmc+'"></td>
+                <td class="header-title">Supervisión de Gabinete</td>
+                <td class="header-info" rowspan="2">
+                    <strong>Código:</strong> EA-FSDG-12.01<br>
+                    <strong>Revisión:</strong> 01<br>
+                    <strong>Emisión:</strong> Enero, 2026
+                </td>
+            </tr>
+            <tr><td class="lab-subtitle"></td></tr>
+        </table>
+
+        <div class="campos-superiores">
+            <div class="campo"><label>Fecha:</label><input type="text"></div>
+            <div class="campo"><label>Informe / OT:</label><input type="text"></div>
+            <div class="campo"><label>Cliente:</label><input type="text"></div>
+            <div class="campo"><label>Folio:</label><span>SUP-</span><input type="text" style="width: 40px;"></div>
+        </div>
+
+        <table class="main-table">
+            <thead>
+                <tr>
+                    <th class="col-no">No.</th>
+                    <th>Aspecto a evaluar / Fase de Proceso</th>
+                    <th class="col-check">C</th><th class="col-check">NC</th><th class="col-check">NA</th>
+                    <th>Observaciones</th>
+                </tr>
+            </thead>
+            
+            <tbody>
+                <tr class="section-row"><td colspan="6">Sección 1. Registros de campo (Req. 7.5 / 8.4)</td></tr>
+                <tr><td class="col-no">1</td><td>¿Existe una orden de Trabajo emitida y firmada?</td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td></td></tr>
+                <tr><td class="col-no">2</td><td>¿Existe un registro de entrada y salida del equipo completo?</td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td></td></tr>
+                <tr><td class="col-no">3</td><td>¿Existen los anexos requeridos (hojas de campo, croquis, etc.)?</td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td></td></tr>
+                <tr><td class="col-no">4</td><td>¿Los registros de campo están completos, legibles y firmados?</td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td></td></tr>
+                <tr><td class="col-no">5</td><td>¿Corrección conforme a sistema (dato cruzado, correcto y rúbrica)?</td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td></td></tr>
+                
+                <tr class="section-row"><td colspan="6">Sección 2. Equipos y Trazabilidad (Req. 7.5)</td></tr>
+                <tr><td class="col-no">6</td><td>¿Los equipos utilizados cuentan con calibración vigente?</td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td></td></tr>
+                <tr><td class="col-no">7</td><td>¿Las hojas de campo muestran verificación inicial y final?</td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td></td></tr>
+
+                <tr class="fase-header"><td colspan="6">📍 FASE 1: RECEPCIÓN, REVISIÓN Y FIRMA DE HOJAS DE CAMPO</td></tr>
+                <tr>
+                    <td colspan="6" style="padding:0;">
+                        <table class="fase-inner-table">
+                            <tr><th style="width:33%">Entregó (Ingeniero de Pruebas)</th><th style="width:33%">Recibió</th><th style="width:14%">Fecha / Hora</th><th>Comentarios (¿firmadas?)</th></tr>
+                            <tr>
+                                <td><div class="espacio-firma">Nombre y Firma</div></td>
+                                <td><div class="espacio-firma">Nombre y Firma</div></td>
+                                <td class="fecha-hora-cell">
+                                    <div class="fecha-hora-content">____/____/____</div>
+                                    <div>____:____ h</div>
+                                </td>
+                                <td></td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+
+                <tr class="section-row"><td colspan="6">Sección 3. Procesamiento (Req. 7.5, 7.6, 7.11)</td></tr>
+                <tr><td class="col-no">8</td><td>¿Se usan formatos vigentes sin reutilizar contenido de otro cliente?</td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td></td></tr>
+                <tr><td class="col-no">9</td><td>¿Se verificó que el traspaso de datos (vaciado) sea íntegro y sin errores de transcripción?</td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td></td></tr>
+                <tr><td class="col-no">10</td><td>¿Se encuentran protegidas y validadas las fórmulas de las hojas de cálculo utilizadas para el procesamiento?</td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td></td></tr>
+
+                <tr class="fase-header"><td colspan="6">📍 FASE 2: VACIADO, IMPRESIÓN Y FIRMAS - MEMORIAS DE CÁLCULO</td></tr>
+                <tr>
+                    <td colspan="6" style="padding:0;">
+                        <table class="fase-inner-table">
+                            <tr><th style="width:33%">Procesó</th><th style="width:33%">Validó</th><th style="width:14%">Fecha / Hora</th><th>Comentarios (¿firmadas?)</th></tr>
+                            <tr>
+                                <td><div class="espacio-firma">Nombre y Firma</div></td>
+                                <td><div class="espacio-firma">Nombre y Firma</div></td>
+                                <td class="fecha-hora-cell">
+                                    <div class="fecha-hora-content">_____/_____/_____</div>
+                                    <div>____:____ h</div>
+                                </td>
+                                <td></td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+
+                <tr class="section-row"><td colspan="6">Sección 4. Aseguramiento de validez (ISO 7.7)</td></tr>
+                <tr><td class="col-no">11</td><td>Confirmación de que no hay desviaciones al método</td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td></td></tr>
+                
+                <tr class="section-row"><td colspan="6">Sección 5. Revisión del informe (ISO 7.8)</td></tr>
+                <tr><td class="col-no">12</td><td>¿Contiene datos del cliente completos (razón social, dirección, RFC)?</td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td></td></tr>
+                
+                <tr class="sub-row"><td class="col-no">12.1</td><td style="padding-left: 20px;">¿Razón Social, RFC y Dirección coinciden con OT?</td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td></td></tr>
+                <tr class="sub-row"><td class="col-no">12.2</td><td style="padding-left: 20px;">¿Número de OT y N° de Informe Coinciden?</td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td></td></tr>
+                <tr class="sub-row"><td class="col-no">12.3</td><td style="padding-left: 20px;">¿Responsable, Representante Legal, teléfono coincide con OT?</td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td></td></tr>
+
+                <tr><td class="col-no">13</td><td>¿Contiene el número de informe de manera rastreable en todas las páginas del informe?</td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td></td></tr>
+                <tr><td class="col-no">14</td><td>¿La paginación del documento (Ej. Página X de Y) cumple con el sistema de gestión?</td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td></td></tr>
+                <tr><td class="col-no">15</td><td>¿Corresponde al método / norma correspondiente?</td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td></td></tr>
+                <tr><td class="col-no">16</td><td>¿Concuerdan los cálculos de las memorias con los resultados reportados?</td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td></td></tr>
+                <tr><td class="col-no">17</td><td>¿Declara la incertidumbre (cuando aplica)?</td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td></td></tr>
+                <tr><td class="col-no">18</td><td>¿El informe preliminar está validado y listo para firmas/autorización final?</td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td class="col-check"><div class="radio-box"></div></td><td></td></tr>
+
+                <tr class="fase-header"><td colspan="6">📍 FASE 3: REVISIÓN Y AUTORIZACIÓN DEL INFORME DE RESULTADOS</td></tr>
+                <tr>
+                    <td colspan="6" style="padding:0;">
+                        <table class="fase-inner-table">
+                            <tr><th style="width:33%">Realizó</th><th style="width:33%">Autorizó</th><th style="width:14%">Fecha / Hora</th><th>Comentarios</th></tr>
+                            <tr>
+                                <td><div class="espacio-firma">Nombre y Firma</div></td>
+                                <td><div class="espacio-firma">Nombre y Firma</div></td>
+                                <td class="fecha-hora-cell">
+                                    <div class="fecha-hora-content">_____/_____/_____</div>
+                                    <div>_____:_____ h</div>
+                                </td>
+                                <td></td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div style="margin-top: 30px; display: flex; justify-content: center; text-align: center;">
+            <div style="width: 350px;">
+                <div style="border-top: 1px solid black; padding-top: 6px; font-weight: bold; font-size: 11px;">Vo. Bo.</div>
+                <div style="font-size: 10px; color: #333; margin-top: 4px; font-weight: 600;">Se instruye y autoriza la emisión del informe de resultados.</div>
+            </div>
+        </div>
+    </div>
+<!-- ── Autenticación Google (páginas internas) ── -->
+<style>@media print { #sea-user-info { display: none !important; } }</style>
+<div id="sea-user-info" style="
+  position:fixed;top:12px;right:16px;z-index:9999;
+  display:flex;align-items:center;gap:6px;
+  background:rgba(255,255,255,0.92);border-radius:20px;
+  padding:4px 10px;box-shadow:0 1px 6px rgba(0,0,0,0.15);
+"></div>
+<script src="https://accounts.google.com/gsi/client" onload="onGISLoaded()" async defer></script>
+<script src="auth.js"></script>
+<script>
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby8t7Py-cilePxLiGa-Lq7Df73XaRlmkRYV_kXbTs79HFydaJyub8muA0PBLRkPevUuXg/exec';
+  // El acceso se hereda de SEAINF: en el backend, la acción getConsecutivo ya
+  // está mapeada al módulo SEAINF, así que solo pasa quien tenga esa columna
+  // habilitada en la hoja USUARIOS_AUTORIZADOS. No requiere tocar el GAS.
+  SEAAuth.init(function () { /* páginas estáticas: nada que inicializar */ },
+               { gasUrl: SCRIPT_URL, authAction: 'getConsecutivo' });
+</script>
+</body>
+</html>

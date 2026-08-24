@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registro de Entrada y Salida de Equipos</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 8px;
+            background-color: #f5f5f5;
+            font-size: 11px;
+        }
+        
+        .container {
+            max-width: 100%;
+            margin: 0 auto;
+            background: white;
+            padding: 12px;
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 12px;
+            border-bottom: 2px solid #2e7d32;
+            padding-bottom: 8px;
+        }
+        
+        .header h1 {
+            margin: 0;
+            color: #2e7d32;
+            font-size: 16px;
+        }
+        
+        .header p {
+            margin: 3px 0;
+            color: #666;
+            font-size: 11px;
+        }
+        
+        .company-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            font-size: 10px;
+        }
+        
+        .logo-space {
+            width: 50px;
+            height: 35px;
+            border: 1px dashed #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+            font-size: 9px;
+        }
+        
+        .form-section {
+            margin-bottom: 12px;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .section-header {
+            background: #2e7d32;
+            color: white;
+            padding: 6px 12px;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        
+        .section-content {
+            padding: 8px;
+        }
+        
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .form-group label {
+            font-weight: bold;
+            margin-bottom: 2px;
+            color: #333;
+            font-size: 10px;
+        }
+        
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            padding: 3px;
+            border: 1px solid #ddd;
+            border-radius: 2px;
+            font-size: 10px;
+        }
+        
+        .form-group textarea {
+            min-height: 40px;
+            resize: vertical;
+        }
+        
+        .table-container {
+            overflow-x: auto;
+            margin: 8px 0;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 7px;
+        }
+        
+        th, td {
+            border: 1px solid #ddd;
+            padding: 2px;
+            text-align: left;
+            vertical-align: top;
+        }
+        
+        th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+            font-size: 6px;
+        }
+        
+        .narrow-col { width: 25px; }
+        .medium-col { width: 50px; }
+        .wide-col { width: 90px; }
+        .condition-col { width: 120px; }
+        
+        .signature-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 10px;
+        }
+        
+        .signature-box {
+            border: 1px solid #ddd;
+            padding: 6px;
+            border-radius: 3px;
+            background-color: #fafafa;
+        }
+        
+        .signature-box h4 {
+            margin-top: 0;
+            margin-bottom: 6px;
+            color: #2e7d32;
+            font-size: 11px;
+        }
+        
+        .signature-line {
+            border-top: 1px solid #333;
+            margin-top: 15px;
+            padding-top: 2px;
+            text-align: center;
+            font-size: 8px;
+            height: 12px;
+        }
+        
+        .add-row-btn {
+            background: #4caf50;
+            color: white;
+            border: none;
+            padding: 3px 6px;
+            border-radius: 2px;
+            cursor: pointer;
+            font-size: 9px;
+        }
+        
+        .add-row-btn:hover {
+            background: #45a049;
+        }
+        
+        .salida-entrada {
+            display: grid;
+            grid-template-columns: 2fr 0.8fr;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        
+        .regreso-manual {
+            border: 2px dashed #ccc;
+            padding: 6px;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+            text-align: center;
+            color: #666;
+        }
+        
+        .regreso-manual h4 {
+            margin: 0 0 4px 0;
+            color: #2e7d32;
+            font-size: 11px;
+        }
+        
+        .regreso-manual p {
+            margin: 0 0 2px 0;
+            font-size: 8px;
+            font-style: italic;
+        }
+        
+        .nota-importante {
+            margin-top: 8px;
+            padding: 4px;
+            background: #f0f8f0;
+            border-radius: 3px;
+            font-size: 7px;
+            border: 1px solid #c8e6c9;
+            line-height: 1.2;
+        }
+        
+        .checkbox-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-bottom: 4px;
+        }
+        
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            font-size: 6px;
+            white-space: nowrap;
+        }
+        
+        .checkbox-item input[type="checkbox"] {
+            width: 8px;
+            height: 8px;
+            margin: 0;
+        }
+        
+        .equipo-select {
+            width: 100%;
+            border: none;
+            font-size: 7px;
+            padding: 1px;
+        }
+
+        /* Control ✕ para eliminar una fila. Solo visible en pantalla:
+           se oculta en impresión y en la exportación a PDF. */
+        .col-delete {
+            display: block;
+            margin-top: 2px;
+            color: #d32f2f;
+            font-size: 11px;
+            font-weight: bold;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        .col-delete:hover {
+            color: #b71c1c;
+        }
+
+        body.exportando-pdf .col-delete {
+            display: none !important;
+        }
+        
+        .print-btn, .clear-btn, .pdf-btn {
+            position: fixed;
+            bottom: 20px;
+            background: #2e7d32;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            z-index: 1000;
+            transition: background-color 0.3s;
+        }
+        
+        .print-btn {
+            right: 20px;
+        }
+        
+        .pdf-btn {
+            right: 120px;
+            background: #1976d2;
+        }
+        
+        .clear-btn {
+            right: 220px;
+            background: #d32f2f;
+        }
+        
+        .print-btn:hover {
+            background: #1b5e20;
+        }
+        
+        .pdf-btn:hover {
+            background: #1565c0;
+        }
+        
+        .clear-btn:hover {
+            background: #c62828;
+        }
+        
+        .delete-row-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 320px;
+            background: #f44336;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            z-index: 1000;
+            transition: background-color 0.3s;
+        }
+        
+        .delete-row-btn:hover {
+            background: #d32f2f;
+        }
+
+        .btn-volver {
+            position: fixed;
+            top: 16px;
+            left: 16px;
+            padding: 8px 14px;
+            background: #2e7d32;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            z-index: 1000;
+            text-decoration: none;
+            transition: background 0.2s;
+        }
+
+        .btn-volver:hover {
+            background: #1b5e20;
+        }
+
+        @media print {
+            @page {
+                margin: 0.5in;
+                size: auto;
+            }
+            
+            body {
+                margin: 0;
+                background: white;
+                font-size: 9px;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            
+            * {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            
+            .container {
+                box-shadow: none;
+                padding: 8px;
+            }
+            
+            .add-row-btn, .print-btn, .pdf-btn, .clear-btn, .delete-row-btn, .btn-volver, .col-delete {
+                display: none !important;
+            }
+            
+            .signature-line {
+                height: 10px;
+                margin-top: 12px;
+            }
+            
+            .form-section {
+                margin-bottom: 8px;
+            }
+            
+            .section-content {
+                padding: 6px;
+            }
+            
+            .form-grid {
+                gap: 6px;
+                margin-bottom: 6px;
+            }
+            
+            table {
+                font-size: 6px;
+            }
+            
+            th, td {
+                padding: 1px;
+            }
+            
+            .nota-importante {
+                padding: 3px;
+                font-size: 6px;
+                line-height: 1.1;
+            }
+            
+            .signature-section {
+                margin-top: 6px;
+                gap: 8px;
+            }
+            
+            .signature-box {
+                padding: 4px;
+            }
+            
+            .checkbox-item {
+                font-size: 5px;
+            }
+            
+            .checkbox-item input[type="checkbox"] {
+                width: 6px;
+                height: 6px;
+            }
+            
+            .regreso-manual {
+                padding: 4px;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .form-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .salida-entrada {
+                grid-template-columns: 1fr;
+            }
+            
+            .signature-section {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <a href="index.html" class="btn-volver">&larr; Men&uacute;</a>
+    <div class="container">
+        <div class="header">
+            <div class="company-info">
+                <div style="width: 120px;">
+                    <img src="assets/logo.png" alt="Ejecutiva Ambiental" style="max-width: 100%; height: auto;"
+                         onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjE4MCIgdmlld0JveD0iMCAwIDMwMCAxODAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxjaXJjbGUgY3g9IjUwIiBjeT0iOTAiIHI9IjQ1IiBzdHJva2U9IiMyZTdkMzIiIHN0cm9rZS13aWR0aD0iMyIgZmlsbD0ibm9uZSIvPgo8dGV4dCB4PSIxMTAiIHk9IjU1IiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjQiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSIjMzMzIj5FSkVDVVRJVkE8L3RleHQ+Cjx0ZXh0IHg9IjExMCIgeT0iODAiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIyOCIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IiMyZTdkMzIiPkFNQklFTlRBTDwvdGV4dD4KPC9zdmc+';">
+                </div>
+                <div>
+                    <h1>REGISTRO DE SALIDA Y ENTRADA DE EQUIPOS</h1>
+                    <p></p>
+                </div>
+                <div style="text-align: right;">
+                    <strong>Código:</strong> EA-FCEQ-03.05<br>
+                    <strong>Revisión:</strong> 01<br>
+                    <strong>Fecha:</strong> Enero, 2025
+                </div>
+            </div>
+        </div>
+
+        <!-- INFORMACIÓN GENERAL Y DATOS DE SALIDA COMBINADOS -->
+        <div class="form-section">
+            <div class="section-header">INFORMACIÓN GENERAL Y DATOS DE SALIDA</div>
+            <div class="section-content">
+                <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap: 8px;">
+                    <div class="form-group">
+                        <label for="solicitante">Solicitante:</label>
+                        <select id="solicitante" name="solicitante">
+                            <option value="">Seleccionar solicitante...</option>
+                            <option value="EDUWIN IVÁN HERNÁNDEZ ZÁRATE">EDUWIN IVÁN HERNÁNDEZ ZÁRATE</option>
+                            <option value="EDUARDO CAMPOS SÁNCHEZ">EDUARDO CAMPOS SÁNCHEZ</option>
+                            <option value="MARTÍN LUNA CÓRDOVA">MARTÍN LUNA CÓRDOVA</option>
+                            <option value="JIMMY AYALA">JIMMY AYALA</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="area">Área/Departamento:</label>
+                        <select id="area" name="area">
+                            <option value="">Seleccionar departamento...</option>
+                            <option value="AMBIENTE LABORAL">AMBIENTE LABORAL</option>
+                            <option value="FUENTES FIJAS">FUENTES FIJAS</option>
+                            <option value="CALIDAD">CALIDAD</option>
+                            <option value="OTRO">OTRO:</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="salida-entrada">
+                    <div>
+                        <h4 style="margin: 0 0 6px 0; color: #2e7d32; font-size: 12px;">📤 DATOS DE SALIDA</h4>
+                        <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap: 6px;">
+                            <div class="form-group">
+                                <label for="fechaSalida">Fecha de Salida:</label>
+                                <input type="date" id="fechaSalida" name="fechaSalida">
+                            </div>
+                            <div class="form-group">
+                                <label for="motivoSalida">Motivo:</label>
+                                <select id="motivoSalida" name="motivoSalida">
+                                    <option value="">Seleccionar...</option>
+                                    <option value="mantenimiento">Mantenimiento</option>
+                                    <option value="reparacion">Reparación</option>
+                                    <option value="calibracion">Calibración</option>
+                                    <option value="trabajo-campo">Trabajo de Campo</option>
+                                    <option value="prestamo">Préstamo</option>
+                                    <option value="otro">Otro</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="destino">Orden de Trabajo / Proyecto:</label>
+                                <input type="text" id="destino" name="destino" placeholder="No. Orden / Nombre del Proyecto">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="regreso-manual">
+                        <h4>📥 DATOS DE REGRESO</h4>
+                        <p><strong>LLENAR A MANO</strong></p>
+                        <p>Fecha: _______________</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- REGISTRO DE EQUIPOS -->
+        <div class="form-section">
+            <div class="section-header">📋 REGISTRO DE EQUIPOS</div>
+            <div class="section-content">
+                <div class="table-container">
+                    <table id="tablaEquipos">
+                        <thead>
+                            <tr>
+                                <th class="narrow-col">N°</th>
+                                <th class="wide-col">Equipo</th>
+                                <th class="medium-col">Inventario/Serie</th>
+                                <th class="condition-col">Estado al Salir</th>
+                                <th class="condition-col">Accesorios/Documentación</th>
+                                <th class="condition-col">Estado al Regresar</th>
+                                <th class="condition-col">Cambios/Observaciones</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                    <button class="add-row-btn" onclick="agregarFilaEquipo()">+ Agregar Equipo</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- OBSERVACIONES GENERALES REDUCIDAS -->
+        <div class="form-section">
+            <div class="section-header">💬 OBSERVACIONES</div>
+            <div class="section-content">
+                <textarea style="width: 100%; min-height: 30px; font-size: 10px;" placeholder="Observaciones adicionales..."></textarea>
+            </div>
+        </div>
+
+        <!-- FIRMAS Y AUTORIZACIONES REDUCIDAS -->
+        <div class="signature-section">
+            <div class="signature-box">
+                <h4>SALIDA DE EQUIPOS</h4>
+                <div class="signature-line"><strong>1. Entregó:</strong> Nombre, Firma y Fecha</div>
+                <div class="signature-line"><strong>2. Recibió:</strong> Nombre, Firma y Fecha</div>
+            </div>
+            <div class="signature-box">
+                <h4>ENTRADA DE EQUIPOS</h4>
+                <div class="signature-line"><strong>3. Entregó:</strong> Nombre, Firma y Fecha</div>
+                <div class="signature-line"><strong>4. Recibió:</strong> Nombre, Firma y Fecha</div>
+            </div>
+        </div>
+
+        <div class="nota-importante">
+            <strong>NOTAS MUY IMPORTANTES:</strong>
+            <strong>Para su estado:</strong> Se enciende el equipo, se revisan baterías, se hace alguna medición, se comprueba su correcto funcionamiento.
+            <strong>Para accesorios o documentación:</strong> Se agregan documentos (manual, certificados, etc) o cables, tornillos, picas, entre otros.
+            <strong>Nota:</strong> Se puede escribir al margen cualquier otra anotación adicional que se considere relevante.<br>
+
+            Este registro debe completarse en su totalidad. Los datos de regreso se llenarán a mano al momento del retorno del equipo. Es responsabilidad del personal verificar y documentar el estado real de los equipos tanto al momento de salida como de regreso.<br>
+
+            <strong>TÉRMINOS DE RESPONSABILIDAD:</strong> Por medio del presente documento, yo, quien solicita el/los equipo (s), me comprometo a: 1. Utilizar los equipos únicamente para los fines laborales autorizados dentro del proyecto especificado. 2. Mantener los equipos en las mismas condiciones en que fueron entregados, exceptuando el desgaste normal por uso adecuado. 3. Reportar inmediatamente cualquier incidente, falla o anomalía que se presente durante el uso de los equipos. 4. No prestar, transferir o delegar el uso de los equipos a terceros sin autorización previa por escrito.<br>
+
+            <strong>DECLARACIÓN DE CONFORMIDAD:</strong> Por medio del presente, declaro haber recibido los equipos descritos anteriormente en óptimas condiciones de funcionamiento. Asimismo, confirmo haber recibido capacitación sobre el uso adecuado, cuidado, almacenamiento, traslado, resguardo y operación de los mismos, así como sobre todas las prácticas necesarias para su correcta manipulación. Reconozco y acepto los términos de responsabilidad establecidos en esta declaración y entiendo que, en caso de incumplir con las disposiciones aquí señaladas, se procederá conforme a lo estipulado en mi contrato individual de trabajo.<br>
+
+            _______________________________________________<br>
+            Nombre y firma
+        </div>
+    </div>
+
+    <button class="print-btn" onclick="imprimir()">🖨️ Imprimir</button>
+    <button class="pdf-btn" onclick="exportarPDF()">📄 Exportar PDF</button>
+    <button class="clear-btn" onclick="limpiarFormulario()">🗑️ Limpiar</button>
+    <button class="delete-row-btn" onclick="eliminarUltimaFila()">❌ Eliminar última fila</button>
+
+    <script>
+        // Contador monótono para IDs únicos de checkboxes (nunca se reutiliza).
+        let uidEquipo = 0;
+
+        // Opciones de equipos: fuente única usada por todas las filas.
+        const OPCIONES_EQUIPOS = `
+            <option value="">Seleccionar equipo...</option>
+            <option value="EA-SO11-01">SONÓMETRO INTEGRADOR CON FILTRO DE BANDAS DE OCTAVA</option>
+            <option value="EA-CA11-02">CALIBRADOR ACÚSTICO</option>
+            <option value="EA-AN15-04">ANEMÓMETRO</option>
+            <option value="EA-MT15-05">MONITOR DE ESTRÉS TÉRMICO</option>
+            <option value="EA-TL15-06">TERMÓMETRO DE LÍQUIDO EN VIDRIO</option>
+            <option value="EA-TL15-07">TERMÓMETRO DE LÍQUIDO EN VIDRIO</option>
+            <option value="EA-TK22-08">MEDIDOR DE RESISTENCIA A TIERRAS</option>
+            <option value="EA-CV24-09">CALIBRADOR DE EQUIPO DE VIBRACIONES</option>
+            <option value="EA-TV24-10">MEDIDOR DE VIBRACIONES HUMANAS</option>
+            <option value="EA-HG22-11">HIGRÓMETRO</option>
+            <option value="EA-LX25-12">LUXÓMETRO</option>
+            <option value="EA-DR22-13">DÉCADAS DE RESISTENCIA</option>
+            <option value="EA-TD15-14">TERMÓMETRO DIGITAL</option>
+            <option value="EA-MO22-15">MULTÍMETRO</option>
+            <option value="EA-DO11-03">DOSÍMETRO (MEDIDOR DE PERSONAL DE RUIDO)</option>
+        `;
+        
+        // Mapeo de equipos a códigos de inventario
+        const equiposInventario = {
+            'EA-SO11-01': 'EA-SO11-01',
+            'EA-CA11-02': 'EA-CA11-02', 
+            'EA-AN15-04': 'EA-AN15-04',
+            'EA-MT15-05': 'EA-MT15-05',
+            'EA-TL15-06': 'EA-TL15-06',
+            'EA-TL15-07': 'EA-TL15-07',
+            'EA-TK22-08': 'EA-TK22-08',
+            'EA-CV24-09': 'EA-CV24-09',
+            'EA-TV24-10': 'EA-TV24-10',
+            'EA-HG22-11': 'EA-HG22-11',
+            'EA-LX25-12': 'EA-LX25-12',
+            'EA-DR22-13': 'EA-DR22-13',
+            'EA-TD15-14': 'EA-TD15-14',
+            'EA-MO22-15': 'EA-MO22-15',
+            'EA-DO11-03': 'EA-DO11-03'
+        };
+        
+        // Grupos de equipos que salen juntos: al elegir cualquier miembro de un grupo
+        // se agregan como filas nuevas los miembros que falten (sin duplicar).
+        const GRUPOS_EQUIPOS = [
+            ['EA-SO11-01', 'EA-CA11-02'],                 // Acústica: sonómetro + calibrador acústico
+            ['EA-TK22-08', 'EA-DR22-13', 'EA-MO22-15'],   // Tierras: medidor de tierras + décadas + multímetro
+            ['EA-CV24-09', 'EA-TV24-10']                  // Vibraciones: calibrador de vibraciones + medidor de vibraciones humanas
+        ];
+
+        // true si algún equipo de la tabla ya tiene seleccionada esa clave.
+        function existeEquipo(clave) {
+            return Array.from(document.querySelectorAll('#tablaEquipos tbody .equipo-select'))
+                .some(function (sel) { return sel.value === clave; });
+        }
+
+        // Autollena el número de inventario del equipo elegido (búsqueda relativa a su fila).
+        function actualizarInventario(selectElement) {
+            const fila = selectElement.closest('tr');
+            const inputInventario = fila.querySelector('.inventario-input');
+            const clave = selectElement.value;
+            inputInventario.value = (clave && equiposInventario[clave]) ? equiposInventario[clave] : '';
+        }
+
+        // Se dispara al cambiar un equipo (interacción del usuario): autollena inventario y
+        // agrega las filas del grupo que falten. Las altas programáticas no pasan por aquí,
+        // así que no hay recursión.
+        function alCambiarEquipo(selectElement) {
+            actualizarInventario(selectElement);
+            const clave = selectElement.value;
+            if (!clave) return;
+            const grupo = GRUPOS_EQUIPOS.find(function (g) { return g.indexOf(clave) !== -1; });
+            if (!grupo) return;
+            grupo.forEach(function (miembro) {
+                if (!existeEquipo(miembro)) {
+                    agregarFilaEquipo(miembro);
+                }
+            });
+        }
+        
+        // Agrega una fila de equipo (opcionalmente preseleccionada) y renumera.
+        // No resuelve dependencias, por lo que sirve tanto para el botón "+ Agregar Equipo"
+        // como para las altas automáticas por grupo.
+        function agregarFilaEquipo(claveInicial) {
+            uidEquipo++;
+            const uid = uidEquipo;
+            const tbody = document.querySelector('#tablaEquipos tbody');
+            const nuevaFila = document.createElement('tr');
+
+            nuevaFila.innerHTML = `
+                <td>
+                    <span class="num-text"></span>
+                    <span class="col-delete" title="Eliminar fila" onclick="eliminarFila(this)">✕</span>
+                </td>
+                <td>
+                    <select class="equipo-select" onchange="alCambiarEquipo(this)">
+                        ${OPCIONES_EQUIPOS}
+                    </select>
+                </td>
+                <td><input type="text" class="inventario-input" style="width:100%; border:none; font-size:7px;" placeholder="No. inventario/serie" readonly></td>
+                <td>
+                    <select style="width:100%; border:none; margin-bottom:2px; font-size:7px;">
+                        <option value="">Estado...</option>
+                        <option value="excelente">Excelente</option>
+                        <option value="bueno">Bueno</option>
+                        <option value="regular">Regular</option>
+                        <option value="dañado">Dañado</option>
+                    </select>
+                    <div class="checkbox-group">
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="botones${uid}"> <label for="botones${uid}">Botones</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="perillas${uid}"> <label for="perillas${uid}">Perillas</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="pantalla${uid}"> <label for="pantalla${uid}">Pantalla</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="cables${uid}"> <label for="cables${uid}">Cables</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="terminales${uid}"> <label for="terminales${uid}">Terminales</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="tapas${uid}"> <label for="tapas${uid}">Tapas</label>
+                        </div>
+                    </div>
+                    <textarea style="width:100%; border:none; height:15px; font-size:6px;" placeholder="Observaciones..."></textarea>
+                </td>
+                <td><textarea style="width:100%; border:none; height:40px; font-size:7px;" placeholder="Manuales, cables, estuches, etc."></textarea></td>
+                <td style="background-color: #f9f9f9;">
+                    <div style="text-align: center; font-size: 6px; color: #666; margin-bottom: 4px;">LLENAR A MANO</div>
+                    <div class="checkbox-group">
+                        <div class="checkbox-item">
+                            <input type="checkbox" disabled> <label>Botones</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" disabled> <label>Perillas</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" disabled> <label>Pantalla</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" disabled> <label>Cables</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" disabled> <label>Terminales</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" disabled> <label>Tapas</label>
+                        </div>
+                    </div>
+                </td>
+                <td style="background-color: #f9f9f9; text-align: center; font-size: 6px; color: #666;">
+                    LLENAR A MANO
+                </td>
+            `;
+
+            tbody.appendChild(nuevaFila);
+
+            if (claveInicial) {
+                const select = nuevaFila.querySelector('.equipo-select');
+                select.value = claveInicial;
+                actualizarInventario(select);
+            }
+
+            renumerar();
+        }
+
+        // Actualiza el número visible (N°) de cada fila según su posición.
+        function renumerar() {
+            document.querySelectorAll('#tablaEquipos tbody tr').forEach(function (tr, i) {
+                const num = tr.querySelector('.num-text');
+                if (num) num.textContent = i + 1;
+            });
+        }
+
+        // Elimina la fila del control ✕ indicado (siempre deja al menos una fila).
+        function eliminarFila(el) {
+            const tbody = document.querySelector('#tablaEquipos tbody');
+            if (tbody.querySelectorAll('tr').length <= 1) {
+                alert('Debe haber al menos un equipo en la tabla');
+                return;
+            }
+            if (confirm('¿Eliminar esta fila de equipos?')) {
+                el.closest('tr').remove();
+                renumerar();
+            }
+        }
+        
+        function imprimir() {
+            window.print();
+        }
+        
+        function exportarPDF() {
+            // Obtener el nombre del proyecto para el archivo
+            let nombreProyecto = document.getElementById('destino').value;
+            let nombreArchivo = 'Registro_Equipos';
+            
+            if (nombreProyecto && nombreProyecto.trim() !== '') {
+                // Limpiar el nombre del archivo (quitar caracteres especiales)
+                nombreArchivo = nombreProyecto.replace(/[^a-zA-Z0-9]/g, '_');
+            }
+            
+            // Configuración para el PDF en horizontal
+            const element = document.querySelector('.container');
+            const opt = {
+                margin: 0.3,
+                filename: nombreArchivo + '.pdf',
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 1.5 },
+                jsPDF: { unit: 'in', format: 'letter', orientation: 'landscape' }
+            };
+            
+            // Ocultar los controles ✕ durante la exportación (html2canvas no respeta
+            // @media print) y restaurarlos al terminar.
+            document.body.classList.add('exportando-pdf');
+            const restaurar = function () { document.body.classList.remove('exportando-pdf'); };
+            html2pdf().set(opt).from(element).save().then(restaurar).catch(restaurar);
+        }
+        
+        function limpiarFormulario() {
+            if (confirm('¿Estás seguro de que quieres limpiar todo el formulario?')) {
+                // Limpiar todos los inputs de texto
+                document.querySelectorAll('input[type="text"], input[type="date"], textarea').forEach(function(input) {
+                    input.value = '';
+                });
+                
+                // Resetear todos los selects
+                document.querySelectorAll('select').forEach(function(select) {
+                    select.selectedIndex = 0;
+                });
+                
+                // Desmarcar todos los checkboxes
+                document.querySelectorAll('input[type="checkbox"]').forEach(function(checkbox) {
+                    checkbox.checked = false;
+                });
+                
+                // Resetear la tabla a una sola fila limpia
+                const tbody = document.querySelector('#tablaEquipos tbody');
+                tbody.innerHTML = '';
+                uidEquipo = 0;
+                agregarFilaEquipo();
+                
+                alert('Formulario limpiado correctamente');
+            }
+        }
+        
+        function eliminarUltimaFila() {
+            const tbody = document.querySelector('#tablaEquipos tbody');
+            const filas = tbody.getElementsByTagName('tr');
+            
+            // No permitir eliminar si solo queda una fila
+            if (filas.length <= 1) {
+                alert('Debe haber al menos un equipo en la tabla');
+                return;
+            }
+            
+            if (confirm('¿Eliminar la última fila de equipos?')) {
+                tbody.removeChild(filas[filas.length - 1]);
+                renumerar();
+            }
+        }
+
+        // Generar la primera fila al cargar (fuente única de la fila vía agregarFilaEquipo).
+        document.addEventListener('DOMContentLoaded', function () {
+            const tbody = document.querySelector('#tablaEquipos tbody');
+            tbody.innerHTML = '';
+            uidEquipo = 0;
+            agregarFilaEquipo();
+        });
+    </script>
+<!-- ── Autenticación Google (páginas internas) ── -->
+<style>@media print { #sea-user-info { display: none !important; } }</style>
+<div id="sea-user-info" style="
+  position:fixed;top:12px;right:16px;z-index:9999;
+  display:flex;align-items:center;gap:6px;
+  background:rgba(255,255,255,0.92);border-radius:20px;
+  padding:4px 10px;box-shadow:0 1px 6px rgba(0,0,0,0.15);
+"></div>
+<script src="https://accounts.google.com/gsi/client" onload="onGISLoaded()" async defer></script>
+<script src="auth.js"></script>
+<script>
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby8t7Py-cilePxLiGa-Lq7Df73XaRlmkRYV_kXbTs79HFydaJyub8muA0PBLRkPevUuXg/exec';
+  // El acceso se hereda de SEAINF: en el backend, la acción getConsecutivo ya
+  // está mapeada al módulo SEAINF, así que solo pasa quien tenga esa columna
+  // habilitada en la hoja USUARIOS_AUTORIZADOS. No requiere tocar el GAS.
+  SEAAuth.init(function () { /* páginas estáticas: nada que inicializar */ },
+               { gasUrl: SCRIPT_URL, authAction: 'getConsecutivo' });
+</script>
+</body>
+</html>
