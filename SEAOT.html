@@ -77,6 +77,18 @@
     .search-box input { flex:1; padding:10px; font-size:14px; text-transform:uppercase; border:1px solid #ccc; border-radius:4px; }
     .search-box button { background:#1e5a3e; color:white; border:none; padding:10px 20px; border-radius:4px; cursor:pointer; font-weight:bold; }
     .close-modal { margin-top:15px; background:#6c757d; color:white; border:none; padding:8px 15px; border-radius:4px; cursor:pointer; width:100%; }
+    /* Documentación y Formatos Asociados */
+    .formatos-list{display:flex;flex-direction:column;gap:10px;margin-top:15px;}
+    .formato-item{display:flex;align-items:center;gap:12px;border:1px solid #ddd;border-left:4px solid #1e5a3e;border-radius:5px;padding:10px 12px;background:#f8f9fa;}
+    .formato-item .fi-icon{font-size:20px;line-height:1;}
+    .formato-item .fi-body{flex:1;min-width:0;}
+    .formato-item .fi-title{font-weight:bold;color:#1e5a3e;font-size:12px;}
+    .formato-item .fi-desc{font-size:10px;color:#666;margin-top:2px;}
+    .formato-item button{background:#1e5a3e;color:#fff;border:0;padding:8px 14px;border-radius:4px;cursor:pointer;font-size:11px;white-space:nowrap;}
+    .formato-item button:hover{background:#2d7a4f;}
+    .formato-item.is-pending{opacity:.65;border-left-color:#adb5bd;}
+    .formato-item.is-pending button{background:#adb5bd;cursor:not-allowed;}
+    .formatos-badge{display:inline-block;background:#fff3cd;color:#856404;border:1px solid #ffc107;border-radius:10px;padding:1px 8px;font-size:9px;font-weight:bold;margin-left:6px;}
     /* Revisión de Contrato */
     .contract-review-block{border-left:3px solid #1e5a3e;background:#f8f9fa;border-radius:3px;padding:8px 10px;margin-top:5px;}
     .contract-review-label{font-weight:bold;color:#1e5a3e;font-size:11px;text-transform:uppercase;letter-spacing:.3px;}
@@ -137,6 +149,41 @@
       </div>
       <div id="dbSearchResult" style="margin-top:15px; font-size:11px; max-height:350px; overflow-y:auto;"></div>
       <button class="close-modal" onclick="closeDbSearchModal()">Cerrar</button>
+    </div>
+  </div>
+
+  <div id="formatosModal" class="modal-overlay">
+    <div class="modal-content" style="max-width:520px;">
+      <h3>📄 Documentación y Formatos Asociados</h3>
+      <p style="font-size:11px; color:#666;">Se vinculan a la OT activa <strong id="formatosOtLabel">—</strong>. Se abren en una pestaña nueva con los datos del cliente precargados, para no recapturar información al volver de campo.</p>
+      <div id="formatosWarn" class="series-info" style="display:none;"></div>
+      <div class="formatos-list">
+        <div class="formato-item">
+          <span class="fi-icon">🧰</span>
+          <div class="fi-body">
+            <div class="fi-title">Solicitud de Equipos</div>
+            <div class="fi-desc">Precarga OT, cliente y servicios. La fecha se define al confirmar la visita.</div>
+          </div>
+          <button type="button" onclick="abrirFormato('equipos')">Abrir</button>
+        </div>
+        <div class="formato-item">
+          <span class="fi-icon">📋</span>
+          <div class="fi-body">
+            <div class="fi-title">Supervisión de Gabinete</div>
+            <div class="fi-desc">Hereda el N° de OT y los datos del servicio para su descarga en PDF.</div>
+          </div>
+          <button type="button" onclick="abrirFormato('supervision')">Abrir</button>
+        </div>
+        <div class="formato-item is-pending">
+          <span class="fi-icon">📝</span>
+          <div class="fi-body">
+            <div class="fi-title">Encuesta de Satisfacción <span class="formatos-badge">Pendiente</span></div>
+            <div class="fi-desc">Se integrará en una segunda iteración cuando el formato esté listo.</div>
+          </div>
+          <button type="button" disabled>Próximamente</button>
+        </div>
+      </div>
+      <button class="close-modal" onclick="closeFormatosModal()">Cerrar</button>
     </div>
   </div>
 
@@ -218,6 +265,7 @@
       <button onclick="registerToSheets(event)" style="background:#007bff;">🚀 Registrar OT en API</button>
       <button onclick="printWorkOrder()">Imprimir/PDF</button>
       <button onclick="sendWorkOrder()">Enviar por Email</button>
+      <button onclick="openFormatosModal()" style="background:#6f42c1;">📄 Formatos asociados</button>
       <span id="workorderStatus"></span>
     </div>
     <div class="header">
@@ -877,6 +925,94 @@ Tel: 222-941-7295`;
     } finally {
       if (btn) { btn.textContent = originalText; btn.disabled = false; }
     }
+  }
+
+  // ================== DOCUMENTACIÓN Y FORMATOS ASOCIADOS ==================
+  // Vincula los formatos del proceso a la OT activa y los abre ya contextualizados
+  // (folio + datos del cliente) como parámetros de URL, para eliminar la recaptura
+  // manual al volver de campo.
+  //
+  // CONTRATO DE PARÁMETROS (el formato destino los lee con URLSearchParams):
+  //   ot, serie, cliente, sucursal, rfc, direccion, contacto, telefono,
+  //   correo, emision, servicios, personal, fecha
+  //   · "fecha" se OMITE en Solicitud de Equipos (se define al confirmar la visita).
+  //
+  // Si los formatos se alojan dentro del repo SEA, cambia FORMATOS_BASE a 'formatos/'.
+  const FORMATOS_BASE = 'https://yoeduwin.github.io/formatos/';
+  const FORMATOS = {
+    equipos:     { file: 'registro-equipos.html',     omitFecha: true  },
+    supervision: { file: 'supervision-gabinete.html', omitFecha: false }
+  };
+
+  function collectOtContext() {
+    const val = id => (document.getElementById(id)?.value || '').trim();
+    const servicios = [], personal = [], fechas = [];
+    document.querySelectorAll('#workTableBody tr').forEach(row => {
+      const f = row.querySelectorAll('input, select, textarea');
+      if (f.length >= 3 && f[0].value) {
+        servicios.push((f[0].value || '').trim());
+        if (f[1].value) personal.push((f[1].value || '').trim());
+        if (f[2].value) fechas.push((f[2].value || '').trim());
+      }
+    });
+    return {
+      ot: val('wo_orderNumber'),
+      serie: getSelectedSeries(),
+      cliente: val('wo_clientName'),
+      sucursal: val('wo_branch'),
+      rfc: (val('rfc') || profileData.rfc || '').toUpperCase(),
+      direccion: val('wo_serviceAddress'),
+      contacto: val('wo_contactName'),
+      telefono: val('wo_phone'),
+      correo: val('wo_email'),
+      emision: val('wo_issueDate'),
+      fecha: fechas[0] || '',
+      servicios: [...new Set(servicios)].join(', '),
+      personal: [...new Set(personal.filter(Boolean))].join(', ')
+    };
+  }
+
+  function buildFormatoUrl(cfg, ctx) {
+    const p = new URLSearchParams();
+    const put = (k, v) => { if (v) p.set(k, v); };
+    put('ot', ctx.ot);             put('serie', ctx.serie);
+    put('cliente', ctx.cliente);   put('sucursal', ctx.sucursal);
+    put('rfc', ctx.rfc);           put('direccion', ctx.direccion);
+    put('contacto', ctx.contacto); put('telefono', ctx.telefono);
+    put('correo', ctx.correo);     put('emision', ctx.emision);
+    put('servicios', ctx.servicios); put('personal', ctx.personal);
+    if (!cfg.omitFecha) put('fecha', ctx.fecha);
+    return FORMATOS_BASE + cfg.file + '?' + p.toString();
+  }
+
+  function openFormatosModal() {
+    syncData();
+    const ctx = collectOtContext();
+    const label = document.getElementById('formatosOtLabel');
+    if (label) label.textContent = ctx.ot || '(sin folio)';
+    const warn = document.getElementById('formatosWarn');
+    if (warn) {
+      const missing = [];
+      if (!ctx.ot) missing.push('N° de OT');
+      if (!ctx.cliente) missing.push('cliente (carga el perfil)');
+      warn.style.display = missing.length ? 'block' : 'none';
+      warn.textContent = missing.length ? '⚠ Falta: ' + missing.join(' y ') + '.' : '';
+    }
+    const modal = document.getElementById('formatosModal');
+    if (modal) modal.style.display = 'flex';
+  }
+  function closeFormatosModal() {
+    const m = document.getElementById('formatosModal');
+    if (m) m.style.display = 'none';
+  }
+
+  function abrirFormato(key) {
+    const cfg = FORMATOS[key];
+    if (!cfg) return;
+    const ctx = collectOtContext();
+    if (!ctx.ot) { alert('Primero genera o escribe el N° de Orden de Trabajo.'); return; }
+    if (!ctx.cliente) { alert('Carga el perfil del cliente antes de generar el formato.'); return; }
+    window.open(buildFormatoUrl(cfg, ctx), '_blank', 'noopener');
   }
 
   function iniciarApp() {

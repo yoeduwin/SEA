@@ -213,6 +213,40 @@ El formulario incluye un modal de búsqueda por RFC que pre-llena los campos si 
 
 SEAOT permite cargar datos del cliente desde un archivo Excel (.xlsx). El sistema mapea las columnas del archivo a los campos del formulario.
 
+#### Documentación y Formatos Asociados
+
+Desde la barra **Gestión de Orden** (botón **📄 Formatos asociados**), SEAOT abre un modal que vincula los formatos del proceso a la OT activa y los abre ya contextualizados —con el folio y los datos del cliente precargados— para eliminar la recaptura manual al volver de campo.
+
+**Formatos integrados**
+
+| Formato | Estado | Nota |
+|---|---|---|
+| Solicitud de Equipos | Activo | Se precargan OT, cliente y servicios; la **fecha se deja pendiente** hasta confirmar la visita. |
+| Supervisión de Gabinete | Activo | Hereda el N° de OT y los datos del servicio para su descarga en PDF. |
+| Encuesta de Satisfacción | Pendiente | Se integrará en una segunda iteración cuando exista el formato. |
+
+**Contrato de parámetros (URL)**
+
+SEAOT pasa el contexto de la OT como parámetros de consulta. El formato destino los lee con `new URLSearchParams(location.search)` y prellena sus campos (escapando los valores para evitar XSS):
+
+| Parámetro | Origen en SEAOT |
+|---|---|
+| `ot` | N° de Orden de Trabajo |
+| `serie` | Serie OT / OTB |
+| `cliente` | Razón social |
+| `sucursal` | Sucursal |
+| `rfc` | RFC del cliente |
+| `direccion` | Dirección del servicio |
+| `contacto` | Responsable de atendernos |
+| `telefono` | Teléfono de contacto |
+| `correo` | Correo del cliente |
+| `emision` | Fecha de emisión de la OT |
+| `servicios` | NOMs de la tabla de trabajo (separadas por coma) |
+| `personal` | Personal asignado (sin duplicados) |
+| `fecha` | Fecha de visita — **se omite** en Solicitud de Equipos |
+
+El destino de los formatos se controla con la constante `FORMATOS_BASE` en `SEAOT.html`. Por defecto apunta a `https://yoeduwin.github.io/formatos/`; si los formatos se alojan dentro del repo SEA, se cambia a `formatos/`.
+
 ---
 
 ### 3.3 SEAINF — Gestión de Expedientes
