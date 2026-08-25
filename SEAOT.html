@@ -1022,15 +1022,26 @@ Tel: 222-941-7295`;
     if (!ctx.cliente) { alert('Carga el perfil del cliente antes de generar el formato.'); return; }
     // Handoff mismo-origen: el contexto (con PII) viaja por localStorage, nunca por la URL.
     sweepHandoffs();
+    const TTL = 300000; // 5 min
     let url = FORMATOS_BASE + cfg.file;
+    let storageKey = null;
     try {
       const token = makeHandoffToken();
-      localStorage.setItem('sea_ot_handoff_' + token, JSON.stringify({ exp: Date.now() + 300000, data: ctx }));
+      storageKey = 'sea_ot_handoff_' + token;
+      localStorage.setItem(storageKey, JSON.stringify({ exp: Date.now() + TTL, data: ctx }));
       url += '?h=' + encodeURIComponent(token);
+      // Borrado garantizado aunque el receptor nunca cargue (popup bloqueado o
+      // cerrado antes de leer): se elimina la PII al vencer el TTL.
+      setTimeout(function () { try { localStorage.removeItem(storageKey); } catch (e) {} }, TTL);
     } catch (e) {
+      storageKey = null;
       // Sin localStorage: abrir sin precarga, nunca degradar a PII en la URL.
     }
-    window.open(url, '_blank', 'noopener');
+    // Sin 'noopener' para poder detectar el bloqueo de ventana; como el destino es
+    // mismo-origen y de confianza, se corta la referencia con win.opener = null.
+    const win = window.open(url, '_blank');
+    if (win) { try { win.opener = null; } catch (e) {} }
+    else if (storageKey) { try { localStorage.removeItem(storageKey); } catch (e) {} }
   }
 
   function iniciarApp() {

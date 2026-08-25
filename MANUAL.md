@@ -233,7 +233,7 @@ Los datos del cliente (RFC, dirección, teléfono, correo) son PII y **no viajan
 2. Abre el formato con **solo** ese token en la URL: `registro-equipos.html?h=<token>`.
 3. El formato lee la clave, **la borra** (uso único), valida la caducidad y prellena sus campos.
 
-Si `localStorage` no está disponible, el formato se abre sin precarga: nunca se degrada a exponer PII en la URL.
+El borrado **no depende** de que el formato llegue a abrirse: SEAOT programa la eliminación al vencer el TTL (5 min) y la borra de inmediato si el navegador bloquea la ventana emergente; además, al abrir cualquier formato se limpian los handoffs vencidos. Si `localStorage` no está disponible, el formato se abre sin precarga: nunca se degrada a exponer PII en la URL.
 
 Payload disponible en el handoff: `ot`, `serie`, `cliente`, `sucursal`, `rfc`, `direccion`, `contacto`, `telefono`, `correo`, `emision`, `servicios`, `personal`, `fecha`.
 
