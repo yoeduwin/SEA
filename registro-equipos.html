@@ -458,7 +458,7 @@
         <div class="header">
             <div class="company-info">
                 <div style="width: 120px;">
-                    <img src="assets/logo.png" alt="Ejecutiva Ambiental" style="max-width: 100%; height: auto;"
+                    <img src="logo.png" alt="Ejecutiva Ambiental" style="max-width: 100%; height: auto;"
                          onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjE4MCIgdmlld0JveD0iMCAwIDMwMCAxODAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxjaXJjbGUgY3g9IjUwIiBjeT0iOTAiIHI9IjQ1IiBzdHJva2U9IiMyZTdkMzIiIHN0cm9rZS13aWR0aD0iMyIgZmlsbD0ibm9uZSIvPgo8dGV4dCB4PSIxMTAiIHk9IjU1IiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjQiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSIjMzMzIj5FSkVDVVRJVkE8L3RleHQ+Cjx0ZXh0IHg9IjExMCIgeT0iODAiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIyOCIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IiMyZTdkMzIiPkFNQklFTlRBTDwvdGV4dD4KPC9zdmc+';">
                 </div>
                 <div>
@@ -709,28 +709,28 @@
                     <select style="width:100%; border:none; margin-bottom:2px; font-size:7px;">
                         <option value="">Estado...</option>
                         <option value="excelente">Excelente</option>
-                        <option value="bueno">Bueno</option>
+                        <option value="bueno" selected>Bueno</option>
                         <option value="regular">Regular</option>
                         <option value="dañado">Dañado</option>
                     </select>
                     <div class="checkbox-group">
                         <div class="checkbox-item">
-                            <input type="checkbox" id="botones${uid}"> <label for="botones${uid}">Botones</label>
+                            <input type="checkbox" id="botones${uid}" checked> <label for="botones${uid}">Botones</label>
                         </div>
                         <div class="checkbox-item">
-                            <input type="checkbox" id="perillas${uid}"> <label for="perillas${uid}">Perillas</label>
+                            <input type="checkbox" id="perillas${uid}" checked> <label for="perillas${uid}">Perillas</label>
                         </div>
                         <div class="checkbox-item">
-                            <input type="checkbox" id="pantalla${uid}"> <label for="pantalla${uid}">Pantalla</label>
+                            <input type="checkbox" id="pantalla${uid}" checked> <label for="pantalla${uid}">Pantalla</label>
                         </div>
                         <div class="checkbox-item">
-                            <input type="checkbox" id="cables${uid}"> <label for="cables${uid}">Cables</label>
+                            <input type="checkbox" id="cables${uid}" checked> <label for="cables${uid}">Cables</label>
                         </div>
                         <div class="checkbox-item">
-                            <input type="checkbox" id="terminales${uid}"> <label for="terminales${uid}">Terminales</label>
+                            <input type="checkbox" id="terminales${uid}" checked> <label for="terminales${uid}">Terminales</label>
                         </div>
                         <div class="checkbox-item">
-                            <input type="checkbox" id="tapas${uid}"> <label for="tapas${uid}">Tapas</label>
+                            <input type="checkbox" id="tapas${uid}" checked> <label for="tapas${uid}">Tapas</label>
                         </div>
                     </div>
                     <textarea style="width:100%; border:none; height:15px; font-size:6px;" placeholder="Observaciones..."></textarea>
@@ -879,9 +879,9 @@
         });
     </script>
 <script>
-  // Prellenado desde SEAOT (handoff mismo-origen vía localStorage, sin PII en la URL).
-  // Precarga el N° de OT y preselecciona los equipos según las NOM del servicio.
-  // La FECHA DE SALIDA se deja pendiente a propósito (se define al confirmar la visita).
+  // Prellenado desde SEAOT (handoff mismo-origen vía sessionStorage, sin PII en la URL).
+  // Precarga: N° de OT, Solicitante (= personal de la OT), Fecha de Salida (= fecha del
+  // servicio), Área/Departamento (según la norma) y preselecciona los equipos por NOM.
   (function () {
     // NOM → equipo principal. Los códigos de inventario ya codifican la NOM
     // (EA-SO11=NOM-011, EA-CV24=NOM-024, EA-LX25=NOM-025, EA-MT15=NOM-015,
@@ -897,6 +897,45 @@
       '15': ['EA-MT15-05'], // condiciones térmicas
       '22': ['EA-TK22-08']  // resistencia a tierras
     };
+
+    // OT usa nombres cortos; el <select> Solicitante usa el nombre completo.
+    var SOLICITANTE_MAP = {
+      'martin luna': 'MARTÍN LUNA CÓRDOVA',
+      'jimmy ayala': 'JIMMY AYALA',
+      'eduardo campos': 'EDUARDO CAMPOS SÁNCHEZ',
+      'ivan zarate': 'EDUWIN IVÁN HERNÁNDEZ ZÁRATE'
+    };
+    function norm(s) {
+      return String(s || '').toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // sin acentos
+        .replace(/\s+/g, ' ').trim();
+    }
+    function optionExists(sel, val) {
+      return Array.prototype.some.call(sel.options, function (o) { return o.value === val; });
+    }
+    // Solicitante ← Personal Asignado en la OT (primer nombre interno reconocible).
+    function setSolicitante(personal) {
+      if (!personal) return;
+      var sel = document.getElementById('solicitante');
+      if (!sel || sel.value) return;
+      var nombres = personal.split(',');
+      for (var i = 0; i < nombres.length; i++) {
+        var val = SOLICITANTE_MAP[norm(nombres[i])];
+        if (val && optionExists(sel, val)) { sel.value = val; return; }
+      }
+    }
+    // Área/Departamento ← naturaleza de la norma: STPS = Ambiente Laboral;
+    // SEMARNAT (p. ej. NOM-081) = Fuentes Fijas. Lo ocupacional tiene prioridad.
+    function setArea(servicios) {
+      if (!servicios) return;
+      var sel = document.getElementById('area');
+      if (!sel || sel.value) return;
+      var u = servicios.toUpperCase();
+      var area = /-STPS/.test(u) ? 'AMBIENTE LABORAL'
+               : /SEMARNAT/.test(u) ? 'FUENTES FIJAS'
+               : null;
+      if (area && optionExists(sel, area)) sel.value = area;
+    }
 
     function seleccionarEquipo(clave) {
       if (typeof existeEquipo === 'function' && existeEquipo(clave)) return;
@@ -930,6 +969,10 @@
 
       if (data.ot) { var d = document.getElementById('destino'); if (d) d.value = data.ot; }
       var motivo = document.getElementById('motivoSalida'); if (motivo && !motivo.value) motivo.value = 'trabajo-campo';
+      // Fecha de Salida ← Fecha del Servicio de la OT (primera fecha de la tabla de desarrollo).
+      if (data.fecha) { var fs = document.getElementById('fechaSalida'); if (fs && !fs.value) fs.value = data.fecha; }
+      setSolicitante(data.personal);
+      setArea(data.servicios);
 
       if (data.servicios) {
         var claves = [];

@@ -221,7 +221,7 @@ Desde la barra **Gestión de Orden** (botón **📄 Formatos asociados**), SEAOT
 
 | Formato | Estado | Comportamiento al abrir desde la OT |
 |---|---|---|
-| Solicitud de Equipos (`registro-equipos.html`) | Activo | Precarga el N° de OT en «Orden de Trabajo/Proyecto», fija el motivo en «Trabajo de Campo» y **preselecciona los equipos según las NOM del servicio** (los acompañantes se agregan por la lógica de grupos existente). La **fecha de salida se deja pendiente** hasta confirmar la visita. Exporta a PDF con el botón ya existente. |
+| Solicitud de Equipos (`registro-equipos.html`) | Activo | Precarga N° de OT, **Solicitante** (= personal asignado de la OT), **Fecha de Salida** (= fecha del servicio de la OT), **Área/Departamento** (según la norma: `-STPS` → Ambiente Laboral; `SEMARNAT`/NOM-081 → Fuentes Fijas), fija el motivo en «Trabajo de Campo» y **preselecciona los equipos según las NOM del servicio** (acompañantes por la lógica de grupos). Cada fila nace con Estado «Bueno» y sus checkboxes de componentes marcados como conformes. Exporta a PDF con el botón existente. |
 | Supervisión de Gabinete (`supervision-gabinete.html`) | Activo | Hereda el N° de OT y la razón social; Fecha y Folio los completa el revisor. Descarga en PDF con «Imprimir». |
 | Encuesta de Satisfacción | Pendiente | Diferida a una segunda iteración cuando exista el formato. |
 

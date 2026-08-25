@@ -67,11 +67,14 @@ El emisor está en `SEAOT.html` (`abrirFormato` / `makeHandoffToken`);
 ### Mapeo por formato
 
 - **registro-equipos.html**: `#destino` ← `ot`; `#motivoSalida` = `trabajo-campo`;
-  equipos preseleccionados según las NOM de `servicios` (el código de inventario
-  codifica la NOM: `EA-SO11`=011, `EA-CV24`=024, `EA-LX25`=025, `EA-MT15`=015,
-  `EA-TK22`=022; **NOM-081** —ruido ambiental— mapea al mismo grupo acústico que
-  NOM-011; los acompañantes los agrega `GRUPOS_EQUIPOS`). `#fechaSalida`
-  se deja **pendiente** a propósito.
+  `#solicitante` ← primer `personal` reconocible de la OT (mapa nombre corto →
+  nombre completo); `#fechaSalida` ← `fecha` del servicio; `#area` según la norma
+  (`-STPS` → `AMBIENTE LABORAL`; `SEMARNAT`/NOM-081 → `FUENTES FIJAS`); equipos
+  preseleccionados según las NOM de `servicios` (el código de inventario codifica
+  la NOM: `EA-SO11`=011, `EA-CV24`=024, `EA-LX25`=025, `EA-MT15`=015, `EA-TK22`=022;
+  **NOM-081** —ruido ambiental— mapea al mismo grupo acústico que NOM-011; los
+  acompañantes los agrega `GRUPOS_EQUIPOS`). Cada fila nace con Estado «Bueno» y
+  los checkboxes de componentes marcados como conformes.
 - **supervision-gabinete.html**: `#sg_ot` ← `ot`; `#sg_cliente` ← `cliente`.
   `#sg_fecha` y `#sg_folio` los completa el revisor.
 
