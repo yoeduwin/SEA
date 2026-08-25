@@ -887,8 +887,11 @@
     // (EA-SO11=NOM-011, EA-CV24=NOM-024, EA-LX25=NOM-025, EA-MT15=NOM-015,
     // EA-TK22=NOM-022). Los acompañantes (calibrador, décadas, multímetro, etc.)
     // los agrega solo la lógica de GRUPOS_EQUIPOS existente.
+    // NOM-081 (ruido ambiental) usa el mismo sonómetro + calibrador que NOM-011;
+    // SEAOT la añade a toda OT de serie estándar, así que también debe mapearse.
     var NOM_EQUIPOS = {
-      '11': ['EA-SO11-01'], // ruido
+      '11': ['EA-SO11-01'], // ruido (ocupacional)
+      '81': ['EA-SO11-01'], // ruido ambiental (NOM-081): sonómetro + calibrador
       '24': ['EA-CV24-09'], // vibraciones
       '25': ['EA-LX25-12'], // iluminación
       '15': ['EA-MT15-05'], // condiciones térmicas
