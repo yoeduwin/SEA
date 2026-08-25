@@ -757,7 +757,17 @@
     document.addEventListener('click', (e) => { if (!container.contains(e.target)) suggestionsDiv.classList.remove('show'); }, {capture:true});
   }
 
+  // Nombre sugerido del PDF: al usar "Guardar como PDF", el navegador toma el
+  // nombre por defecto de document.title. Lo dejamos como "<folio> - <EMPRESA>".
+  function sanitizeNombre(s) {
+    return String(s || '').replace(/[/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
+  }
   function printWorkOrder() {
+    const folio = (document.getElementById('wo_orderNumber')?.value || '').trim();
+    const empresa = (document.getElementById('wo_clientName')?.value || '').trim();
+    const prevTitle = document.title;
+    const base = sanitizeNombre([folio, empresa].filter(Boolean).join(' - '));
+    if (base) document.title = base;
     const controls = document.querySelectorAll('.excel-controls, .nav-tabs, .excel-mapping-info'); controls.forEach(e => e.style.display = 'none');
     document.getElementById('profileTab').style.display = 'none'; document.getElementById('workorderTab').style.display = 'block';
     // Reemplazar <select> con texto plano para evitar duplicación en PDF
@@ -772,7 +782,7 @@
       replaced.push({ sel, span });
     });
     window.print();
-    setTimeout(() => { replaced.forEach(({ sel, span }) => { sel.style.display = ''; span.remove(); }); controls.forEach(e => e.style.display = ''); document.getElementById('profileTab').style.display = ''; switchTab('workorder'); }, 800);
+    setTimeout(() => { replaced.forEach(({ sel, span }) => { sel.style.display = ''; span.remove(); }); controls.forEach(e => e.style.display = ''); document.getElementById('profileTab').style.display = ''; switchTab('workorder'); document.title = prevTitle; }, 800);
   }
   function sendWorkOrder() {
     const email = document.getElementById('wo_email')?.value;

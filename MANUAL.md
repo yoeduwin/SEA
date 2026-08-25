@@ -225,6 +225,18 @@ Desde la barra **Gestión de Orden** (botón **📄 Formatos asociados**), SEAOT
 | Supervisión de Gabinete (`supervision-gabinete.html`) | Activo | Hereda el N° de OT y la razón social; Fecha y Folio los completa el revisor. Descarga en PDF con «Imprimir». |
 | Encuesta de Satisfacción | Pendiente | Diferida a una segunda iteración cuando exista el formato. |
 
+**Nombre del PDF al guardar**
+
+Al imprimir/exportar, cada documento sugiere un nombre de archivo listo para guardar, sin renombrado manual:
+
+| Documento | Nombre sugerido |
+|---|---|
+| Orden de Trabajo (SEAOT) | `<N° de OT> - <EMPRESA>` |
+| Registro de Salida de Equipos | `<N° de OT> - SALIDA DE EQUIPO` |
+| Supervisión de Gabinete | `<N° de OT> - SUPERVISIÓN DE GABINETE` |
+
+En la OT y en Supervisión (que usan «Imprimir → Guardar como PDF») el nombre proviene de `document.title`, fijado justo al imprimir y restaurado después; en el Registro de Equipos se pasa como `filename` a html2pdf. Si aún no hay N° de OT, se usa solo el nombre del documento (sin el « - » colgando).
+
 **Transferencia de datos (handoff mismo-origen, sin PII en la URL)**
 
 Los datos del cliente (RFC, dirección, teléfono, correo) son PII y **no viajan en la URL** (evitando historial, encabezado `Referer` y logs). En su lugar SEAOT y los formatos —al estar bajo el mismo origen (GitHub Pages `/SEA/`)— usan un *handoff* vía `sessionStorage`, cuyo contenido **nunca se escribe en disco ni sobrevive a la pestaña**:
