@@ -107,10 +107,10 @@
         </table>
 
         <div class="campos-superiores">
-            <div class="campo"><label>Fecha:</label><input type="text"></div>
-            <div class="campo"><label>Informe / OT:</label><input type="text"></div>
-            <div class="campo"><label>Cliente:</label><input type="text"></div>
-            <div class="campo"><label>Folio:</label><span>SUP-</span><input type="text" style="width: 40px;"></div>
+            <div class="campo"><label>Fecha:</label><input type="text" id="sg_fecha"></div>
+            <div class="campo"><label>Informe / OT:</label><input type="text" id="sg_ot"></div>
+            <div class="campo"><label>Cliente:</label><input type="text" id="sg_cliente"></div>
+            <div class="campo"><label>Folio:</label><span>SUP-</span><input type="text" id="sg_folio" style="width: 40px;"></div>
         </div>
 
         <table class="main-table">
@@ -220,6 +220,31 @@
             </div>
         </div>
     </div>
+<script>
+  // Prellenado desde SEAOT (handoff mismo-origen vía localStorage, sin PII en la URL).
+  (function () {
+    function applyOtHandoff() {
+      var data;
+      try {
+        var token = new URLSearchParams(location.search).get('h');
+        if (!token) return;
+        var key = 'sea_ot_handoff_' + token;
+        var raw = localStorage.getItem(key);
+        localStorage.removeItem(key); // uso único
+        if (!raw) return;
+        var parsed = JSON.parse(raw);
+        if (!parsed || (parsed.exp && parsed.exp < Date.now())) return;
+        data = parsed.data || {};
+      } catch (e) { return; }
+      var set = function (id, v) { var el = document.getElementById(id); if (el && v) el.value = v; };
+      set('sg_ot', data.ot);           // hereda el N° de OT
+      set('sg_cliente', data.cliente); // razón social
+      // Fecha y Folio los completa el revisor al hacer la supervisión.
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', applyOtHandoff);
+    else applyOtHandoff();
+  })();
+</script>
 <!-- ── Autenticación Google (páginas internas) ── -->
 <style>@media print { #sea-user-info { display: none !important; } }</style>
 <div id="sea-user-info" style="

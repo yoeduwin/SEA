@@ -1,76 +1,72 @@
 # Formatos Asociados a la OT — Contrato de Integración
 
-SEAOT (`SEAOT.html`) puede abrir los formatos del proceso ya **contextualizados a la
-Orden de Trabajo activa**, pasando el folio y los datos del cliente como parámetros
-de URL. Así se elimina la recaptura manual al volver de campo.
+SEAOT (`SEAOT.html`) abre los formatos del proceso ya **contextualizados a la
+Orden de Trabajo activa**. Los formatos viven en el **mismo repo y origen** que
+SEAOT (GitHub Pages, bajo `/SEA/`), por lo que la transferencia de datos es
+**mismo-origen** y **no expone PII en la URL**.
 
-Este README define el **contrato** que deben cumplir las páginas de formato para
-recibir esos datos. Aplica igual si los formatos viven en `yoeduwin.github.io/formatos/`
-o dentro de este repo (carpeta `formatos/`).
+Formatos integrados (en la raíz del repo):
 
-> Para apuntar SEAOT a los formatos de este repo, cambia en `SEAOT.html`:
-> `const FORMATOS_BASE = 'https://yoeduwin.github.io/formatos/';` → `'formatos/'`.
+- `registro-equipos.html` — Solicitud/registro de equipos (código EA-FCEQ-03.05)
+- `supervision-gabinete.html` — Supervisión de gabinete (código EA-FSDG-12.01)
 
-## Parámetros que envía SEAOT
+> Estado: **implementado en ambos lados** (SEAOT emite el handoff; cada formato
+> ya trae su receptor). La Encuesta de Satisfacción queda pendiente.
 
-| Parámetro    | Origen en SEAOT                                   |
-|--------------|---------------------------------------------------|
-| `ot`         | N° de Orden de Trabajo                             |
-| `serie`      | Serie OT / OTB                                     |
-| `cliente`    | Razón social                                      |
-| `sucursal`   | Sucursal                                          |
-| `rfc`        | RFC del cliente                                   |
-| `direccion`  | Dirección del servicio                            |
-| `contacto`   | Responsable de atendernos                         |
-| `telefono`   | Teléfono de contacto                              |
-| `correo`     | Correo del cliente                                |
-| `emision`    | Fecha de emisión de la OT                         |
-| `servicios`  | NOMs de la tabla de trabajo (separadas por coma)  |
-| `personal`   | Personal asignado (sin duplicados)                |
-| `fecha`      | Fecha de visita — **se omite** en Solicitud de Equipos |
+## Cómo viajan los datos (handoff `localStorage`, sin PII en la URL)
 
-`fecha` no se envía a `registro-equipos.html` de forma intencional: la fecha del
-equipo se define al confirmar la visita, no al crear la OT.
+Los datos del cliente (RFC, dirección, teléfono, correo) son PII y no deben
+quedar en el historial, el encabezado `Referer` ni en logs. Por eso **no se pasan
+como query params**. En su lugar:
 
-## Adaptador de prellenado (pegar en cada formato)
+1. SEAOT guarda el contexto en `localStorage['sea_ot_handoff_<token>']` con un
+   token opaco de un solo uso y `exp` (caducidad, 5 min).
+2. Abre el formato con solo el token: `registro-equipos.html?h=<token>`.
+3. El formato lee la clave, **la borra** (uso único), valida `exp` y prellena.
 
-Ajusta `FIELD_MAP` a los `id` reales de los campos de cada página y pega el bloque
-antes de `</body>`. Rellena solo lo que llega; si un parámetro no viene, deja el
-campo intacto.
+Payload: `ot`, `serie`, `cliente`, `sucursal`, `rfc`, `direccion`, `contacto`,
+`telefono`, `correo`, `emision`, `servicios`, `personal`, `fecha`.
+
+El emisor está en `SEAOT.html` (`abrirFormato` / `makeHandoffToken` /
+`sweepHandoffs`); `FORMATOS_BASE` vacío = mismo directorio/origen que SEAOT.
+
+## Receptor (patrón, ya implementado en cada formato)
 
 ```html
 <script>
 (function () {
-  var q = new URLSearchParams(location.search);
-  // Mapea cada parámetro de la OT al id del campo en ESTE formato:
-  var FIELD_MAP = {
-    ot:        'ot',          // <input id="ot">
-    cliente:   'cliente',
-    sucursal:  'sucursal',
-    rfc:       'rfc',
-    direccion: 'direccion',
-    contacto:  'contacto',
-    telefono:  'telefono',
-    correo:    'correo',
-    servicios: 'servicios',
-    personal:  'personal',
-    emision:   'emision',
-    fecha:     'fecha'        // en registro-equipos no llega: se queda vacío
-  };
-  Object.keys(FIELD_MAP).forEach(function (param) {
-    if (!q.has(param)) return;
-    var el = document.getElementById(FIELD_MAP[param]);
-    if (el && 'value' in el) el.value = q.get(param); // .value es seguro (no innerHTML)
-  });
+  function applyOtHandoff() {
+    var data;
+    try {
+      var token = new URLSearchParams(location.search).get('h');
+      if (!token) return;
+      var key = 'sea_ot_handoff_' + token;
+      var raw = localStorage.getItem(key);
+      localStorage.removeItem(key);              // uso único
+      if (!raw) return;
+      var parsed = JSON.parse(raw);
+      if (!parsed || (parsed.exp && parsed.exp < Date.now())) return;
+      data = parsed.data || {};
+    } catch (e) { return; }
+    // Asignar a .value / .textContent (nunca innerHTML sin escapar):
+    // p. ej. document.getElementById('destino').value = data.ot;
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', applyOtHandoff);
+  else applyOtHandoff();
 })();
 </script>
 ```
 
-> Seguridad: prefiere asignar a `.value` / `.textContent`. Nunca inyectes los
-> parámetros con `innerHTML` sin escaparlos.
+### Mapeo por formato
 
-## Estado
+- **registro-equipos.html**: `#destino` ← `ot`; `#motivoSalida` = `trabajo-campo`;
+  equipos preseleccionados según las NOM de `servicios` (el código de inventario
+  codifica la NOM: `EA-SO11`=011, `EA-CV24`=024, `EA-LX25`=025, `EA-MT15`=015,
+  `EA-TK22`=022; los acompañantes los agrega `GRUPOS_EQUIPOS`). `#fechaSalida`
+  se deja **pendiente** a propósito.
+- **supervision-gabinete.html**: `#sg_ot` ← `ot`; `#sg_cliente` ← `cliente`.
+  `#sg_fecha` y `#sg_folio` los completa el revisor.
 
-- ✅ Lado SEAOT: implementado (modal **Documentación y Formatos Asociados**).
-- ⏳ Lado formatos: pendiente pegar el adaptador y (opcional) el botón de descarga PDF.
-- 🚫 Encuesta de Satisfacción: diferida a una segunda iteración (formato aún no existe).
+## Pendiente
+
+- 🚫 Encuesta de Satisfacción: diferida (el formato aún no existe).

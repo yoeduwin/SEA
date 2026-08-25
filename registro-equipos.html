@@ -878,6 +878,73 @@
             agregarFilaEquipo();
         });
     </script>
+<script>
+  // Prellenado desde SEAOT (handoff mismo-origen vía localStorage, sin PII en la URL).
+  // Precarga el N° de OT y preselecciona los equipos según las NOM del servicio.
+  // La FECHA DE SALIDA se deja pendiente a propósito (se define al confirmar la visita).
+  (function () {
+    // NOM → equipo principal. Los códigos de inventario ya codifican la NOM
+    // (EA-SO11=NOM-011, EA-CV24=NOM-024, EA-LX25=NOM-025, EA-MT15=NOM-015,
+    // EA-TK22=NOM-022). Los acompañantes (calibrador, décadas, multímetro, etc.)
+    // los agrega solo la lógica de GRUPOS_EQUIPOS existente.
+    var NOM_EQUIPOS = {
+      '11': ['EA-SO11-01'], // ruido
+      '24': ['EA-CV24-09'], // vibraciones
+      '25': ['EA-LX25-12'], // iluminación
+      '15': ['EA-MT15-05'], // condiciones térmicas
+      '22': ['EA-TK22-08']  // resistencia a tierras
+    };
+
+    function seleccionarEquipo(clave) {
+      if (typeof existeEquipo === 'function' && existeEquipo(clave)) return;
+      var selects = document.querySelectorAll('#tablaEquipos tbody .equipo-select');
+      var target = null;
+      for (var i = 0; i < selects.length; i++) { if (!selects[i].value) { target = selects[i]; break; } }
+      if (!target && typeof agregarFilaEquipo === 'function') {
+        agregarFilaEquipo();
+        var all = document.querySelectorAll('#tablaEquipos tbody .equipo-select');
+        target = all[all.length - 1];
+      }
+      if (!target) return;
+      target.value = clave;
+      if (typeof alCambiarEquipo === 'function') alCambiarEquipo(target);      // inventario + grupos
+      else if (typeof actualizarInventario === 'function') actualizarInventario(target);
+    }
+
+    function applyOtHandoff() {
+      var data;
+      try {
+        var token = new URLSearchParams(location.search).get('h');
+        if (!token) return;
+        var key = 'sea_ot_handoff_' + token;
+        var raw = localStorage.getItem(key);
+        localStorage.removeItem(key); // uso único
+        if (!raw) return;
+        var parsed = JSON.parse(raw);
+        if (!parsed || (parsed.exp && parsed.exp < Date.now())) return;
+        data = parsed.data || {};
+      } catch (e) { return; }
+
+      if (data.ot) { var d = document.getElementById('destino'); if (d) d.value = data.ot; }
+      var motivo = document.getElementById('motivoSalida'); if (motivo && !motivo.value) motivo.value = 'trabajo-campo';
+
+      if (data.servicios) {
+        var claves = [];
+        data.servicios.split(',').forEach(function (s) {
+          var m = s.match(/NOM-?0*(\d+)/i);
+          if (!m) return;
+          var nn = String(m[1]).padStart(2, '0');
+          (NOM_EQUIPOS[nn] || []).forEach(function (k) { if (claves.indexOf(k) === -1) claves.push(k); });
+        });
+        claves.forEach(seleccionarEquipo);
+      }
+    }
+
+    // Corre después del DOMContentLoaded del script principal (que crea la 1ª fila).
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', applyOtHandoff);
+    else applyOtHandoff();
+  })();
+</script>
 <!-- ── Autenticación Google (páginas internas) ── -->
 <style>@media print { #sea-user-info { display: none !important; } }</style>
 <div id="sea-user-info" style="

@@ -929,19 +929,20 @@ Tel: 222-941-7295`;
 
   // ================== DOCUMENTACIÓN Y FORMATOS ASOCIADOS ==================
   // Vincula los formatos del proceso a la OT activa y los abre ya contextualizados
-  // (folio + datos del cliente) como parámetros de URL, para eliminar la recaptura
-  // manual al volver de campo.
+  // (folio + datos del cliente), para eliminar la recaptura manual al volver de campo.
   //
-  // CONTRATO DE PARÁMETROS (el formato destino los lee con URLSearchParams):
-  //   ot, serie, cliente, sucursal, rfc, direccion, contacto, telefono,
-  //   correo, emision, servicios, personal, fecha
-  //   · "fecha" se OMITE en Solicitud de Equipos (se define al confirmar la visita).
+  // El contexto NO viaja en la URL: los datos del cliente (RFC, dirección, teléfono,
+  // correo) son PII y no deben quedar en el historial, el encabezado Referer ni en
+  // logs. En su lugar se hace un "handoff" mismo-origen vía localStorage con un token
+  // opaco de un solo uso; el formato destino lo lee y borra la entrada.
+  // Campos del payload: ot, serie, cliente, sucursal, rfc, direccion, contacto,
+  // telefono, correo, emision, servicios, personal, fecha.
   //
-  // Si los formatos se alojan dentro del repo SEA, cambia FORMATOS_BASE a 'formatos/'.
-  const FORMATOS_BASE = 'https://yoeduwin.github.io/formatos/';
+  // FORMATOS_BASE vacío = mismos directorio y origen que SEAOT (GitHub Pages /SEA/).
+  const FORMATOS_BASE = '';
   const FORMATOS = {
-    equipos:     { file: 'registro-equipos.html',     omitFecha: true  },
-    supervision: { file: 'supervision-gabinete.html', omitFecha: false }
+    equipos:     { file: 'registro-equipos.html' },
+    supervision: { file: 'supervision-gabinete.html' }
   };
 
   function collectOtContext() {
@@ -972,21 +973,28 @@ Tel: 222-941-7295`;
     };
   }
 
-  function buildFormatoUrl(cfg, ctx) {
-    const p = new URLSearchParams();
-    const put = (k, v) => { if (v) p.set(k, v); };
-    put('ot', ctx.ot);             put('serie', ctx.serie);
-    put('cliente', ctx.cliente);   put('sucursal', ctx.sucursal);
-    put('rfc', ctx.rfc);           put('direccion', ctx.direccion);
-    put('contacto', ctx.contacto); put('telefono', ctx.telefono);
-    put('correo', ctx.correo);     put('emision', ctx.emision);
-    put('servicios', ctx.servicios); put('personal', ctx.personal);
-    if (!cfg.omitFecha) put('fecha', ctx.fecha);
-    return FORMATOS_BASE + cfg.file + '?' + p.toString();
+  // Token opaco de un solo uso para el handoff (sin PII).
+  function makeHandoffToken() {
+    try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (e) {}
+    return 'ot-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  }
+
+  // Limpia handoffs vencidos para no acumular datos del cliente en localStorage.
+  function sweepHandoffs() {
+    try {
+      const now = Date.now();
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && k.indexOf('sea_ot_handoff_') === 0) {
+          let o = null;
+          try { o = JSON.parse(localStorage.getItem(k)); } catch (e) {}
+          if (!o || !o.exp || o.exp < now) localStorage.removeItem(k);
+        }
+      }
+    } catch (e) {}
   }
 
   function openFormatosModal() {
-    syncData();
     const ctx = collectOtContext();
     const label = document.getElementById('formatosOtLabel');
     if (label) label.textContent = ctx.ot || '(sin folio)';
@@ -1012,7 +1020,17 @@ Tel: 222-941-7295`;
     const ctx = collectOtContext();
     if (!ctx.ot) { alert('Primero genera o escribe el N° de Orden de Trabajo.'); return; }
     if (!ctx.cliente) { alert('Carga el perfil del cliente antes de generar el formato.'); return; }
-    window.open(buildFormatoUrl(cfg, ctx), '_blank', 'noopener');
+    // Handoff mismo-origen: el contexto (con PII) viaja por localStorage, nunca por la URL.
+    sweepHandoffs();
+    let url = FORMATOS_BASE + cfg.file;
+    try {
+      const token = makeHandoffToken();
+      localStorage.setItem('sea_ot_handoff_' + token, JSON.stringify({ exp: Date.now() + 300000, data: ctx }));
+      url += '?h=' + encodeURIComponent(token);
+    } catch (e) {
+      // Sin localStorage: abrir sin precarga, nunca degradar a PII en la URL.
+    }
+    window.open(url, '_blank', 'noopener');
   }
 
   function iniciarApp() {

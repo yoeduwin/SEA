@@ -217,35 +217,27 @@ SEAOT permite cargar datos del cliente desde un archivo Excel (.xlsx). El sistem
 
 Desde la barra **Gestión de Orden** (botón **📄 Formatos asociados**), SEAOT abre un modal que vincula los formatos del proceso a la OT activa y los abre ya contextualizados —con el folio y los datos del cliente precargados— para eliminar la recaptura manual al volver de campo.
 
-**Formatos integrados**
+**Formatos integrados** (viven en el mismo repo/origen que SEAOT: `registro-equipos.html` y `supervision-gabinete.html`)
 
-| Formato | Estado | Nota |
+| Formato | Estado | Comportamiento al abrir desde la OT |
 |---|---|---|
-| Solicitud de Equipos | Activo | Se precargan OT, cliente y servicios; la **fecha se deja pendiente** hasta confirmar la visita. |
-| Supervisión de Gabinete | Activo | Hereda el N° de OT y los datos del servicio para su descarga en PDF. |
-| Encuesta de Satisfacción | Pendiente | Se integrará en una segunda iteración cuando exista el formato. |
+| Solicitud de Equipos (`registro-equipos.html`) | Activo | Precarga el N° de OT en «Orden de Trabajo/Proyecto», fija el motivo en «Trabajo de Campo» y **preselecciona los equipos según las NOM del servicio** (los acompañantes se agregan por la lógica de grupos existente). La **fecha de salida se deja pendiente** hasta confirmar la visita. Exporta a PDF con el botón ya existente. |
+| Supervisión de Gabinete (`supervision-gabinete.html`) | Activo | Hereda el N° de OT y la razón social; Fecha y Folio los completa el revisor. Descarga en PDF con «Imprimir». |
+| Encuesta de Satisfacción | Pendiente | Diferida a una segunda iteración cuando exista el formato. |
 
-**Contrato de parámetros (URL)**
+**Transferencia de datos (handoff mismo-origen, sin PII en la URL)**
 
-SEAOT pasa el contexto de la OT como parámetros de consulta. El formato destino los lee con `new URLSearchParams(location.search)` y prellena sus campos (escapando los valores para evitar XSS):
+Los datos del cliente (RFC, dirección, teléfono, correo) son PII y **no viajan en la URL** (evitando historial, encabezado `Referer` y logs). En su lugar SEAOT y los formatos —al estar bajo el mismo origen (GitHub Pages `/SEA/`)— usan un *handoff* vía `localStorage`:
 
-| Parámetro | Origen en SEAOT |
-|---|---|
-| `ot` | N° de Orden de Trabajo |
-| `serie` | Serie OT / OTB |
-| `cliente` | Razón social |
-| `sucursal` | Sucursal |
-| `rfc` | RFC del cliente |
-| `direccion` | Dirección del servicio |
-| `contacto` | Responsable de atendernos |
-| `telefono` | Teléfono de contacto |
-| `correo` | Correo del cliente |
-| `emision` | Fecha de emisión de la OT |
-| `servicios` | NOMs de la tabla de trabajo (separadas por coma) |
-| `personal` | Personal asignado (sin duplicados) |
-| `fecha` | Fecha de visita — **se omite** en Solicitud de Equipos |
+1. SEAOT guarda el contexto de la OT en `localStorage` bajo la clave `sea_ot_handoff_<token>`, con un token opaco de un solo uso y caducidad de 5 min.
+2. Abre el formato con **solo** ese token en la URL: `registro-equipos.html?h=<token>`.
+3. El formato lee la clave, **la borra** (uso único), valida la caducidad y prellena sus campos.
 
-El destino de los formatos se controla con la constante `FORMATOS_BASE` en `SEAOT.html`. Por defecto apunta a `https://yoeduwin.github.io/formatos/`; si los formatos se alojan dentro del repo SEA, se cambia a `formatos/`.
+Si `localStorage` no está disponible, el formato se abre sin precarga: nunca se degrada a exponer PII en la URL.
+
+Payload disponible en el handoff: `ot`, `serie`, `cliente`, `sucursal`, `rfc`, `direccion`, `contacto`, `telefono`, `correo`, `emision`, `servicios`, `personal`, `fecha`.
+
+El destino de los formatos se controla con la constante `FORMATOS_BASE` en `SEAOT.html` (por defecto vacía = mismo directorio y origen que SEAOT).
 
 ---
 
