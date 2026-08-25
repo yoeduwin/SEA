@@ -213,6 +213,32 @@ El formulario incluye un modal de búsqueda por RFC que pre-llena los campos si 
 
 SEAOT permite cargar datos del cliente desde un archivo Excel (.xlsx). El sistema mapea las columnas del archivo a los campos del formulario.
 
+#### Documentación y Formatos Asociados
+
+Desde la barra **Gestión de Orden** (botón **📄 Formatos asociados**), SEAOT abre un modal que vincula los formatos del proceso a la OT activa y los abre ya contextualizados —con el folio y los datos del cliente precargados— para eliminar la recaptura manual al volver de campo.
+
+**Formatos integrados** (viven en el mismo repo/origen que SEAOT: `registro-equipos.html` y `supervision-gabinete.html`)
+
+| Formato | Estado | Comportamiento al abrir desde la OT |
+|---|---|---|
+| Solicitud de Equipos (`registro-equipos.html`) | Activo | Precarga el N° de OT en «Orden de Trabajo/Proyecto», fija el motivo en «Trabajo de Campo» y **preselecciona los equipos según las NOM del servicio** (los acompañantes se agregan por la lógica de grupos existente). La **fecha de salida se deja pendiente** hasta confirmar la visita. Exporta a PDF con el botón ya existente. |
+| Supervisión de Gabinete (`supervision-gabinete.html`) | Activo | Hereda el N° de OT y la razón social; Fecha y Folio los completa el revisor. Descarga en PDF con «Imprimir». |
+| Encuesta de Satisfacción | Pendiente | Diferida a una segunda iteración cuando exista el formato. |
+
+**Transferencia de datos (handoff mismo-origen, sin PII en la URL)**
+
+Los datos del cliente (RFC, dirección, teléfono, correo) son PII y **no viajan en la URL** (evitando historial, encabezado `Referer` y logs). En su lugar SEAOT y los formatos —al estar bajo el mismo origen (GitHub Pages `/SEA/`)— usan un *handoff* vía `sessionStorage`, cuyo contenido **nunca se escribe en disco ni sobrevive a la pestaña**:
+
+1. SEAOT guarda el contexto de la OT en `sessionStorage` bajo la clave `sea_ot_handoff_<token>`, con un token opaco de un solo uso.
+2. Abre el formato **sin `noopener`**: el navegador **clona** el `sessionStorage` a la pestaña nueva. En la URL viaja **solo** el token: `registro-equipos.html?h=<token>`.
+3. La pestaña del formato lee su clon, **lo borra** (uso único) y prellena; **SEAOT elimina su propia copia de inmediato**.
+
+Así el borrado **no depende de temporizadores ni de que SEAOT siga abierto**: la copia de SEAOT se elimina al instante y el clon del formato desaparece al cerrarse esa pestaña (nunca persiste). Si `sessionStorage` no está disponible, el formato se abre sin precarga: nunca se degrada a exponer PII en la URL.
+
+Payload disponible en el handoff: `ot`, `serie`, `cliente`, `sucursal`, `rfc`, `direccion`, `contacto`, `telefono`, `correo`, `emision`, `servicios`, `personal`, `fecha`.
+
+El destino de los formatos se controla con la constante `FORMATOS_BASE` en `SEAOT.html` (por defecto vacía = mismo directorio y origen que SEAOT).
+
 ---
 
 ### 3.3 SEAINF — Gestión de Expedientes
