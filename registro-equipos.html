@@ -797,18 +797,19 @@
         }
         
         function imprimir() {
+            // "Guardar como PDF" toma el nombre por defecto de document.title.
+            var ot = (document.getElementById('destino').value || '').trim();
+            var prev = document.title;
+            document.title = ((ot ? ot + ' - ' : '') + 'SALIDA DE EQUIPO').replace(/[/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
             window.print();
+            setTimeout(function () { document.title = prev; }, 800);
         }
         
         function exportarPDF() {
-            // Obtener el nombre del proyecto para el archivo
-            let nombreProyecto = document.getElementById('destino').value;
-            let nombreArchivo = 'Registro_Equipos';
-            
-            if (nombreProyecto && nombreProyecto.trim() !== '') {
-                // Limpiar el nombre del archivo (quitar caracteres especiales)
-                nombreArchivo = nombreProyecto.replace(/[^a-zA-Z0-9]/g, '_');
-            }
+            // Nombre del archivo: "<N° de OT> - SALIDA DE EQUIPO".
+            var ot = (document.getElementById('destino').value || '').trim();
+            var nombreArchivo = ((ot ? ot + ' - ' : '') + 'SALIDA DE EQUIPO')
+                .replace(/[/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
             
             // Configuración para el PDF en horizontal
             const element = document.querySelector('.container');

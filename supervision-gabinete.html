@@ -89,7 +89,7 @@
 <body>
 
     <div class="no-print" style="text-align: right; margin-bottom: 10px;">
-        <button onclick="window.print()" style="padding: 8px 16px; cursor: pointer; background: var(--ea-primary); color: white; border: none; border-radius: 4px; font-weight: bold;">🖨️ Imprimir Formato</button>
+        <button onclick="imprimirSupervision()" style="padding: 8px 16px; cursor: pointer; background: var(--ea-primary); color: white; border: none; border-radius: 4px; font-weight: bold;">🖨️ Imprimir Formato</button>
     </div>
 
     <div class="container">
@@ -244,6 +244,16 @@
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', applyOtHandoff);
     else applyOtHandoff();
   })();
+
+  // Nombre sugerido del PDF: "<N° de OT> - SUPERVISIÓN DE GABINETE".
+  // "Guardar como PDF" toma el nombre por defecto de document.title.
+  function imprimirSupervision() {
+    var ot = (document.getElementById('sg_ot').value || '').trim();
+    var prev = document.title;
+    document.title = ((ot ? ot + ' - ' : '') + 'SUPERVISIÓN DE GABINETE').replace(/[/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
+    window.print();
+    setTimeout(function () { document.title = prev; }, 800);
+  }
 </script>
 <!-- ── Autenticación Google (páginas internas) ── -->
 <style>@media print { #sea-user-info { display: none !important; } }</style>
