@@ -933,8 +933,10 @@ Tel: 222-941-7295`;
   //
   // El contexto NO viaja en la URL: los datos del cliente (RFC, dirección, teléfono,
   // correo) son PII y no deben quedar en el historial, el encabezado Referer ni en
-  // logs. En su lugar se hace un "handoff" mismo-origen vía localStorage con un token
-  // opaco de un solo uso; el formato destino lo lee y borra la entrada.
+  // logs. El handoff es mismo-origen vía sessionStorage (NO localStorage): así la PII
+  // nunca se escribe en disco ni sobrevive a la pestaña. Al abrir el formato sin
+  // 'noopener', el navegador clona el sessionStorage a la pestaña nueva, que lo lee y
+  // lo borra; SEAOT elimina su propia copia de inmediato (sin temporizadores).
   // Campos del payload: ot, serie, cliente, sucursal, rfc, direccion, contacto,
   // telefono, correo, emision, servicios, personal, fecha.
   //
@@ -979,21 +981,6 @@ Tel: 222-941-7295`;
     return 'ot-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
   }
 
-  // Limpia handoffs vencidos para no acumular datos del cliente en localStorage.
-  function sweepHandoffs() {
-    try {
-      const now = Date.now();
-      for (let i = localStorage.length - 1; i >= 0; i--) {
-        const k = localStorage.key(i);
-        if (k && k.indexOf('sea_ot_handoff_') === 0) {
-          let o = null;
-          try { o = JSON.parse(localStorage.getItem(k)); } catch (e) {}
-          if (!o || !o.exp || o.exp < now) localStorage.removeItem(k);
-        }
-      }
-    } catch (e) {}
-  }
-
   function openFormatosModal() {
     const ctx = collectOtContext();
     const label = document.getElementById('formatosOtLabel');
@@ -1020,28 +1007,24 @@ Tel: 222-941-7295`;
     const ctx = collectOtContext();
     if (!ctx.ot) { alert('Primero genera o escribe el N° de Orden de Trabajo.'); return; }
     if (!ctx.cliente) { alert('Carga el perfil del cliente antes de generar el formato.'); return; }
-    // Handoff mismo-origen: el contexto (con PII) viaja por localStorage, nunca por la URL.
-    sweepHandoffs();
-    const TTL = 300000; // 5 min
+    // Handoff mismo-origen por sessionStorage (NO localStorage): la PII nunca se escribe
+    // en disco ni sobrevive a la pestaña. Al abrir sin 'noopener', el navegador clona el
+    // sessionStorage a la pestaña nueva; SEAOT borra su propia copia de inmediato.
     let url = FORMATOS_BASE + cfg.file;
-    let storageKey = null;
+    const token = makeHandoffToken();
+    const storageKey = 'sea_ot_handoff_' + token;
+    let stored = false;
     try {
-      const token = makeHandoffToken();
-      storageKey = 'sea_ot_handoff_' + token;
-      localStorage.setItem(storageKey, JSON.stringify({ exp: Date.now() + TTL, data: ctx }));
+      sessionStorage.setItem(storageKey, JSON.stringify({ exp: Date.now() + 300000, data: ctx }));
+      stored = true;
       url += '?h=' + encodeURIComponent(token);
-      // Borrado garantizado aunque el receptor nunca cargue (popup bloqueado o
-      // cerrado antes de leer): se elimina la PII al vencer el TTL.
-      setTimeout(function () { try { localStorage.removeItem(storageKey); } catch (e) {} }, TTL);
     } catch (e) {
-      storageKey = null;
-      // Sin localStorage: abrir sin precarga, nunca degradar a PII en la URL.
+      // Sin sessionStorage: abrir sin precarga, nunca degradar a PII en la URL.
     }
-    // Sin 'noopener' para poder detectar el bloqueo de ventana; como el destino es
-    // mismo-origen y de confianza, se corta la referencia con win.opener = null.
-    const win = window.open(url, '_blank');
+    const win = window.open(url, '_blank');   // sin noopener → clona sessionStorage al hijo
     if (win) { try { win.opener = null; } catch (e) {} }
-    else if (storageKey) { try { localStorage.removeItem(storageKey); } catch (e) {} }
+    // El hijo ya recibió su clon: elimina la copia de SEAOT de inmediato (sin temporizadores).
+    if (stored) { try { sessionStorage.removeItem(storageKey); } catch (e) {} }
   }
 
   function iniciarApp() {

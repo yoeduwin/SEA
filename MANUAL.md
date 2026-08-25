@@ -227,13 +227,13 @@ Desde la barra **Gestión de Orden** (botón **📄 Formatos asociados**), SEAOT
 
 **Transferencia de datos (handoff mismo-origen, sin PII en la URL)**
 
-Los datos del cliente (RFC, dirección, teléfono, correo) son PII y **no viajan en la URL** (evitando historial, encabezado `Referer` y logs). En su lugar SEAOT y los formatos —al estar bajo el mismo origen (GitHub Pages `/SEA/`)— usan un *handoff* vía `localStorage`:
+Los datos del cliente (RFC, dirección, teléfono, correo) son PII y **no viajan en la URL** (evitando historial, encabezado `Referer` y logs). En su lugar SEAOT y los formatos —al estar bajo el mismo origen (GitHub Pages `/SEA/`)— usan un *handoff* vía `sessionStorage`, cuyo contenido **nunca se escribe en disco ni sobrevive a la pestaña**:
 
-1. SEAOT guarda el contexto de la OT en `localStorage` bajo la clave `sea_ot_handoff_<token>`, con un token opaco de un solo uso y caducidad de 5 min.
-2. Abre el formato con **solo** ese token en la URL: `registro-equipos.html?h=<token>`.
-3. El formato lee la clave, **la borra** (uso único), valida la caducidad y prellena sus campos.
+1. SEAOT guarda el contexto de la OT en `sessionStorage` bajo la clave `sea_ot_handoff_<token>`, con un token opaco de un solo uso.
+2. Abre el formato **sin `noopener`**: el navegador **clona** el `sessionStorage` a la pestaña nueva. En la URL viaja **solo** el token: `registro-equipos.html?h=<token>`.
+3. La pestaña del formato lee su clon, **lo borra** (uso único) y prellena; **SEAOT elimina su propia copia de inmediato**.
 
-El borrado **no depende** de que el formato llegue a abrirse: SEAOT programa la eliminación al vencer el TTL (5 min) y la borra de inmediato si el navegador bloquea la ventana emergente; además, al abrir cualquier formato se limpian los handoffs vencidos. Si `localStorage` no está disponible, el formato se abre sin precarga: nunca se degrada a exponer PII en la URL.
+Así el borrado **no depende de temporizadores ni de que SEAOT siga abierto**: la copia de SEAOT se elimina al instante y el clon del formato desaparece al cerrarse esa pestaña (nunca persiste). Si `sessionStorage` no está disponible, el formato se abre sin precarga: nunca se degrada a exponer PII en la URL.
 
 Payload disponible en el handoff: `ot`, `serie`, `cliente`, `sucursal`, `rfc`, `direccion`, `contacto`, `telefono`, `correo`, `emision`, `servicios`, `personal`, `fecha`.
 

@@ -917,8 +917,8 @@
         var token = new URLSearchParams(location.search).get('h');
         if (!token) return;
         var key = 'sea_ot_handoff_' + token;
-        var raw = localStorage.getItem(key);
-        localStorage.removeItem(key); // uso único
+        var raw = sessionStorage.getItem(key);
+        sessionStorage.removeItem(key); // uso único (clon propio de esta pestaña)
         if (!raw) return;
         var parsed = JSON.parse(raw);
         if (!parsed || (parsed.exp && parsed.exp < Date.now())) return;

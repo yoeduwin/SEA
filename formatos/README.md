@@ -13,22 +13,29 @@ Formatos integrados (en la raíz del repo):
 > Estado: **implementado en ambos lados** (SEAOT emite el handoff; cada formato
 > ya trae su receptor). La Encuesta de Satisfacción queda pendiente.
 
-## Cómo viajan los datos (handoff `localStorage`, sin PII en la URL)
+## Cómo viajan los datos (handoff `sessionStorage`, sin PII en la URL)
 
 Los datos del cliente (RFC, dirección, teléfono, correo) son PII y no deben
 quedar en el historial, el encabezado `Referer` ni en logs. Por eso **no se pasan
-como query params**. En su lugar:
+como query params**. Tampoco se usa `localStorage` (persiste en disco). Se usa
+`sessionStorage`, que **nunca se escribe en disco ni sobrevive a la pestaña**:
 
-1. SEAOT guarda el contexto en `localStorage['sea_ot_handoff_<token>']` con un
-   token opaco de un solo uso y `exp` (caducidad, 5 min).
-2. Abre el formato con solo el token: `registro-equipos.html?h=<token>`.
-3. El formato lee la clave, **la borra** (uso único), valida `exp` y prellena.
+1. SEAOT guarda el contexto en `sessionStorage['sea_ot_handoff_<token>']` con un
+   token opaco de un solo uso.
+2. Abre el formato **sin `noopener`**: el navegador **clona** el `sessionStorage`
+   a la pestaña nueva. En la URL viaja **solo** el token: `...?h=<token>`.
+3. La pestaña del formato lee su clon, **lo borra** (uso único) y prellena;
+   **SEAOT elimina su propia copia de inmediato**.
+
+No hay temporizadores ni dependencia de que SEAOT siga abierto: la copia de SEAOT
+se borra al instante y el clon del formato desaparece al cerrar esa pestaña. El
+token de la URL es opaco (no es PII).
 
 Payload: `ot`, `serie`, `cliente`, `sucursal`, `rfc`, `direccion`, `contacto`,
 `telefono`, `correo`, `emision`, `servicios`, `personal`, `fecha`.
 
-El emisor está en `SEAOT.html` (`abrirFormato` / `makeHandoffToken` /
-`sweepHandoffs`); `FORMATOS_BASE` vacío = mismo directorio/origen que SEAOT.
+El emisor está en `SEAOT.html` (`abrirFormato` / `makeHandoffToken`);
+`FORMATOS_BASE` vacío = mismo directorio/origen que SEAOT.
 
 ## Receptor (patrón, ya implementado en cada formato)
 
@@ -41,8 +48,8 @@ El emisor está en `SEAOT.html` (`abrirFormato` / `makeHandoffToken` /
       var token = new URLSearchParams(location.search).get('h');
       if (!token) return;
       var key = 'sea_ot_handoff_' + token;
-      var raw = localStorage.getItem(key);
-      localStorage.removeItem(key);              // uso único
+      var raw = sessionStorage.getItem(key);      // clon propio de esta pestaña
+      sessionStorage.removeItem(key);             // uso único
       if (!raw) return;
       var parsed = JSON.parse(raw);
       if (!parsed || (parsed.exp && parsed.exp < Date.now())) return;
