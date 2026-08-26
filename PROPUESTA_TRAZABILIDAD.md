@@ -4,6 +4,12 @@
 **Flujo previsto:** Eduwin revisa esta primera propuesta → ajustes → se abre PR con Codex para implementar.
 **Fecha:** 2026-08-26
 
+> **Decisiones tomadas por Eduwin (2026-08-26) — esta versión ya las incorpora:**
+> 1. **Sin extender el esquema** de `ORDENES_TRABAJO` (contrato A–Q intacto). Solo **validar**, no persistir fechas nuevas.
+> 2. Las validaciones cronológicas y de agenda son **advertencia** (avisan y dejan continuar), **no bloqueo duro**.
+> 3. **Sin crear hojas nuevas.** El control de "salida abierta" de equipo se hace **dentro del propio formato** (sin backend), no con una hoja `MOVIMIENTOS_EQUIPO`.
+> 4. **Prioridad inmediata:** que al generar los formatos se **reescriba lo menos posible** (máximo prellenado desde la OT). Ver **§0-bis**.
+
 ---
 
 ## 0. Contexto real del sistema (lo que hoy existe)
@@ -24,6 +30,50 @@ Antes de proponer, esto es lo que hay hoy en el código, para que las propuestas
 
 1. **`ORDENES_TRABAJO` tiene contrato "inmutable A–Q".** Hoy **NO** guarda ni "Fecha de Emisión" ni "Fecha de Revisión de Contrato" como columnas (solo `FECHA` timestamp A, `FECHA_VISITA` I y `FECHA_ENTREGA` J). Para trazabilidad cronológica persistida hay que decidir entre **validar sin persistir** o **extender el contrato de forma controlada**.
 2. **No existe ninguna hoja de equipos.** El control de "salida abierta" por número de inventario requiere crear una estructura de datos nueva (hoy no hay dónde consultarlo).
+
+---
+
+## 0-bis. PRIORIDAD INMEDIATA — Reescribir lo menos posible al generar los formatos
+
+El handoff SEAOT→formato ya viaja con este payload (mismo-origen, sin PII en URL):
+`ot, serie, cliente, sucursal, rfc, direccion, contacto, telefono, correo, emision, servicios, personal, fecha`.
+
+Lo que **hoy** se prellena vs. lo que **aún se reescribe a mano**:
+
+| Formato | Ya prellenado (automático) | Se reescribe a mano (evitable) |
+|---|---|---|
+| `registro-equipos.html` | `#destino`(OT), `#motivoSalida`, `#solicitante`, `#fechaSalida`, `#area`, equipos por NOM | **Entregó / Recibió** (salida y entrada) — hoy son líneas de firma en blanco |
+| `supervision-gabinete.html` | `#sg_ot`, `#sg_cliente` | **`#sg_fecha`** (hoy vacía, se teclea), `#sg_folio` (folio propio del revisor) |
+
+**Cambios mínimos propuestos (aditivos, sin tocar backend ni esquema):**
+
+**A) `supervision-gabinete.html` — prellenar la fecha (1 línea en su `applyOtHandoff`):**
+```js
+// dentro del applyOtHandoff ya existente, junto a sg_ot / sg_cliente:
+if (data.fecha)   { var f = document.getElementById('sg_fecha');   if (f && !f.value) f.value = data.fecha; }
+// (si se prefiere la emisión de la OT en vez de la fecha de servicio: usar data.emision)
+```
+`#sg_folio` se deja manual (es el consecutivo de supervisión, no viene de la OT).
+
+**B) `registro-equipos.html` — convertir "Entregó/Recibió" en campos prellenables.**
+Hoy en el bloque de firmas son texto fijo (`Nombre, Firma y Fecha`). Se propone dejar la **firma manuscrita** igual, pero anteponer un `<select>`/`<input>` de **nombre** que se autollena desde el handoff, reutilizando el catálogo de personal que ya usa `#solicitante`:
+
+```html
+<!-- SALIDA DE EQUIPOS -->
+<div class="signature-line"><strong>1. Entregó:</strong>
+  <select id="salidaEntrego">…mismas opciones que #solicitante…</select> — Firma y Fecha</div>
+<div class="signature-line"><strong>2. Recibió:</strong>
+  <select id="salidaRecibio">…</select> — Firma y Fecha</div>
+```
+```js
+// en applyOtHandoff() de registro-equipos.html, tras setSolicitante(data.personal):
+var rec = document.getElementById('salidaRecibio');
+if (rec && !rec.value) rec.value = document.getElementById('solicitante').value; // Recibió = quien sale a campo
+// 'Entregó' (almacén) se deja para elegir, o se fija un responsable por defecto si lo defines.
+```
+Resultado: al abrir el formato desde la OT, **Recibió** ya trae el nombre del técnico asignado y solo queda firmar. "Entregó" (almacén) es el único nombre a elegir.
+
+> Este bloque **0-bis es lo que puede entrar primero al PR** porque es el de menor riesgo (solo frontend, aditivo) y resuelve directo tu pedido de "reescribir lo menos posible".
 
 ---
 
@@ -57,38 +107,17 @@ function validarCronologiaOT(revision, emision, fechasVisita){
 }
 ```
 
-Uso en el submit:
+Uso en el submit — **modo advertencia** (avisa y deja continuar, decisión #2):
 ```js
 const err = validarCronologiaOT(_d('wo_contractReviewDate'), _d('wo_issueDate'), dates);
-if (err){ showStatus('workorderStatus', '❌ ' + err, 'error'); return; }
+if (err && !confirm('⚠️ ' + err + '\n\n¿Registrar la OT de todos modos?')) return;
 ```
 
-### 1.b Revalidación en backend (defensa en profundidad)
+### 1.b Sin persistir fechas nuevas (decisión #1)
 
-El frontend se puede saltar. Se añade la misma comprobación en `fase2_RegistrarOT` usando los campos que **ya se pueden enviar** en el payload (hoy no van; hay que agregarlos al `payload` de SEAOT: `emision`, `fecha_revision_contrato`). No cambia el esquema de la hoja, solo valida:
+La validación es **solo en frontend** (§1.a). **No** se extiende el contrato A–Q ni se agregan columnas: las fechas de Emisión y Revisión de Contrato siguen viviendo únicamente en el formato/PDF de la OT, como hoy. La trazabilidad cronológica se **garantiza en el momento de capturar la OT** (el aviso obliga a confirmar si el orden está mal), pero no se registra como dato consultable en la hoja.
 
-```js
-// dentro de fase2_RegistrarOT(data), antes del appendRow
-var errCron = validarCronologiaOT_(data.fecha_revision_contrato, data.emision, data.fecha_visita);
-if (errCron) return { success:false, error: errCron };
-```
-```js
-function validarCronologiaOT_(revision, emision, visita){
-  var r = normalizarFechaISO_(revision), e = normalizarFechaISO_(emision), v = normalizarFechaISO_(visita);
-  if (!e || !v) return 'Faltan fechas obligatorias (emisión o visita) o tienen formato inválido.';
-  if (r && r > e) return 'La revisión de contrato es posterior a la emisión de la OT.';
-  if (e > v)      return 'La emisión de la OT es posterior a la fecha de visita.';
-  return '';
-}
-```
-> `normalizarFechaISO_` se define en el punto 3.
-
-### 1.c ¿Persistir Emisión y Revisión? — decisión a tomar
-
-Hoy no se guardan. Dos caminos (elige uno; **recomiendo B**):
-
-- **Opción A — Solo validar (cero cambios de esquema).** Rápido y sin riesgo. Desventaja: la trazabilidad cronológica no queda *registrada* en la hoja, solo se garantiza en el momento del registro. TRAZ no podría mostrar esas fechas.
-- **Opción B — Extender el contrato a A–S (recomendada).** Agregar dos columnas al final: `R = Fecha Emisión OT`, `S = Fecha Revisión Contrato`. Se hace de forma segura porque se **agrega al final** (no reordena A–Q): `fase2_RegistrarOT` valida `getMaxColumns() >= 19`, el `appendRow` añade dos valores más, y `setupSheets()` incluye los encabezados nuevos. Así la trazabilidad queda persistida y TRAZ puede leerla. Requiere `MIGRACION.gs` para rellenar filas viejas (o dejarlas vacías).
+> Nota: si más adelante quieres que TRAZ muestre estas fechas, la vía es extender el contrato al final (A–S) — queda documentada como mejora futura, fuera de este PR.
 
 ---
 
@@ -101,30 +130,19 @@ En `registro-equipos.html`, `fechaSalida` es la fecha de solicitud/salida y la f
 // en applyOtHandoff(): conservar la fecha de visita de la OT
 if (data.fecha){ window.__fechaVisitaOT = data.fecha; }
 
-// validación al imprimir/exportar (o al enviar a backend, ver 5)
+// validación al imprimir/exportar — modo advertencia (decisión #2)
 function validarFechaSolicitud(){
   const fs = document.getElementById('fechaSalida').value;
   const fv = window.__fechaVisitaOT;
   if (fs && fv && fs > fv){
-    alert(`La fecha de solicitud (${fs}) no puede ser posterior a la fecha de visita (${fv}).`);
-    return false;
+    return confirm(`⚠️ La fecha de solicitud (${fs}) es posterior a la fecha de visita (${fv}).\n\n¿Continuar de todos modos?`);
   }
   return true;
 }
 ```
 
 ### 2.b Nombres estructurados en "Entregó" (ingresó equipo) y "Recibió" (recibir equipo)
-Hoy son solo líneas de firma a mano. Propuesta: convertirlas en campos con el **mismo catálogo de personal** que ya usa `solicitante` (reutilizar la lista `EDUWIN IVÁN…`, `EDUARDO CAMPOS…`, `MARTÍN LUNA…`, `JIMMY AYALA`), dejando la firma manuscrita como está:
-
-```html
-<!-- SALIDA -->
-<label>Entregó (nombre):</label>   <select id="salidaEntrego">  … mismas opciones que #solicitante …</select>
-<label>Recibió (nombre):</label>   <select id="salidaRecibio">  … </select>
-<!-- ENTRADA / retorno -->
-<label>Entregó (nombre):</label>   <select id="entradaEntrego"> … </select>
-<label>Recibió (nombre):</label>   <select id="entradaRecibio"> … </select>
-```
-Sugerencia de prellenado coherente con lo que ya hace `applyOtHandoff`: `salidaRecibio = solicitante` (quien recibe el equipo para ir a campo es normalmente el solicitante) y `salidaEntrego` = responsable de almacén/equipos. Ajustable.
+Ver **§0-bis, bloque B** — es la misma mejora y es la de mayor prioridad (reduce reescritura). Resumen: dejar la firma manuscrita igual, anteponer un `<select>` de nombre con el catálogo de `#solicitante`, y autollenar `salidaRecibio = solicitante` desde el handoff.
 
 ---
 
@@ -134,7 +152,7 @@ Sugerencia de prellenado coherente con lo que ya hace `applyOtHandoff`: `salidaR
 - se muestra/captura como texto `dd/mm/yyyy` y Google Sheets lo **auto-interpreta como mm/dd** (US), o
 - se agregan campos de texto libre para fechas.
 
-**Propuesta — utilería única compartida (backend) + display consistente:**
+**Propuesta — helpers de frontend (sin backend) + display consistente.** `normalizarFechaISO_` solo se usa como salvaguarda si aparece algún campo de texto libre de fecha; `fechaADMY_` es para mostrar en documentos:
 
 ```js
 /**
@@ -163,160 +181,107 @@ function fechaADMY_(iso){
 }
 ```
 
-**Regla operativa recomendada:**
-- **Internamente todo se maneja en ISO `YYYY-MM-DD`** (captura con `type="date"`, almacenamiento en hoja, comparaciones).
-- **Solo se convierte a `dd/mm/yyyy` para mostrar** (PDF, formatos, TRAZ) con `fechaADMY_`.
-- Cualquier fecha que entre al backend pasa por `normalizarFechaISO_` y, si devuelve `''`, se rechaza el registro con mensaje claro. Esto elimina el riesgo de que Sheets guarde una fecha en formato equivocado.
+**Regla operativa recomendada (sin tocar backend, decisión #1):**
+- **Mantener `type="date"` en todos los campos de fecha** (SEAOT y formatos ya lo usan) → el navegador entrega ISO `YYYY-MM-DD`, no ambiguo. Esto **ya cubre** el pedido de "formato día/mes/año sin romper backend": la fecha nunca sale como `mm/dd` ambiguo.
+- **Solo se convierte a `dd/mm/yyyy` para mostrar** (PDF, formatos) con `fechaADMY_` (helper de frontend).
+- Si en algún formato hubiera un campo de **texto libre** de fecha, se le pasa `normalizarFechaISO_` en cliente antes de usarla y, si devuelve `''`, se avisa. No se agrega validación en el backend (queda como salvaguarda futura si algún día se persisten fechas).
 
 ---
 
 ## 4. Antichoque de agenda: mismo "Personal Asignado" ya tiene OT activa en la misma "Fecha de Visita"
 
-Validación nueva dentro de `fase2_RegistrarOT`, **antes** del `appendRow`. Lee `ORDENES_TRABAJO`, y para cada persona del `Personal Asignado` busca otra OT **activa** (estatus no terminal) con **exactamente la misma** `FECHA_VISITA`.
+**Enfoque sin tocar backend (decisión #1 y #2):** la verificación se hace en **frontend**, antes de enviar el registro, usando la acción de **lectura que ya existe** (`getOrdenes`, que devuelve `personal`, `fecha_visita` y `estatus_externo` por OT). Es **advertencia**: avisa y deja continuar.
 
 ```js
-/**
- * Devuelve {conflicto:true, detalle:'...'} si alguna persona ya tiene OT activa esa fecha.
- * personalAsignado: string separado por comas (como lo arma SEAOT).
- * fechaVisitaISO:   'YYYY-MM-DD' ya normalizada.
- * otExcluir:        folio de la OT actual (para permitir re-registros/edición).
- */
-function verificarChoqueAgenda_(personalAsignado, fechaVisitaISO, otExcluir){
-  var sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
-  var values = sheet.getDataRange().getValues();
-  var fechaObjetivo = normalizarFechaISO_(fechaVisitaISO);
-  if (!fechaObjetivo) return { conflicto:false };
+// En SEAOT.html, antes de armar el payload de registrarOT:
+async function hayChoqueAgenda(personalAsignado, fechaVisitaISO, otExcluir){
+  if (!fechaVisitaISO) return null;
+  const resp = await SEAAuth.wrapFetch(SHEETS_SCRIPT_URL + '?action=getOrdenes', { method:'GET' });
+  const { data: ordenes = [] } = await resp.json();
+  const TERMINALES = ['FINALIZADO','CANCELADO'];
+  const norm = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim();
+  const solicitados = personalAsignado.split(',').map(norm).filter(Boolean);
 
-  var solicitados = _split_(personalAsignado);   // ['martin luna', ...] normalizado
-  for (var i = 1; i < values.length; i++){
-    var row = values[i];
-    var estatus = String(row[CO.ESTATUS_EXTERNO] || '').trim().toUpperCase();
-    if (ESTATUS_EXTERNO_TERMINALES_.indexOf(estatus) !== -1) continue;        // ignora FINALIZADO/CANCELADO
-    if (otExcluir && String(row[CO.OT]).trim() === String(otExcluir).trim()) continue;
-    if (normalizarFechaISO_(row[CO.FECHA_VISITA]) !== fechaObjetivo) continue; // misma fecha exacta
-
-    var yaAsignados = _split_(row[CO.PERSONAL]);
-    for (var p = 0; p < solicitados.length; p++){
-      if (yaAsignados.indexOf(solicitados[p]) !== -1){
-        return { conflicto:true, detalle: 'La persona "' + solicitados[p] +
-                 '" ya tiene la OT ' + row[CO.OT] + ' programada para ' + fechaADMY_(fechaObjetivo) + '.' };
-      }
-    }
+  for (const o of ordenes){
+    if (TERMINALES.includes(String(o.estatus_externo||'').toUpperCase())) continue;
+    if (otExcluir && String(o.ot).trim() === String(otExcluir).trim()) continue;
+    if (String(o.fecha_visita||'').trim() !== String(fechaVisitaISO).trim()) continue; // misma fecha exacta
+    const yaAsignados = String(o.personal||'').split(',').map(norm);
+    const choca = solicitados.find(p => yaAsignados.includes(p));
+    if (choca) return `${choca} ya tiene la OT ${o.ot} programada para la misma fecha (${o.fecha_visita}).`;
   }
-  return { conflicto:false };
+  return null;
 }
-function _split_(s){
-  return String(s||'').split(',').map(function(x){
-    return x.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim();
-  }).filter(Boolean);
-}
+
+// Uso (modo advertencia):
+const aviso = await hayChoqueAgenda(payload.personal_asignado, payload.fecha_visita, payload.ot_folio);
+if (aviso && !confirm('⚠️ Choque de agenda: ' + aviso + '\n\n¿Registrar la OT de todos modos?')) return;
 ```
 
-Enganche en `fase2_RegistrarOT`:
-```js
-var choque = verificarChoqueAgenda_(data.personal_asignado, data.fecha_visita, data.ot_folio);
-if (choque.conflicto) return { success:false, error: '⚠️ Choque de agenda: ' + choque.detalle };
-```
-
-**Decisiones a confirmar:**
-- ¿Bloqueo duro (no deja registrar) o advertencia con opción "registrar de todos modos"? (recomiendo bloqueo duro con mensaje claro).
-- Los nombres en la OT usan formato corto ("Martín Luna") — la normalización `_split_` ya lo homogeniza; conviene revisar que el catálogo de personal sea consistente entre SEAOT y equipos.
+**Notas:**
+- `getOrdenes` compara `fecha_visita` tal cual está en la hoja. Conviene confirmar que ese valor se guarda en ISO (viene de `dates[0]`, que es `type="date"` → ISO). Si en la hoja hubiera fechas en otro formato, la comparación exacta fallaría; por eso mantener `type="date"` (§3) es lo que hace confiable esta verificación.
+- Los nombres en la OT usan formato corto ("Martín Luna"); la normalización `norm` (sin acentos, minúsculas) los homogeniza. Conviene revisar que el catálogo de personal sea consistente entre SEAOT y equipos.
+- Si más adelante se quiere que la verificación sea **infalible** (no saltable desde el cliente), se movería a `fase2_RegistrarOT` — queda como mejora futura, no en este PR.
 
 ---
 
-## 5. Estructura base para control de "salida abierta" de equipo por número de inventario
+## 5. Control de "salida abierta" de equipo por número de inventario — **sin hoja nueva** (decisión #3)
 
-**Problema:** hoy `registro-equipos.html` no persiste nada, así que no hay forma de saber si `EA-SO11-01` ya está fuera. Se propone una **hoja nueva** y una **función base** de verificación. Es la pieza más grande porque introduce persistencia donde no había.
+**Realidad:** `registro-equipos.html` no persiste nada y **no se creará** una hoja. Por lo tanto, **no es posible** verificar de forma confiable si `EA-SO11-01` "ya salió en otro documento/otro día", porque no hay dónde consultar el historial. Sería deshonesto prometerlo sin persistencia.
 
-### 5.a Nueva hoja `MOVIMIENTOS_EQUIPO` (contrato A–J)
+**Lo que SÍ se puede hacer hoy, dentro del propio formato (frontend, sin backend):**
 
-| Col | Campo | Ejemplo |
-|---|---|---|
-| A | Timestamp registro | `2026-08-26 10:15` |
-| B | Inventario | `EA-SO11-01` |
-| C | OT / Proyecto | `OT2608-1` |
-| D | Solicitante | `MARTÍN LUNA CÓRDOVA` |
-| E | Entregó (salida) | `EDUWIN IVÁN…` |
-| F | Recibió (salida) | `MARTÍN LUNA…` |
-| G | Fecha salida (ISO) | `2026-08-27` |
-| H | Fecha retorno esperada (ISO) | `2026-08-28` |
-| I | Fecha retorno real (ISO) | `` (vacío = **salida abierta**) |
-| J | Estatus | `ABIERTA` / `CERRADA` |
-
-La "salida abierta" = fila con `J=ABIERTA` (equivalente: `I` vacío).
-
-### 5.b Función base de verificación (backend)
+### 5.a Impedir/avisar equipo duplicado dentro del mismo formato
+El caso más común de error humano —seleccionar dos veces el mismo inventario en la misma salida— sí se detecta en la tabla actual. Ya existe la base `existeEquipo(clave)` (recorre los `.equipo-select`). Se refuerza al cambiar un equipo:
 
 ```js
-CONFIG.SHEET_MOV_EQUIPO = 'MOVIMIENTOS_EQUIPO';
-CONFIG.COLUMNS.MOV = { TS:0, INV:1, OT:2, SOLIC:3, ENTREGO:4, RECIBIO:5, F_SALIDA:6, F_RET_ESP:7, F_RET_REAL:8, ESTATUS:9 };
+// en alCambiarEquipo(select), tras leer la clave elegida:
+function inventarioYaEnTabla(clave, selfSelect){
+  return Array.from(document.querySelectorAll('#tablaEquipos tbody .equipo-select'))
+    .some(s => s !== selfSelect && s.value === clave);
+}
+// dentro de alCambiarEquipo:
+if (clave && inventarioYaEnTabla(clave, select)){
+  alert(`⚠️ El equipo ${clave} ya está en esta salida. Revisa que no lo estés registrando dos veces.`);
+}
+```
 
+### 5.b "Función base" documentada para el futuro (gancho, no se implementa ahora)
+Se deja escrita la firma de la función que haría la verificación real *si algún día se autoriza persistencia*, para que quede clara la estructura. **No se incluye en este PR** (requeriría una hoja):
+
+```js
 /**
+ * [FUTURO — requiere persistencia, hoy no disponible por decisión #3]
  * ¿El equipo `inventario` tiene una salida abierta que se traslape con `fechaISO`?
- * Regla: existe fila ABIERTA cuya [F_SALIDA .. F_RET_ESP] cubre la fecha,
- * o cualquier fila ABIERTA sin retorno real (equipo aún fuera).
- * Devuelve {abierta:true, detalle} o {abierta:false}.
+ * Contrato de datos sugerido (cuando exista): {inventario, fecha_salida, fecha_retorno_real}.
+ * Regla: hay salida abierta si existe un registro del inventario sin fecha_retorno_real
+ * cuyo rango de salida cubre `fechaISO`.
  */
-function tieneSalidaAbierta_(inventario, fechaISO){
-  var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-  var sheet = ss.getSheetByName(CONFIG.SHEET_MOV_EQUIPO);
-  if (!sheet) return { abierta:false };                 // sin hoja aún → no bloquea
-  var MV = CONFIG.COLUMNS.MOV;
-  var inv = String(inventario||'').toUpperCase().trim();
-  var f = normalizarFechaISO_(fechaISO);
-  var values = sheet.getDataRange().getValues();
-  for (var i = 1; i < values.length; i++){
-    var row = values[i];
-    if (String(row[MV.INV]||'').toUpperCase().trim() !== inv) continue;
-    if (String(row[MV.ESTATUS]||'').toUpperCase().trim() !== 'ABIERTA') continue;
-    var ini = normalizarFechaISO_(row[MV.F_SALIDA]);
-    var fin = normalizarFechaISO_(row[MV.F_RET_ESP]) || '9999-12-31'; // sin retorno esperado = sigue fuera
-    if (!f || (f >= ini && f <= fin)){
-      return { abierta:true, detalle: 'El equipo ' + inv + ' tiene una salida abierta (OT ' +
-               row[MV.OT] + ', desde ' + fechaADMY_(ini) + ').' };
-    }
-  }
-  return { abierta:false };
-}
-
-/** Registra una salida (llamada desde registro-equipos.html vía nueva acción 'registrarSalidaEquipo'). */
-function registrarSalidaEquipo_(data){
-  // 1) validar formato de fechas con normalizarFechaISO_
-  // 2) por cada inventario: if (tieneSalidaAbierta_(inv, data.fecha_salida).abierta) → rechazar
-  // 3) appendRow por equipo con J='ABIERTA'
-  // (esqueleto — detalle en el PR)
-}
+function tieneSalidaAbierta_(inventario, fechaISO){ /* pendiente: sin fuente de datos aún */ }
 ```
 
-### 5.c Cierre de salida
-Al retornar el equipo, una acción `cerrarSalidaEquipo_(inventario)` pone `I = fecha retorno real` y `J = CERRADA`. Esto es lo que "libera" el inventario para futuras validaciones.
-
-**Alcance mínimo viable (para el PR con Codex):**
-1. Crear hoja + `setupSheets()` la incluye.
-2. `tieneSalidaAbierta_` + `normalizarFechaISO_` (utilería compartida con puntos 1, 3, 4).
-3. Acción `registrarSalidaEquipo_` conectada al botón de `registro-equipos.html` (además del PDF actual).
-4. Auditoría con `registrarAuditoria_` en salida y cierre.
+**Resumen honesto:** con las reglas actuales (sin hoja), el control de inventario se limita a **evitar duplicados dentro del mismo formato**. El bloqueo por "salida abierta entre documentos/fechas" queda **fuera de alcance** hasta que se autorice una fuente de datos persistente.
 
 ---
 
-## 6. Resumen de decisiones que necesito de ti antes del PR
+## 6. Resumen de decisiones (ya aplicadas en esta versión)
 
-| # | Decisión | Recomendación |
+| # | Tema | Decisión de Eduwin |
 |---|---|---|
-| 1 | ¿Persistir Emisión+Revisión (extender a A–S) o solo validar? | **Extender A–S** (trazabilidad real) |
-| 2 | Choque de agenda: ¿bloqueo duro o advertencia? | **Bloqueo duro** con mensaje claro |
-| 3 | Control de equipos: ¿implementamos la hoja `MOVIMIENTOS_EQUIPO` ahora o solo dejamos la función base? | **Función base + hoja en el mismo PR** (si no, no hay dónde consultar) |
-| 4 | ¿Prellenado de "Recibió" = solicitante? | Sí, ajustable |
-| 5 | Catálogo de personal: unificar nombres entre SEAOT (corto) y equipos (completo) | Sí, tabla de mapeo única |
+| 1 | Emisión + Revisión de Contrato | **Solo validar en frontend, sin extender esquema** |
+| 2 | Choque de agenda y cronología | **Advertencia** (avisa y deja continuar) |
+| 3 | Control de equipos por inventario | **Sin crear hoja** → solo antiduplicado dentro del formato |
+| 4 | Prioridad inmediata | **Reescribir lo menos posible** al generar formatos (§0-bis) |
 
 ---
 
-## 7. Orden sugerido de implementación (transversal → específico)
+## 7. Orden sugerido de implementación para el PR (menor a mayor riesgo)
 
-1. **Utilería de fechas** (`normalizarFechaISO_`, `fechaADMY_`) — la usan 1, 3, 4 y 5.
-2. **Validación cronológica** (frontend + backend) — bajo riesgo, alto valor.
-3. **Choque de agenda** — solo backend, aditivo.
-4. **Campos Entregó/Recibió + fecha solicitud ≤ visita** en `registro-equipos.html`.
-5. **Hoja `MOVIMIENTOS_EQUIPO` + salida abierta** — el cambio más grande, al final.
+1. **§0-bis — Prellenado de formatos** (el pedido inmediato): fecha en supervisión + Entregó/Recibió prellenados en equipos. Solo frontend, aditivo. *(Entra primero.)*
+2. **§1.a — Validación cronológica** Revisión ≤ Emisión ≤ Visita, como aviso en SEAOT.
+3. **§2.a — fecha solicitud ≤ visita** como aviso en registro-equipos.
+4. **§4 — Choque de agenda** vía `getOrdenes` (lectura existente) + aviso.
+5. **§5.a — Antiduplicado de inventario** dentro del formato.
+6. **§3 — Helper de fecha** `fechaADMY_` solo si se necesita mostrar `dd/mm/yyyy` en algún formato.
 
-Cada bloque es **aditivo** y no reordena el contrato A–Q existente (el punto 1 opción B solo agrega columnas al final).
+Todo es **frontend y aditivo**: no reordena el contrato A–Q, no cambia el backend, no crea hojas. Cada punto puede ir como commit independiente dentro del mismo PR.
