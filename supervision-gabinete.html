@@ -239,11 +239,41 @@
       var set = function (id, v) { var el = document.getElementById(id); if (el && v) el.value = v; };
       set('sg_ot', data.ot);           // hereda el N° de OT
       set('sg_cliente', data.cliente); // razón social
-      // Fecha y Folio los completa el revisor al hacer la supervisión.
+      // Fecha ← visita más temprana de la OT (mostrada en dd/mm/yyyy). El Folio lo pone el revisor.
+      if (data.fecha) { var f = document.getElementById('sg_fecha'); if (f && !f.value) f.value = fechaADMY_(data.fecha); }
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', applyOtHandoff);
     else applyOtHandoff();
   })();
+
+  // Fechas: mostrar en dd/mm/yyyy y validar la captura manual del campo de texto #sg_fecha.
+  function fechaADMY_(iso) {
+    var m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return m ? (m[3] + '/' + m[2] + '/' + m[1]) : String(iso || '');
+  }
+  // Normaliza a ISO 'YYYY-MM-DD' o '' si es inválida. Acepta ISO o DD/MM/YYYY; nunca interpreta MM/DD.
+  function normalizarFechaISO_(v) {
+    var s = String(v || '').trim(), m;
+    if ((m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/))) return _validaISO_(m[1], m[2], m[3]);
+    if ((m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/)))
+      return _validaISO_(m[3], ('0' + m[2]).slice(-2), ('0' + m[1]).slice(-2));
+    return '';
+  }
+  function _validaISO_(y, mo, d) {
+    var dt = new Date(+y, +mo - 1, +d);
+    if (dt.getFullYear() != +y || dt.getMonth() != +mo - 1 || dt.getDate() != +d) return '';
+    return y + '-' + mo + '-' + d;
+  }
+  document.addEventListener('DOMContentLoaded', function () {
+    var f = document.getElementById('sg_fecha');
+    if (!f) return;
+    f.addEventListener('blur', function () {
+      var v = this.value.trim(); if (!v) return;
+      var iso = normalizarFechaISO_(v);
+      if (!iso) { alert('⚠️ Fecha inválida en Supervisión. Usa día/mes/año (dd/mm/aaaa).'); return; }
+      this.value = fechaADMY_(iso);
+    });
+  });
 
   // Nombre sugerido del PDF: "<N° de OT> - SUPERVISIÓN DE GABINETE".
   // "Guardar como PDF" toma el nombre por defecto de document.title.

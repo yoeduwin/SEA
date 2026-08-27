@@ -763,6 +763,7 @@
     return String(s || '').replace(/[/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
   }
   function printWorkOrder() {
+    if (!confirmarCronologiaOT()) return;
     const folio = (document.getElementById('wo_orderNumber')?.value || '').trim();
     const empresa = (document.getElementById('wo_clientName')?.value || '').trim();
     const prevTitle = document.title;
@@ -781,10 +782,21 @@
       sel.style.display = 'none';
       replaced.push({ sel, span });
     });
+    // Reemplazar los <input type="date"> por texto dd/mm/yyyy (evita el formato regional del navegador en el PDF)
+    const replacedDates = [];
+    document.querySelectorAll('#workorderTab input[type="date"]').forEach(inp => {
+      const span = document.createElement('span');
+      span.textContent = fechaADMY_(inp.value);
+      span.style.cssText = 'font-size:11px;color:#333;';
+      inp.parentNode.insertBefore(span, inp);
+      inp.style.display = 'none';
+      replacedDates.push({ inp, span });
+    });
     window.print();
-    setTimeout(() => { replaced.forEach(({ sel, span }) => { sel.style.display = ''; span.remove(); }); controls.forEach(e => e.style.display = ''); document.getElementById('profileTab').style.display = ''; switchTab('workorder'); document.title = prevTitle; }, 800);
+    setTimeout(() => { replaced.forEach(({ sel, span }) => { sel.style.display = ''; span.remove(); }); replacedDates.forEach(({ inp, span }) => { inp.style.display = ''; span.remove(); }); controls.forEach(e => e.style.display = ''); document.getElementById('profileTab').style.display = ''; switchTab('workorder'); document.title = prevTitle; }, 800);
   }
   function sendWorkOrder() {
+    if (!confirmarCronologiaOT()) return;
     const email = document.getElementById('wo_email')?.value;
     const orderNumber = document.getElementById('wo_orderNumber')?.value || 'Nueva';
     if (!email) { showStatus('workorderStatus','No hay email de cliente disponible','warning'); return; }
@@ -858,8 +870,52 @@ Tel: 222-941-7295`;
     showStatus('workorderStatus', `Email preparado con copia a ${cc}`, 'success');
   }
 
+  // ================== TRAZABILIDAD: FECHAS Y CRONOLOGÍA ==================
+  // Muestra una fecha ISO 'YYYY-MM-DD' como 'dd/mm/yyyy' (solo presentación).
+  function fechaADMY_(iso) {
+    const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return m ? (m[3] + '/' + m[2] + '/' + m[1]) : String(iso || '');
+  }
+  function _valCampo(id) { return (document.getElementById(id)?.value || '').trim(); }
+  // Recolecta fechas de la tabla de servicios y cuenta filas con servicio pero sin fecha.
+  function _visitasDOM() {
+    const dates = []; let sinFecha = 0;
+    document.querySelectorAll('#workTableBody tr').forEach(row => {
+      const f = row.querySelectorAll('input, select, textarea');
+      if (f.length >= 3 && f[0].value) {
+        const d = (f[2].value || '').trim();
+        if (d) dates.push(d); else sinFecha++;
+      }
+    });
+    return { dates, sinFecha };
+  }
+  // Regla: Revisión de contrato ≤ Emisión ≤ Fecha de visita (mínima). Acumula todas las
+  // infracciones (no corta en la primera) y comprueba cada relación si sus operandos existen.
+  function validarCronologiaOT(revision, emision, fechasVisita) {
+    const errs = [];
+    const visitas = (fechasVisita || []).filter(Boolean).sort();
+    const minVisita = visitas[0] || '';
+    if (!emision)  errs.push('Falta la Fecha de Emisión de la OT.');
+    if (!revision) errs.push('Falta la Fecha de revisión de contrato.');
+    if (!visitas.length) errs.push('Falta al menos una fecha de visita en la tabla de servicios.');
+    if (revision && emision && revision > emision)
+      errs.push(`La revisión de contrato (${fechaADMY_(revision)}) no puede ser posterior a la emisión (${fechaADMY_(emision)}).`);
+    if (emision && minVisita && emision > minVisita)
+      errs.push(`La emisión (${fechaADMY_(emision)}) no puede ser posterior a la visita más temprana (${fechaADMY_(minVisita)}).`);
+    return errs.join('\n');
+  }
+  // Aviso centralizado (modo advertencia): devuelve false si el usuario cancela.
+  function confirmarCronologiaOT() {
+    const { dates, sinFecha } = _visitasDOM();
+    let err = validarCronologiaOT(_valCampo('wo_contractReviewDate'), _valCampo('wo_issueDate'), dates);
+    if (sinFecha > 0) err = (err ? err + '\n' : '') +
+      `${sinFecha} servicio(s) sin fecha de visita: no se puede comprobar su cronología.`;
+    return !err || confirm('⚠️ ' + err + '\n\n¿Continuar de todos modos?');
+  }
+
   // ================== REGISTRO A LA API CENTRAL ==================
   async function registerToSheets(e) {
+    if (!confirmarCronologiaOT()) return;
     const btn = (e && e.target) ? e.target : document.querySelector('[onclick*="registerToSheets"]');
     const originalText = btn ? btn.textContent : '';
     if (btn) { btn.textContent = '⏳ Registrando...'; btn.disabled = true; }
@@ -908,7 +964,7 @@ Tel: 222-941-7295`;
         sucursal: branch,
         rfc: rfc,
         personal_asignado: [...new Set(personnel.filter(Boolean))].join(', '),
-        fecha_visita: dates[0] || '',
+        fecha_visita: dates.filter(Boolean).sort()[0] || '', // visita más temprana (regla de cronología)
         fecha_entrega_limite: '', // El Dashboard lo calculará ahora
         link_drive_cliente: profileData.link_drive_cliente || '', 
         observaciones: document.getElementById('wo_generalObservations')?.value || ''
@@ -979,7 +1035,7 @@ Tel: 222-941-7295`;
       telefono: val('wo_phone'),
       correo: val('wo_email'),
       emision: val('wo_issueDate'),
-      fecha: fechas[0] || '',
+      fecha: fechas.filter(Boolean).sort()[0] || '', // visita más temprana (coincide con la validación §1)
       servicios: [...new Set(servicios)].join(', '),
       personal: [...new Set(personal.filter(Boolean))].join(', ')
     };
@@ -992,6 +1048,7 @@ Tel: 222-941-7295`;
   }
 
   function openFormatosModal() {
+    if (!confirmarCronologiaOT()) return;
     const ctx = collectOtContext();
     const label = document.getElementById('formatosOtLabel');
     if (label) label.textContent = ctx.ot || '(sin folio)';
