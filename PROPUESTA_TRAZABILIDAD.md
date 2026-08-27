@@ -57,6 +57,19 @@ if (data.fecha)   { var f = document.getElementById('sg_fecha');   if (f && !f.v
 
 > **⚠️ Dependencia obligatoria (hallazgo P2 de Codex):** `fechaADMY_` (definida en §3) **NO existe hoy** en `supervision-gabinete.html`. Como §0-bis-A la invoca, **su definición debe incluirse en este mismo cambio** (pegar el helper de §3 en el `<script>` del formato). No es opcional ni posterior: sin ella, todo handoff con `data.fecha` lanzaría `ReferenceError`. Por eso en §7 el helper de §3 pasa a ser **prerrequisito**, no un paso final opcional.
 
+> **⚠️ Captura manual de `#sg_fecha` (hallazgo P2 de Codex):** `#sg_fecha` es `type="text"` y **sigue editable** tras el prellenado. El handoff solo normaliza el valor recibido; una captura manual como `08/27/2026` o `31/02/2026` se imprimiría sin validar. Dos opciones (elige una en el PR):
+> - **Simple:** cambiar `#sg_fecha` a `<input type="date">` y mostrar/imprimir con `fechaADMY_` — así el navegador impide formatos inválidos.
+> - **Mínimo cambio de marcado:** dejarlo como texto pero validar al salir del campo:
+> ```js
+> document.getElementById('sg_fecha').addEventListener('blur', function(){
+>   const v = this.value.trim(); if (!v) return;
+>   const iso = normalizarFechaISO_(v);              // acepta dd/mm/yyyy o ISO; nunca mm/dd
+>   if (!iso) { alert('⚠️ Fecha inválida en Supervisión. Usa día/mes/año.'); return; }
+>   this.value = fechaADMY_(iso);                     // re-formatea a dd/mm/yyyy
+> });
+> ```
+> Esto también requiere que `normalizarFechaISO_` (§3) esté definida en el formato.
+
 **B) `registro-equipos.html` — autollenar SOLO el nombre del técnico en sus dos campos.**
 
 El bloque de firmas tiene 4 espacios. La regla, ya confirmada por Eduwin:
@@ -150,18 +163,26 @@ El aviso (`confirmarCronologiaOT`, más abajo) muestra el `join('\n')` completo,
 **Enganche en TODAS las salidas de la OT (hallazgo P2 de Codex), no solo en el registro.** En `SEAOT.html` hay botones independientes que producen salida sin pasar por `registerToSheets`: `printWorkOrder()` (línea 765), `sendWorkOrder()` (787) y `openFormatosModal()` (994). Para no dejar huecos, se **centraliza** la validación en una función que recolecta las fechas del DOM y se invoca al inicio de las cuatro acciones:
 
 ```js
-// recolecta las fechas de la tabla de servicios (mismo criterio que el submit)
-function _fechasVisitaDOM(){
+// recolecta fechas de la tabla de servicios y CUENTA las filas con servicio pero sin fecha
+// (hallazgo P2 de Codex): una fila fechada en blanco no debe descartarse en silencio.
+function _visitasDOM(){
   const dates = [];
+  let sinFecha = 0;
   document.querySelectorAll('#workTableBody tr').forEach(row => {
     const f = row.querySelectorAll('input, select, textarea');
-    if (f.length >= 3 && f[0].value && f[2].value) dates.push((f[2].value||'').trim());
+    if (f.length >= 3 && f[0].value){            // hay servicio en la fila
+      const d = (f[2].value || '').trim();
+      if (d) dates.push(d); else sinFecha++;     // servicio sin fecha = infracción a reportar
+    }
   });
-  return dates;
+  return { dates, sinFecha };
 }
 // aviso centralizado (modo advertencia, decisión #2). Devuelve false si el usuario cancela.
 function confirmarCronologiaOT(){
-  const err = validarCronologiaOT(_d('wo_contractReviewDate'), _d('wo_issueDate'), _fechasVisitaDOM());
+  const { dates, sinFecha } = _visitasDOM();
+  let err = validarCronologiaOT(_d('wo_contractReviewDate'), _d('wo_issueDate'), dates);
+  if (sinFecha > 0) err = (err ? err + '\n' : '') +
+    `${sinFecha} servicio(s) sin fecha de visita: no se puede comprobar su cronología.`;
   return !err || confirm('⚠️ ' + err + '\n\n¿Continuar de todos modos?');
 }
 
@@ -208,12 +229,15 @@ if (data.fecha){ window.__fechaVisitaOT = data.fecha; }
 
 // validación al imprimir/exportar — modo advertencia (decisión #2)
 function validarFechaSolicitud(){
-  const fs = document.getElementById('fechaSalida').value;
+  const fs = (document.getElementById('fechaSalida').value || '').trim();
   const fv = window.__fechaVisitaOT;
-  if (fs && fv && fs > fv){
-    return confirm(`⚠️ La fecha de solicitud (${fs}) es posterior a la fecha de visita (${fv}).\n\n¿Continuar de todos modos?`);
-  }
-  return true;
+  const avisos = [];
+  // Fecha de salida ausente = infracción confirmable (hallazgo P2 de Codex):
+  // sin ella no se puede demostrar solicitud ≤ visita.
+  if (!fs) avisos.push('Falta la fecha de solicitud/salida.');
+  if (fs && fv && fs > fv) avisos.push(`La fecha de solicitud (${fs}) es posterior a la fecha de visita (${fv}).`);
+  return avisos.length === 0 ||
+    confirm('⚠️ ' + avisos.join('\n') + '\n\n¿Continuar de todos modos?');
 }
 ```
 
@@ -280,9 +304,10 @@ function fechaADMY_(iso){
 ```
 
 **Regla operativa recomendada (sin tocar backend, decisión #1):**
-- **Mantener `type="date"` en todos los campos de fecha** (SEAOT y formatos ya lo usan) → el navegador entrega ISO `YYYY-MM-DD`, no ambiguo. Esto **ya cubre** el pedido de "formato día/mes/año sin romper backend": la fecha nunca sale como `mm/dd` ambiguo.
-- **Solo se convierte a `dd/mm/yyyy` para mostrar** (PDF, formatos) con `fechaADMY_` (helper de frontend).
-- Si en algún formato hubiera un campo de **texto libre** de fecha, se le pasa `normalizarFechaISO_` en cliente antes de usarla y, si devuelve `''`, se avisa. No se agrega validación en el backend (queda como salvaguarda futura si algún día se persisten fechas).
+- **La mayoría de los campos de fecha ya son `type="date"`** (SEAOT y `fechaSalida` en equipos) → el navegador entrega ISO `YYYY-MM-DD`, no ambiguo. Ahí el pedido de "día/mes/año sin romper backend" ya está cubierto: la fecha nunca sale como `mm/dd`.
+- **Excepción confirmada: `#sg_fecha` en `supervision-gabinete.html` es `type="text"`** (hallazgo P2 de Codex). No basta con formatear el valor del handoff: hay que **validar la captura manual** con `normalizarFechaISO_` (o cambiar el campo a `type="date"`), según §0-bis-A. Sin eso, un `08/27/2026` o `31/02/2026` tecleado se imprime sin control.
+- **Solo se convierte a `dd/mm/yyyy` para mostrar** (PDF, formatos) con `fechaADMY_`.
+- Regla general: **todo campo de fecha de texto libre** pasa por `normalizarFechaISO_` en cliente; si devuelve `''`, se avisa. No se agrega validación en backend (decisión #1).
 
 ---
 
