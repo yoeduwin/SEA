@@ -159,6 +159,19 @@ function validarFechaSolicitud(){
 }
 ```
 
+**Importante (hallazgo P2 de Codex):** definir la función no basta — hay que **invocarla al inicio de las DOS acciones de salida** (`imprimir()` y `exportarPDF()`) y **abortar** si el usuario declina:
+```js
+function imprimir(){
+  if (!validarFechaSolicitud()) return;   // ← nuevo, primera línea
+  /* … resto igual … */
+}
+function exportarPDF(){
+  if (!validarFechaSolicitud()) return;   // ← nuevo, primera línea
+  /* … resto igual … */
+}
+```
+Sin estas dos guardas, cambiar `fechaSalida` a una fecha posterior a la visita seguiría generando el PDF/impresión sin aviso.
+
 ### 2.b Nombres en "Recibió" (salida) y "Entregó" (entrada)
 Ver **§0-bis, bloque B** (con la tabla de los 4 campos ya confirmada). Resumen: se autollena **solo el nombre del técnico** (`#solicitante`) en sus dos espacios —Recibió a la salida y Entregó al regreso, es la misma persona— con un `<span>` impreso, no un selector. Los dos campos de almacén se quedan como están.
 
@@ -208,19 +221,42 @@ function fechaADMY_(iso){
 
 ## 4. Antichoque de agenda: mismo "Personal Asignado" ya tiene OT activa en la misma "Fecha de Visita"
 
-**Enfoque sin tocar backend (decisión #1 y #2):** la verificación se hace en **frontend**, antes de enviar el registro, usando la acción de **lectura que ya existe** (`getOrdenes`, que devuelve `personal`, `fecha_visita` y `estatus_externo` por OT). Es **advertencia**: avisa y deja continuar.
+> **⚠️ Corrección (hallazgo P1 de Codex):** la idea original de reutilizar `getOrdenes` **NO sirve** para esta verificación, por dos razones confirmadas en el código:
+> 1. `getOrdenes` está autorizado bajo el módulo **`SEAINF`** (`ACTION_MODULE.getOrdenes = 'SEAINF'`). Un operador con acceso a **SEAOT pero no a SEAINF** recibe una respuesta de autorización sin `data`, que el código de arriba trataba en silencio como "lista vacía" → **no detectaría ningún choque**.
+> 2. `getOrdenesSafe_` **elimina toda OT que ya tenga registro en `INFORMES`** (línea `!otsConInforme[...]`), aunque su estatus externo siga activo → una OT con expediente creado pero visita aún pendiente **quedaría fuera** del chequeo.
+>
+> Por lo tanto §4 **requiere un endpoint de lectura propio de SEAOT** (mínima adición de backend: una función + su fila en `ACTION_MODULE`, **sin** tocar el esquema A–Q ni crear hojas), que devuelva **todas las OT activas** (sin el filtro de INFORMES) con `ot, personal, fecha_visita, estatus_externo`, y que el frontend maneje **explícitamente** las respuestas no exitosas.
+
+**Enfoque (decisión #1 y #2):** verificación en **frontend**, en modo **advertencia** (avisa y deja continuar), consumiendo un endpoint **SEAOT-autorizado** nuevo (p. ej. `getAgendaActiva`):
 
 ```js
-// En SEAOT.html, antes de armar el payload de registrarOT:
+// Backend (BACKEND_FIXES.gs): acción nueva, SEAOT-autorizada, SIN filtro de INFORMES.
+//   ACTION_MODULE.getAgendaActiva = 'SEAOT';  ACCION_MODULO/... = 'GOOGLE';
+function getAgendaActiva_() {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const values = ss.getSheetByName(CONFIG.SHEET_OT).getDataRange().getDisplayValues().slice(1);
+  const data = values.map(r => ({
+    ot: r[CO.OT], personal: r[CO.PERSONAL], fecha_visita: r[CO.FECHA_VISITA], estatus_externo: r[CO.ESTATUS_EXTERNO]
+  })).filter(o => o.ot && o.ot.trim() &&
+    ESTATUS_EXTERNO_TERMINALES_.indexOf(String(o.estatus_externo||'').toUpperCase()) === -1);
+  return { success: true, data };
+}
+```
+```js
+// SEAOT.html, antes de armar el payload de registrarOT:
 async function hayChoqueAgenda(personalAsignado, fechaVisitaISO, otExcluir){
   if (!fechaVisitaISO) return null;
-  const resp = await SEAAuth.wrapFetch(SHEETS_SCRIPT_URL + '?action=getOrdenes', { method:'GET' });
-  const { data: ordenes = [] } = await resp.json();
+  const resp = await SEAAuth.wrapFetch(SHEETS_SCRIPT_URL + '?action=getAgendaActiva', { method:'GET' });
+  const json = await resp.json();
+  if (!json || json.success !== true || !Array.isArray(json.data)) {
+    // Respuesta no exitosa (p. ej. sin autorización): NO asumir "sin choques".
+    console.warn('No se pudo verificar la agenda:', json && json.error);
+    return null; // o mostrar aviso de "no se pudo verificar" según se prefiera
+  }
   const TERMINALES = ['FINALIZADO','CANCELADO'];
   const norm = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim();
   const solicitados = personalAsignado.split(',').map(norm).filter(Boolean);
-
-  for (const o of ordenes){
+  for (const o of json.data){
     if (TERMINALES.includes(String(o.estatus_externo||'').toUpperCase())) continue;
     if (otExcluir && String(o.ot).trim() === String(otExcluir).trim()) continue;
     if (String(o.fecha_visita||'').trim() !== String(fechaVisitaISO).trim()) continue; // misma fecha exacta
@@ -237,9 +273,10 @@ if (aviso && !confirm('⚠️ Choque de agenda: ' + aviso + '\n\n¿Registrar la 
 ```
 
 **Notas:**
-- `getOrdenes` compara `fecha_visita` tal cual está en la hoja. Conviene confirmar que ese valor se guarda en ISO (viene de `dates[0]`, que es `type="date"` → ISO). Si en la hoja hubiera fechas en otro formato, la comparación exacta fallaría; por eso mantener `type="date"` (§3) es lo que hace confiable esta verificación.
-- Los nombres en la OT usan formato corto ("Martín Luna"); la normalización `norm` (sin acentos, minúsculas) los homogeniza. Conviene revisar que el catálogo de personal sea consistente entre SEAOT y equipos.
-- Si más adelante se quiere que la verificación sea **infalible** (no saltable desde el cliente), se movería a `fase2_RegistrarOT` — queda como mejora futura, no en este PR.
+- La comparación de `fecha_visita` es exacta contra el valor de la hoja; mantener `type="date"` (§3) es lo que la hace confiable.
+- Los nombres en la OT usan formato corto ("Martín Luna"); la normalización `norm` los homogeniza.
+- Este punto ya **no es "cero backend"**: agrega una función de lectura pequeña. No cambia el esquema A–Q ni crea hojas, así que sigue dentro de tus decisiones; solo conviene que lo apruebes explícitamente por ser una adición de backend.
+- Si se quiere que sea **infalible** (no saltable desde el cliente), la verificación se movería a `fase2_RegistrarOT` — mejora futura.
 
 ---
 
@@ -258,11 +295,15 @@ function inventarioYaEnTabla(clave, selfSelect){
   return Array.from(document.querySelectorAll('#tablaEquipos tbody .equipo-select'))
     .some(s => s !== selfSelect && s.value === clave);
 }
-// dentro de alCambiarEquipo:
+// dentro de alCambiarEquipo, ANTES de autollenar inventario/grupos:
 if (clave && inventarioYaEnTabla(clave, select)){
   alert(`⚠️ El equipo ${clave} ya está en esta salida. Revisa que no lo estés registrando dos veces.`);
+  select.value = '';                 // rechaza: limpia la selección duplicada
+  actualizarInventario(select);      // limpia también el nº de inventario de esa fila
+  return;                            // corta: no continúa con autollenado ni grupos
 }
 ```
+**Nota (hallazgo P2 de Codex):** el aviso por sí solo no impide el duplicado; hay que **limpiar la selección y cortar** (`return`) para que la antiduplicación prometida sea real (si no, el duplicado queda seleccionado y exportable).
 
 ### 5.b "Función base" documentada para el futuro (gancho, no se implementa ahora)
 Se deja escrita la firma de la función que haría la verificación real *si algún día se autoriza persistencia*, para que quede clara la estructura. **No se incluye en este PR** (requeriría una hoja):
