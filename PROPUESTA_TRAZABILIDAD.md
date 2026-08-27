@@ -124,19 +124,28 @@ Antes de armar el `payload` en el submit (`SEAOT.html`, junto al armado de `serv
 // Devuelve 'YYYY-MM-DD' o '' — los <input type="date"> ya entregan ISO.
 function _d(id){ return (document.getElementById(id)?.value || '').trim(); }
 
+// Acumula TODAS las infracciones (hallazgo P2 de Codex): no corta en la primera,
+// y comprueba cada relación solo cuando sus dos operandos están disponibles.
 function validarCronologiaOT(revision, emision, fechasVisita){
   // fechasVisita = array de 'YYYY-MM-DD' de la tabla de servicios (todas las filas)
-  if (!emision)  return 'Falta la Fecha de Emisión de la OT.';
-  if (!revision) return 'Falta la Fecha de revisión de contrato.';
-  const visitas = fechasVisita.filter(Boolean).sort();      // ISO ordena lexicográfico = cronológico
-  if (!visitas.length) return 'Falta al menos una fecha de visita en la tabla de servicios.';
-  const minVisita = visitas[0];
+  const errs = [];
+  const visitas = (fechasVisita || []).filter(Boolean).sort();  // ISO ordena lexicográfico = cronológico
+  const minVisita = visitas[0] || '';
 
-  if (revision > emision)   return `La revisión de contrato (${revision}) no puede ser posterior a la emisión (${emision}).`;
-  if (emision  > minVisita) return `La emisión (${emision}) no puede ser posterior a la primera visita (${minVisita}).`;
-  return ''; // OK
+  if (!emision)  errs.push('Falta la Fecha de Emisión de la OT.');
+  if (!revision) errs.push('Falta la Fecha de revisión de contrato.');
+  if (!visitas.length) errs.push('Falta al menos una fecha de visita en la tabla de servicios.');
+
+  // cada relación se evalúa aunque falten otras fechas
+  if (revision && emision && revision > emision)
+    errs.push(`La revisión de contrato (${revision}) no puede ser posterior a la emisión (${emision}).`);
+  if (emision && minVisita && emision > minVisita)
+    errs.push(`La emisión (${emision}) no puede ser posterior a la visita más temprana (${minVisita}).`);
+
+  return errs.join('\n');  // '' si todo OK; varias líneas si hay varias infracciones
 }
 ```
+El aviso (`confirmarCronologiaOT`, más abajo) muestra el `join('\n')` completo, de modo que si coexisten "revisión posterior a emisión" **y** "emisión posterior a visita", el usuario ve ambas y no solo la primera.
 
 **Enganche en TODAS las salidas de la OT (hallazgo P2 de Codex), no solo en el registro.** En `SEAOT.html` hay botones independientes que producen salida sin pasar por `registerToSheets`: `printWorkOrder()` (línea 765), `sendWorkOrder()` (787) y `openFormatosModal()` (994). Para no dejar huecos, se **centraliza** la validación en una función que recolecta las fechas del DOM y se invoca al inicio de las cuatro acciones:
 
