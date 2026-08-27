@@ -55,23 +55,41 @@ if (data.fecha)   { var f = document.getElementById('sg_fecha');   if (f && !f.v
 ```
 `#sg_folio` se deja manual (es el consecutivo de supervisión, no viene de la OT).
 
-**B) `registro-equipos.html` — convertir "Entregó/Recibió" en campos prellenables.**
-Hoy en el bloque de firmas son texto fijo (`Nombre, Firma y Fecha`). Se propone dejar la **firma manuscrita** igual, pero anteponer un `<select>`/`<input>` de **nombre** que se autollena desde el handoff, reutilizando el catálogo de personal que ya usa `#solicitante`:
+**B) `registro-equipos.html` — autollenar SOLO el nombre del técnico en sus dos campos.**
+
+El bloque de firmas tiene 4 espacios. La regla, ya confirmada por Eduwin:
+
+| Momento | Campo | Quién | ¿Autollenar? |
+|---|---|---|---|
+| SALIDA | 1. Entregó | Almacén (presta el equipo) | **No** — se queda como línea de firma tal cual (sin selector) |
+| SALIDA | 2. **Recibió** | **Técnico** = `#solicitante` | **Sí** ← handoff |
+| ENTRADA (regreso) | 3. **Entregó** | **Técnico** = `#solicitante` (el mismo) | **Sí** ← handoff |
+| ENTRADA (regreso) | 4. Recibió | Almacén (recibe de vuelta) | **No** — línea de firma tal cual |
+
+Es decir: **los dos campos del técnico se autollenan con el mismo nombre** (el `solicitante` de la OT: recibe a la salida, entrega al regreso). Los dos de almacén **no cambian** — siguen como el texto de firma actual, sin `<select>`.
+
+Solo esos dos espacios pasan a tener un pequeño `<span>` con el nombre (no selector), antepuesto a la firma manuscrita:
 
 ```html
-<!-- SALIDA DE EQUIPOS -->
-<div class="signature-line"><strong>1. Entregó:</strong>
-  <select id="salidaEntrego">…mismas opciones que #solicitante…</select> — Firma y Fecha</div>
+<!-- SALIDA: 2. Recibió -->
 <div class="signature-line"><strong>2. Recibió:</strong>
-  <select id="salidaRecibio">…</select> — Firma y Fecha</div>
+  <span id="salidaRecibioNombre" class="nombre-auto"></span> — Firma y Fecha</div>
+<!-- ENTRADA: 3. Entregó -->
+<div class="signature-line"><strong>3. Entregó:</strong>
+  <span id="entradaEntregoNombre" class="nombre-auto"></span> — Firma y Fecha</div>
+<!-- Los espacios 1 (Entregó salida) y 4 (Recibió entrada) NO se tocan. -->
 ```
 ```js
 // en applyOtHandoff() de registro-equipos.html, tras setSolicitante(data.personal):
-var rec = document.getElementById('salidaRecibio');
-if (rec && !rec.value) rec.value = document.getElementById('solicitante').value; // Recibió = quien sale a campo
-// 'Entregó' (almacén) se deja para elegir, o se fija un responsable por defecto si lo defines.
+var tecnico = (document.getElementById('solicitante') || {}).value || '';
+if (tecnico) {
+  var r = document.getElementById('salidaRecibioNombre');  if (r) r.textContent = tecnico;
+  var e = document.getElementById('entradaEntregoNombre'); if (e) e.textContent = tecnico;
+}
 ```
-Resultado: al abrir el formato desde la OT, **Recibió** ya trae el nombre del técnico asignado y solo queda firmar. "Entregó" (almacén) es el único nombre a elegir.
+Si el técnico se cambia manualmente en `#solicitante`, conviene reflejarlo en esos dos `<span>` (un pequeño listener sobre el `change` de `#solicitante`).
+
+Resultado: al abrir el formato desde la OT, el nombre del técnico ya aparece impreso en "Recibió" (salida) y "Entregó" (entrada); solo queda firmar. Los dos campos de almacén quedan idénticos a hoy.
 
 > Este bloque **0-bis es lo que puede entrar primero al PR** porque es el de menor riesgo (solo frontend, aditivo) y resuelve directo tu pedido de "reescribir lo menos posible".
 
@@ -141,8 +159,8 @@ function validarFechaSolicitud(){
 }
 ```
 
-### 2.b Nombres estructurados en "Entregó" (ingresó equipo) y "Recibió" (recibir equipo)
-Ver **§0-bis, bloque B** — es la misma mejora y es la de mayor prioridad (reduce reescritura). Resumen: dejar la firma manuscrita igual, anteponer un `<select>` de nombre con el catálogo de `#solicitante`, y autollenar `salidaRecibio = solicitante` desde el handoff.
+### 2.b Nombres en "Recibió" (salida) y "Entregó" (entrada)
+Ver **§0-bis, bloque B** (con la tabla de los 4 campos ya confirmada). Resumen: se autollena **solo el nombre del técnico** (`#solicitante`) en sus dos espacios —Recibió a la salida y Entregó al regreso, es la misma persona— con un `<span>` impreso, no un selector. Los dos campos de almacén se quedan como están.
 
 ---
 
