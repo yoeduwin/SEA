@@ -50,10 +50,10 @@ Lo que **hoy** se prellena vs. lo que **aún se reescribe a mano**:
 **A) `supervision-gabinete.html` — prellenar la fecha (1 línea en su `applyOtHandoff`):**
 ```js
 // dentro del applyOtHandoff ya existente, junto a sg_ot / sg_cliente:
-if (data.fecha)   { var f = document.getElementById('sg_fecha');   if (f && !f.value) f.value = data.fecha; }
+if (data.fecha)   { var f = document.getElementById('sg_fecha');   if (f && !f.value) f.value = fechaADMY_(data.fecha); }
 // (si se prefiere la emisión de la OT en vez de la fecha de servicio: usar data.emision)
 ```
-`#sg_folio` se deja manual (es el consecutivo de supervisión, no viene de la OT).
+**Nota (hallazgo P2 de Codex):** `#sg_fecha` es un campo de **texto** que se imprime tal cual, y `data.fecha` viene en ISO (`YYYY-MM-DD`). Hay que convertirla con **`fechaADMY_(data.fecha)`** (§3) para que la supervisión salga en `dd/mm/yyyy` y no en ISO. `#sg_folio` se deja manual (consecutivo propio, no viene de la OT).
 
 **B) `registro-equipos.html` — autollenar SOLO el nombre del técnico en sus dos campos.**
 
@@ -79,17 +79,28 @@ Solo esos dos espacios pasan a tener un pequeño `<span>` con el nombre (no sele
   <span id="entradaEntregoNombre" class="nombre-auto"></span> — Firma y Fecha</div>
 <!-- Los espacios 1 (Entregó salida) y 4 (Recibió entrada) NO se tocan. -->
 ```
+La sincronización se hace con **una sola función** que se llama desde el handoff, desde el `change` de `#solicitante` **y** desde los reinicios del formulario. **Es obligatoria** (hallazgo P2 de Codex): si no, cambiar `#solicitante` a mano dejaría los `<span>` con el nombre anterior y el impreso identificaría a una persona como solicitante y a otra en las firmas.
+
 ```js
-// en applyOtHandoff() de registro-equipos.html, tras setSolicitante(data.personal):
-var tecnico = (document.getElementById('solicitante') || {}).value || '';
-if (tecnico) {
+// Fuente única de verdad: refleja #solicitante en los dos span del técnico.
+function sincronizarNombreTecnico() {
+  var tecnico = (document.getElementById('solicitante') || {}).value || '';
   var r = document.getElementById('salidaRecibioNombre');  if (r) r.textContent = tecnico;
   var e = document.getElementById('entradaEntregoNombre'); if (e) e.textContent = tecnico;
 }
-```
-Si el técnico se cambia manualmente en `#solicitante`, conviene reflejarlo en esos dos `<span>` (un pequeño listener sobre el `change` de `#solicitante`).
 
-Resultado: al abrir el formato desde la OT, el nombre del técnico ya aparece impreso en "Recibió" (salida) y "Entregó" (entrada); solo queda firmar. Los dos campos de almacén quedan idénticos a hoy.
+// 1) tras setSolicitante(data.personal) en applyOtHandoff():
+sincronizarNombreTecnico();
+
+// 2) cambio manual del solicitante (OBLIGATORIO, no opcional):
+document.getElementById('solicitante').addEventListener('change', sincronizarNombreTecnico);
+
+// 3) reinicios programáticos del formulario (limpiarFormulario y cualquier reset):
+//    llamar sincronizarNombreTecnico() al final para que los span queden vacíos también.
+```
+El punto 3 cubre el reseteo: `limpiarFormulario()` ya limpia los `select`, pero debe invocar `sincronizarNombreTecnico()` para vaciar también los `<span>`.
+
+Resultado: al abrir el formato desde la OT, el nombre del técnico ya aparece impreso en "Recibió" (salida) y "Entregó" (entrada); si se cambia el solicitante, ambos se actualizan solos; y un reinicio los vacía. Los dos campos de almacén quedan idénticos a hoy.
 
 > Este bloque **0-bis es lo que puede entrar primero al PR** porque es el de menor riesgo (solo frontend, aditivo) y resuelve directo tu pedido de "reescribir lo menos posible".
 
@@ -130,6 +141,22 @@ Uso en el submit — **modo advertencia** (avisa y deja continuar, decisión #2)
 const err = validarCronologiaOT(_d('wo_contractReviewDate'), _d('wo_issueDate'), dates);
 if (err && !confirm('⚠️ ' + err + '\n\n¿Registrar la OT de todos modos?')) return;
 ```
+
+### 1.a-bis Propagar la fecha MÍNIMA, no `dates[0]` (hallazgo P2 de Codex)
+
+La regla define "Fecha de Visita" como la **mínima** de la tabla. Pero hoy el código envía la **primera fila**:
+- `registerToSheets`: `fecha_visita: dates[0]`
+- `collectOtContext` (handoff a formatos): `fecha: fechas[0]`
+
+Si las filas no están en orden cronológico, la hoja y los formatos (incluida la validación de equipos §2.a) recibirían una visita distinta a la que valida §1. **Corrección:** usar la mínima calculada en ambos destinos:
+```js
+const minVisita = dates.filter(Boolean).sort()[0] || '';
+// payload de registrarOT:
+fecha_visita: minVisita,
+// collectOtContext:
+fecha: (fechas.filter(Boolean).sort()[0] || ''),
+```
+(Alternativa: cambiar explícitamente el contrato de la regla a "primera fila". Recomiendo la mínima, que es lo que valida §1.)
 
 ### 1.b Sin persistir fechas nuevas (decisión #1)
 
@@ -243,21 +270,29 @@ Una verificación confiable **requeriría** un endpoint de lectura propio de SEA
 ### 5.a Impedir/avisar equipo duplicado dentro del mismo formato
 El caso más común de error humano —seleccionar dos veces el mismo inventario en la misma salida— sí se detecta en la tabla actual. Ya existe la base `existeEquipo(clave)` (recorre los `.equipo-select`). Se refuerza al cambiar un equipo:
 
+La función real es `alCambiarEquipo(selectElement)` (parámetro `selectElement`, verificado en `registro-equipos.html:675`). La comprobación va **al inicio**, justo tras leer `selectElement.value`:
+
 ```js
-// en alCambiarEquipo(select), tras leer la clave elegida:
 function inventarioYaEnTabla(clave, selfSelect){
   return Array.from(document.querySelectorAll('#tablaEquipos tbody .equipo-select'))
     .some(s => s !== selfSelect && s.value === clave);
 }
-// dentro de alCambiarEquipo, ANTES de autollenar inventario/grupos:
-if (clave && inventarioYaEnTabla(clave, select)){
-  alert(`⚠️ El equipo ${clave} ya está en esta salida. Revisa que no lo estés registrando dos veces.`);
-  select.value = '';                 // rechaza: limpia la selección duplicada
-  actualizarInventario(select);      // limpia también el nº de inventario de esa fila
-  return;                            // corta: no continúa con autollenado ni grupos
+
+function alCambiarEquipo(selectElement) {
+  const clave = selectElement.value;
+  if (clave && inventarioYaEnTabla(clave, selectElement)){        // ← nuevo, antes de todo
+    alert(`⚠️ El equipo ${clave} ya está en esta salida. Revisa que no lo estés registrando dos veces.`);
+    selectElement.value = '';              // rechaza: limpia la selección duplicada
+    actualizarInventario(selectElement);   // limpia también el nº de inventario de esa fila
+    return;                                // corta: no continúa con autollenado ni grupos
+  }
+  actualizarInventario(selectElement);     // (resto original sin cambios)
+  /* … grupos … */
 }
 ```
-**Nota (hallazgo P2 de Codex):** el aviso por sí solo no impide el duplicado; hay que **limpiar la selección y cortar** (`return`) para que la antiduplicación prometida sea real (si no, el duplicado queda seleccionado y exportable).
+**Notas (hallazgos de Codex):**
+- **P1:** el parámetro real es `selectElement`, **no** `select` — usar `select` lanzaría `ReferenceError` y rompería también el autollenado. Corregido arriba.
+- **P2:** el aviso por sí solo no impide el duplicado; hay que **limpiar la selección y cortar** (`return`) para que la antiduplicación sea real.
 
 ### 5.b "Función base" documentada para el futuro (gancho, no se implementa ahora)
 Se deja escrita la firma de la función que haría la verificación real *si algún día se autoriza persistencia*, para que quede clara la estructura. **No se incluye en este PR** (requeriría una hoja):
