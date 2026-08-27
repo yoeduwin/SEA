@@ -573,11 +573,11 @@
             <div class="signature-box">
                 <h4>SALIDA DE EQUIPOS</h4>
                 <div class="signature-line"><strong>1. Entregó:</strong> Nombre, Firma y Fecha</div>
-                <div class="signature-line"><strong>2. Recibió:</strong> Nombre, Firma y Fecha</div>
+                <div class="signature-line"><strong>2. Recibió:</strong> <span id="salidaRecibioNombre" class="nombre-auto"></span> Firma y Fecha</div>
             </div>
             <div class="signature-box">
                 <h4>ENTRADA DE EQUIPOS</h4>
-                <div class="signature-line"><strong>3. Entregó:</strong> Nombre, Firma y Fecha</div>
+                <div class="signature-line"><strong>3. Entregó:</strong> <span id="entradaEntregoNombre" class="nombre-auto"></span> Firma y Fecha</div>
                 <div class="signature-line"><strong>4. Recibió:</strong> Nombre, Firma y Fecha</div>
             </div>
         </div>
@@ -672,9 +672,21 @@
         // Se dispara al cambiar un equipo (interacción del usuario): autollena inventario y
         // agrega las filas del grupo que falten. Las altas programáticas no pasan por aquí,
         // así que no hay recursión.
+        // true si algún OTRO select de la tabla ya tiene seleccionada esa clave.
+        function inventarioYaEnTabla(clave, selfSelect) {
+            return Array.from(document.querySelectorAll('#tablaEquipos tbody .equipo-select'))
+                .some(s => s !== selfSelect && s.value === clave);
+        }
         function alCambiarEquipo(selectElement) {
-            actualizarInventario(selectElement);
             const clave = selectElement.value;
+            // Antiduplicado dentro del mismo formato: avisa, limpia la selección y corta.
+            if (clave && inventarioYaEnTabla(clave, selectElement)) {
+                alert('⚠️ El equipo ' + clave + ' ya está en esta salida. Revisa que no lo estés registrando dos veces.');
+                selectElement.value = '';
+                actualizarInventario(selectElement);
+                return;
+            }
+            actualizarInventario(selectElement);
             if (!clave) return;
             const grupo = GRUPOS_EQUIPOS.find(function (g) { return g.indexOf(clave) !== -1; });
             if (!grupo) return;
@@ -796,7 +808,30 @@
             }
         }
         
+        // Muestra una fecha ISO como dd/mm/yyyy (solo presentación).
+        function fechaADMY_(iso) {
+            var m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            return m ? (m[3] + '/' + m[2] + '/' + m[1]) : String(iso || '');
+        }
+        // Sincroniza el nombre del técnico (= solicitante) en Recibió (salida) y Entregó (entrada).
+        function sincronizarNombreTecnico() {
+            var tecnico = (document.getElementById('solicitante') || {}).value || '';
+            var r = document.getElementById('salidaRecibioNombre');  if (r) r.textContent = tecnico;
+            var e = document.getElementById('entradaEntregoNombre'); if (e) e.textContent = tecnico;
+        }
+        // Aviso (modo advertencia) sobre la fecha de solicitud/salida. false = el usuario cancela.
+        function validarFechaSolicitud() {
+            var fs = (document.getElementById('fechaSalida').value || '').trim();
+            var fv = window.__fechaVisitaOT;
+            var avisos = [];
+            if (!fs) avisos.push('Falta la fecha de solicitud/salida.');
+            if (fs && fv && fs > fv) avisos.push('La fecha de solicitud (' + fechaADMY_(fs) +
+                ') es posterior a la fecha de visita (' + fechaADMY_(fv) + ').');
+            return avisos.length === 0 || confirm('⚠️ ' + avisos.join('\n') + '\n\n¿Continuar de todos modos?');
+        }
+
         function imprimir() {
+            if (!validarFechaSolicitud()) return;
             // "Guardar como PDF" toma el nombre por defecto de document.title.
             var ot = (document.getElementById('destino').value || '').trim();
             var prev = document.title;
@@ -806,6 +841,7 @@
         }
         
         function exportarPDF() {
+            if (!validarFechaSolicitud()) return;
             // Nombre del archivo: "<N° de OT> - SALIDA DE EQUIPO".
             var ot = (document.getElementById('destino').value || '').trim();
             var nombreArchivo = ((ot ? ot + ' - ' : '') + 'SALIDA DE EQUIPO')
@@ -850,7 +886,11 @@
                 tbody.innerHTML = '';
                 uidEquipo = 0;
                 agregarFilaEquipo();
-                
+
+                // Olvidar la visita de la OT previa y vaciar los nombres del técnico.
+                window.__fechaVisitaOT = '';
+                sincronizarNombreTecnico();
+
                 alert('Formulario limpiado correctamente');
             }
         }
@@ -877,6 +917,9 @@
             tbody.innerHTML = '';
             uidEquipo = 0;
             agregarFilaEquipo();
+            // Mantener sincronizado el nombre del técnico si se cambia el solicitante a mano.
+            var solic = document.getElementById('solicitante');
+            if (solic) solic.addEventListener('change', sincronizarNombreTecnico);
         });
     </script>
 <script>
@@ -970,10 +1013,15 @@
 
       if (data.ot) { var d = document.getElementById('destino'); if (d) d.value = data.ot; }
       var motivo = document.getElementById('motivoSalida'); if (motivo && !motivo.value) motivo.value = 'trabajo-campo';
-      // Fecha de Salida ← Fecha del Servicio de la OT (primera fecha de la tabla de desarrollo).
-      if (data.fecha) { var fs = document.getElementById('fechaSalida'); if (fs && !fs.value) fs.value = data.fecha; }
+      // Fecha de Salida ← Fecha de visita más temprana de la OT; se conserva para validar solicitud ≤ visita.
+      if (data.fecha) {
+        window.__fechaVisitaOT = data.fecha;
+        var fs = document.getElementById('fechaSalida'); if (fs && !fs.value) fs.value = data.fecha;
+      }
       setSolicitante(data.personal);
       setArea(data.servicios);
+      // Nombre del técnico (= solicitante) en Recibió (salida) y Entregó (entrada).
+      if (typeof sincronizarNombreTecnico === 'function') sincronizarNombreTecnico();
 
       if (data.servicios) {
         var claves = [];
