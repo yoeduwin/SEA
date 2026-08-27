@@ -138,11 +138,31 @@ function validarCronologiaOT(revision, emision, fechasVisita){
 }
 ```
 
-Uso en el submit — **modo advertencia** (avisa y deja continuar, decisión #2):
+**Enganche en TODAS las salidas de la OT (hallazgo P2 de Codex), no solo en el registro.** En `SEAOT.html` hay botones independientes que producen salida sin pasar por `registerToSheets`: `printWorkOrder()` (línea 765), `sendWorkOrder()` (787) y `openFormatosModal()` (994). Para no dejar huecos, se **centraliza** la validación en una función que recolecta las fechas del DOM y se invoca al inicio de las cuatro acciones:
+
 ```js
-const err = validarCronologiaOT(_d('wo_contractReviewDate'), _d('wo_issueDate'), dates);
-if (err && !confirm('⚠️ ' + err + '\n\n¿Registrar la OT de todos modos?')) return;
+// recolecta las fechas de la tabla de servicios (mismo criterio que el submit)
+function _fechasVisitaDOM(){
+  const dates = [];
+  document.querySelectorAll('#workTableBody tr').forEach(row => {
+    const f = row.querySelectorAll('input, select, textarea');
+    if (f.length >= 3 && f[0].value && f[2].value) dates.push((f[2].value||'').trim());
+  });
+  return dates;
+}
+// aviso centralizado (modo advertencia, decisión #2). Devuelve false si el usuario cancela.
+function confirmarCronologiaOT(){
+  const err = validarCronologiaOT(_d('wo_contractReviewDate'), _d('wo_issueDate'), _fechasVisitaDOM());
+  return !err || confirm('⚠️ ' + err + '\n\n¿Continuar de todos modos?');
+}
+
+// invocar al inicio de CADA salida:
+async function registerToSheets(e){ if (!confirmarCronologiaOT()) return; /* … */ }
+function printWorkOrder(){        if (!confirmarCronologiaOT()) return; /* … */ }
+function sendWorkOrder(){         if (!confirmarCronologiaOT()) return; /* … */ }
+function openFormatosModal(){     if (!confirmarCronologiaOT()) return; /* … */ }
 ```
+Así, registrar, imprimir/PDF, enviar por correo y abrir formatos asociados pasan todos por el mismo aviso; una revisión posterior a la emisión (o emisión posterior a la visita) avisa en cualquier ruta.
 
 ### 1.a-bis Propagar la fecha MÍNIMA, no `dates[0]` (hallazgo P2 de Codex)
 
