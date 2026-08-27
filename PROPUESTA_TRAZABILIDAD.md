@@ -53,7 +53,9 @@ Lo que **hoy** se prellena vs. lo que **aún se reescribe a mano**:
 if (data.fecha)   { var f = document.getElementById('sg_fecha');   if (f && !f.value) f.value = fechaADMY_(data.fecha); }
 // (si se prefiere la emisión de la OT en vez de la fecha de servicio: usar data.emision)
 ```
-**Nota (hallazgo P2 de Codex):** `#sg_fecha` es un campo de **texto** que se imprime tal cual, y `data.fecha` viene en ISO (`YYYY-MM-DD`). Hay que convertirla con **`fechaADMY_(data.fecha)`** (§3) para que la supervisión salga en `dd/mm/yyyy` y no en ISO. `#sg_folio` se deja manual (consecutivo propio, no viene de la OT).
+**Nota (hallazgo P2 de Codex):** `#sg_fecha` es un campo de **texto** que se imprime tal cual, y `data.fecha` viene en ISO (`YYYY-MM-DD`). Hay que convertirla con **`fechaADMY_(data.fecha)`** para que la supervisión salga en `dd/mm/yyyy` y no en ISO. `#sg_folio` se deja manual (consecutivo propio, no viene de la OT).
+
+> **⚠️ Dependencia obligatoria (hallazgo P2 de Codex):** `fechaADMY_` (definida en §3) **NO existe hoy** en `supervision-gabinete.html`. Como §0-bis-A la invoca, **su definición debe incluirse en este mismo cambio** (pegar el helper de §3 en el `<script>` del formato). No es opcional ni posterior: sin ella, todo handoff con `data.fecha` lanzaría `ReferenceError`. Por eso en §7 el helper de §3 pasa a ser **prerrequisito**, no un paso final opcional.
 
 **B) `registro-equipos.html` — autollenar SOLO el nombre del técnico en sus dos campos.**
 
@@ -199,6 +201,15 @@ function exportarPDF(){
 ```
 Sin estas dos guardas, cambiar `fechaSalida` a una fecha posterior a la visita seguiría generando el PDF/impresión sin aviso.
 
+**Limpiar el estado al reiniciar (hallazgo P2 de Codex):** `window.__fechaVisitaOT` sobrevive a `limpiarFormulario()`. Si se reutiliza la misma pestaña para capturar **otra salida manual**, la comparación se haría contra la visita de la OT anterior → aviso falso. Por eso `limpiarFormulario()` debe **borrar la fecha de visita interna**:
+```js
+function limpiarFormulario(){
+  /* … reset de campos … */
+  window.__fechaVisitaOT = '';          // ← nuevo: olvida la visita de la OT previa
+  sincronizarNombreTecnico();           // (del §0-bis-B: vacía también los span de nombre)
+}
+```
+
 ### 2.b Nombres en "Recibió" (salida) y "Entregó" (entrada)
 Ver **§0-bis, bloque B** (con la tabla de los 4 campos ya confirmada). Resumen: se autollena **solo el nombre del técnico** (`#solicitante`) en sus dos espacios —Recibió a la salida y Entregó al regreso, es la misma persona— con un `<span>` impreso, no un selector. Los dos campos de almacén se quedan como están.
 
@@ -326,11 +337,11 @@ function tieneSalidaAbierta_(inventario, fechaISO){ /* pendiente: sin fuente de 
 
 ## 7. Orden sugerido de implementación para el PR (menor a mayor riesgo)
 
-1. **§0-bis — Prellenado de formatos** (el pedido inmediato): fecha en supervisión + nombre del técnico en Recibió/Entregó de equipos. Solo frontend, aditivo. *(Entra primero.)*
-2. **§1.a — Validación cronológica** Revisión ≤ Emisión ≤ Visita, como aviso en SEAOT.
-3. **§2.a — fecha solicitud ≤ visita** como aviso en registro-equipos.
+0. **§3 — Helper de fecha `fechaADMY_` (PRERREQUISITO):** debe existir **antes** que §0-bis, porque §0-bis-A lo usa para `#sg_fecha`. Pegar el helper en el `<script>` de cada formato que lo invoque (`supervision-gabinete.html`; y `registro-equipos.html` si se muestra alguna fecha en `dd/mm/yyyy`). **No es opcional.**
+1. **§0-bis — Prellenado de formatos** (el pedido inmediato): fecha (con `fechaADMY_`) en supervisión + nombre del técnico en Recibió/Entregó de equipos. Solo frontend, aditivo.
+2. **§1.a — Validación cronológica** Revisión ≤ Emisión ≤ Visita, como aviso en SEAOT (incluye §1.a-bis: propagar la fecha mínima).
+3. **§2.a — fecha solicitud ≤ visita** como aviso en registro-equipos (incluye limpiar `window.__fechaVisitaOT` en el reinicio).
 4. **§5.a — Antiduplicado de inventario** dentro del formato.
-5. **§3 — Helper de fecha** `fechaADMY_` solo si se necesita mostrar `dd/mm/yyyy` en algún formato.
 
 > **§4 (choque de agenda) queda fuera** por la decisión de cero backend (mejora futura).
 
