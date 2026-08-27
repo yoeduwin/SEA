@@ -219,64 +219,18 @@ function fechaADMY_(iso){
 
 ---
 
-## 4. Antichoque de agenda: mismo "Personal Asignado" ya tiene OT activa en la misma "Fecha de Visita"
+## 4. Antichoque de agenda: mismo "Personal Asignado" ya tiene OT activa en la misma "Fecha de Visita" — **FUERA DE ALCANCE (decisión: cero backend)**
 
-> **⚠️ Corrección (hallazgo P1 de Codex):** la idea original de reutilizar `getOrdenes` **NO sirve** para esta verificación, por dos razones confirmadas en el código:
-> 1. `getOrdenes` está autorizado bajo el módulo **`SEAINF`** (`ACTION_MODULE.getOrdenes = 'SEAINF'`). Un operador con acceso a **SEAOT pero no a SEAINF** recibe una respuesta de autorización sin `data`, que el código de arriba trataba en silencio como "lista vacía" → **no detectaría ningún choque**.
-> 2. `getOrdenesSafe_` **elimina toda OT que ya tenga registro en `INFORMES`** (línea `!otsConInforme[...]`), aunque su estatus externo siga activo → una OT con expediente creado pero visita aún pendiente **quedaría fuera** del chequeo.
->
-> Por lo tanto §4 **requiere un endpoint de lectura propio de SEAOT** (mínima adición de backend: una función + su fila en `ACTION_MODULE`, **sin** tocar el esquema A–Q ni crear hojas), que devuelva **todas las OT activas** (sin el filtro de INFORMES) con `ot, personal, fecha_visita, estatus_externo`, y que el frontend maneje **explícitamente** las respuestas no exitosas.
+> **Decisión de Eduwin: cero backend.** Este punto se **descarta del alcance actual**. A continuación queda el porqué, para no volver a proponerlo sin persistencia.
 
-**Enfoque (decisión #1 y #2):** verificación en **frontend**, en modo **advertencia** (avisa y deja continuar), consumiendo un endpoint **SEAOT-autorizado** nuevo (p. ej. `getAgendaActiva`):
+Para detectar el choque hay que **leer todas las OT activas** (personal + fecha de visita) desde el servidor. El único endpoint de lectura existente que devuelve eso es `getOrdenes`, y **no sirve** (confirmado en el código, hallazgo P1 de Codex):
 
-```js
-// Backend (BACKEND_FIXES.gs): acción nueva, SEAOT-autorizada, SIN filtro de INFORMES.
-//   ACTION_MODULE.getAgendaActiva = 'SEAOT';  ACCION_MODULO/... = 'GOOGLE';
-function getAgendaActiva_() {
-  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-  const values = ss.getSheetByName(CONFIG.SHEET_OT).getDataRange().getDisplayValues().slice(1);
-  const data = values.map(r => ({
-    ot: r[CO.OT], personal: r[CO.PERSONAL], fecha_visita: r[CO.FECHA_VISITA], estatus_externo: r[CO.ESTATUS_EXTERNO]
-  })).filter(o => o.ot && o.ot.trim() &&
-    ESTATUS_EXTERNO_TERMINALES_.indexOf(String(o.estatus_externo||'').toUpperCase()) === -1);
-  return { success: true, data };
-}
-```
-```js
-// SEAOT.html, antes de armar el payload de registrarOT:
-async function hayChoqueAgenda(personalAsignado, fechaVisitaISO, otExcluir){
-  if (!fechaVisitaISO) return null;
-  const resp = await SEAAuth.wrapFetch(SHEETS_SCRIPT_URL + '?action=getAgendaActiva', { method:'GET' });
-  const json = await resp.json();
-  if (!json || json.success !== true || !Array.isArray(json.data)) {
-    // Respuesta no exitosa (p. ej. sin autorización): NO asumir "sin choques".
-    console.warn('No se pudo verificar la agenda:', json && json.error);
-    return null; // o mostrar aviso de "no se pudo verificar" según se prefiera
-  }
-  const TERMINALES = ['FINALIZADO','CANCELADO'];
-  const norm = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim();
-  const solicitados = personalAsignado.split(',').map(norm).filter(Boolean);
-  for (const o of json.data){
-    if (TERMINALES.includes(String(o.estatus_externo||'').toUpperCase())) continue;
-    if (otExcluir && String(o.ot).trim() === String(otExcluir).trim()) continue;
-    if (String(o.fecha_visita||'').trim() !== String(fechaVisitaISO).trim()) continue; // misma fecha exacta
-    const yaAsignados = String(o.personal||'').split(',').map(norm);
-    const choca = solicitados.find(p => yaAsignados.includes(p));
-    if (choca) return `${choca} ya tiene la OT ${o.ot} programada para la misma fecha (${o.fecha_visita}).`;
-  }
-  return null;
-}
+1. `getOrdenes` está autorizado bajo el módulo **`SEAINF`** (`ACTION_MODULE.getOrdenes = 'SEAINF'`). Un operador con acceso a **SEAOT pero no a SEAINF** recibe una respuesta sin `data` → no detectaría ningún choque.
+2. `getOrdenesSafe_` **elimina toda OT que ya tenga registro en `INFORMES`** aunque su estatus siga activo → una OT con expediente creado pero visita pendiente **quedaría fuera** del chequeo.
 
-// Uso (modo advertencia):
-const aviso = await hayChoqueAgenda(payload.personal_asignado, payload.fecha_visita, payload.ot_folio);
-if (aviso && !confirm('⚠️ Choque de agenda: ' + aviso + '\n\n¿Registrar la OT de todos modos?')) return;
-```
+Una verificación confiable **requeriría** un endpoint de lectura propio de SEAOT (una función `getAgendaActiva_` + su fila en `ACTION_MODULE`) — es decir, **backend**. Como la decisión es **cero backend**, esta validación **no se implementa ahora**.
 
-**Notas:**
-- La comparación de `fecha_visita` es exacta contra el valor de la hoja; mantener `type="date"` (§3) es lo que la hace confiable.
-- Los nombres en la OT usan formato corto ("Martín Luna"); la normalización `norm` los homogeniza.
-- Este punto ya **no es "cero backend"**: agrega una función de lectura pequeña. No cambia el esquema A–Q ni crea hojas, así que sigue dentro de tus decisiones; solo conviene que lo apruebes explícitamente por ser una adición de backend.
-- Si se quiere que sea **infalible** (no saltable desde el cliente), la verificación se movería a `fase2_RegistrarOT` — mejora futura.
+**Alternativa 100% frontend (limitada, opcional):** dentro de la misma sesión de SEAOT no hay forma de conocer OT de otras sesiones/días sin leer el servidor, así que **no hay** un sustituto real en cliente. Se deja como **mejora futura**, condicionada a que en algún momento se autorice esa pequeña lectura de backend.
 
 ---
 
@@ -328,19 +282,21 @@ function tieneSalidaAbierta_(inventario, fechaISO){ /* pendiente: sin fuente de 
 | # | Tema | Decisión de Eduwin |
 |---|---|---|
 | 1 | Emisión + Revisión de Contrato | **Solo validar en frontend, sin extender esquema** |
-| 2 | Choque de agenda y cronología | **Advertencia** (avisa y deja continuar) |
+| 2 | Cronología (y agenda) | **Advertencia** (avisa y deja continuar) |
 | 3 | Control de equipos por inventario | **Sin crear hoja** → solo antiduplicado dentro del formato |
 | 4 | Prioridad inmediata | **Reescribir lo menos posible** al generar formatos (§0-bis) |
+| 5 | **Cero backend** | **§4 (choque de agenda) queda FUERA de alcance** — requeriría un endpoint SEAOT nuevo. Nada de lo demás toca backend. |
 
 ---
 
 ## 7. Orden sugerido de implementación para el PR (menor a mayor riesgo)
 
-1. **§0-bis — Prellenado de formatos** (el pedido inmediato): fecha en supervisión + Entregó/Recibió prellenados en equipos. Solo frontend, aditivo. *(Entra primero.)*
+1. **§0-bis — Prellenado de formatos** (el pedido inmediato): fecha en supervisión + nombre del técnico en Recibió/Entregó de equipos. Solo frontend, aditivo. *(Entra primero.)*
 2. **§1.a — Validación cronológica** Revisión ≤ Emisión ≤ Visita, como aviso en SEAOT.
 3. **§2.a — fecha solicitud ≤ visita** como aviso en registro-equipos.
-4. **§4 — Choque de agenda** vía `getOrdenes` (lectura existente) + aviso.
-5. **§5.a — Antiduplicado de inventario** dentro del formato.
-6. **§3 — Helper de fecha** `fechaADMY_` solo si se necesita mostrar `dd/mm/yyyy` en algún formato.
+4. **§5.a — Antiduplicado de inventario** dentro del formato.
+5. **§3 — Helper de fecha** `fechaADMY_` solo si se necesita mostrar `dd/mm/yyyy` en algún formato.
 
-Todo es **frontend y aditivo**: no reordena el contrato A–Q, no cambia el backend, no crea hojas. Cada punto puede ir como commit independiente dentro del mismo PR.
+> **§4 (choque de agenda) queda fuera** por la decisión de cero backend (mejora futura).
+
+Todo es **frontend y aditivo**: no reordena el contrato A–Q, **no toca backend**, no crea hojas. Cada punto puede ir como commit independiente dentro del mismo PR.
