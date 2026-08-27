@@ -58,8 +58,8 @@ if (data.fecha)   { var f = document.getElementById('sg_fecha');   if (f && !f.v
 > **⚠️ Dependencia obligatoria (hallazgo P2 de Codex):** `fechaADMY_` (definida en §3) **NO existe hoy** en `supervision-gabinete.html`. Como §0-bis-A la invoca, **su definición debe incluirse en este mismo cambio** (pegar el helper de §3 en el `<script>` del formato). No es opcional ni posterior: sin ella, todo handoff con `data.fecha` lanzaría `ReferenceError`. Por eso en §7 el helper de §3 pasa a ser **prerrequisito**, no un paso final opcional.
 
 > **⚠️ Captura manual de `#sg_fecha` (hallazgo P2 de Codex):** `#sg_fecha` es `type="text"` y **sigue editable** tras el prellenado. El handoff solo normaliza el valor recibido; una captura manual como `08/27/2026` o `31/02/2026` se imprimiría sin validar. Dos opciones (elige una en el PR):
-> - **Simple:** cambiar `#sg_fecha` a `<input type="date">` y mostrar/imprimir con `fechaADMY_` — así el navegador impide formatos inválidos.
-> - **Mínimo cambio de marcado:** dejarlo como texto pero validar al salir del campo:
+> - **Simple:** cambiar `#sg_fecha` a `<input type="date">`. **Ojo (hallazgo P2 de Codex):** un `type="date"` solo acepta `YYYY-MM-DD` en su `.value` — asignarle `dd/mm/yyyy` lo deja **vacío**. Por eso, en esta rama el prellenado asigna **la ISO cruda** (`f.value = data.fecha`, NO `fechaADMY_`), y `fechaADMY_` se aplica **solo al render de impresión** (ver punto siguiente). El navegador ya impide formatos inválidos.
+> - **Mínimo cambio de marcado:** dejarlo como texto (entonces sí `f.value = fechaADMY_(data.fecha)` como arriba) pero validar al salir del campo:
 > ```js
 > document.getElementById('sg_fecha').addEventListener('blur', function(){
 >   const v = this.value.trim(); if (!v) return;
@@ -307,6 +307,7 @@ function fechaADMY_(iso){
 - **La mayoría de los campos de fecha ya son `type="date"`** (SEAOT y `fechaSalida` en equipos) → el navegador entrega ISO `YYYY-MM-DD`, no ambiguo. Ahí el pedido de "día/mes/año sin romper backend" ya está cubierto: la fecha nunca sale como `mm/dd`.
 - **Excepción confirmada: `#sg_fecha` en `supervision-gabinete.html` es `type="text"`** (hallazgo P2 de Codex). No basta con formatear el valor del handoff: hay que **validar la captura manual** con `normalizarFechaISO_` (o cambiar el campo a `type="date"`), según §0-bis-A. Sin eso, un `08/27/2026` o `31/02/2026` tecleado se imprime sin control.
 - **Solo se convierte a `dd/mm/yyyy` para mostrar** (PDF, formatos) con `fechaADMY_`.
+- **Render de impresión de los controles `type="date"` (hallazgo P2 de Codex):** un `<input type="date">` **entrega** ISO al código, pero **muestra** la fecha según la configuración regional del navegador (en un navegador `en-US` puede verse `mm/dd/yyyy`). Como `printWorkOrder()` (SEAOT) y `exportarPDF()` (equipos) imprimen/capturan esos controles tal cual, ISO protege el backend pero **no garantiza** la presentación en día/mes/año. Al imprimir/exportar hay que **reflejar** cada control de fecha como `dd/mm/yyyy` con `fechaADMY_`, por ejemplo con un `<span class="solo-impresion">` que muestre `fechaADMY_(input.value)` y ocultar el `input` en `@media print` (o sustituir el valor visible justo antes de generar el documento y restaurarlo después).
 - Regla general: **todo campo de fecha de texto libre** pasa por `normalizarFechaISO_` en cliente; si devuelve `''`, se avisa. No se agrega validación en backend (decisión #1).
 
 ---
