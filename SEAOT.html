@@ -550,13 +550,6 @@
     setTimeout(() => { el.innerHTML = ''; }, 5000);
   }
 
-  function normalizeBranchKey(value) {
-    return String(value || 'Matriz')
-      .replace(/[^a-z0-9áéíóúñü ]/gi, '_')
-      .substring(0, 50)
-      .toLowerCase();
-  }
-
   // Misma lógica que extractDriveFolderId_ del backend: acepta /folders/<id>,
   // los formatos legados open?id= / uc?id= / folderview#id= y el ID suelto.
   function extractDriveFolderId(link) {
@@ -596,6 +589,11 @@
 
   // Devuelve { link, code }: link canónico /folders/<id> cuando code === 'OK';
   // en caso contrario link vacío y un code de RESOLVER_MESSAGES_.
+  // La única fuente es el resolver del backend: valida que la carpeta exista
+  // y corresponda al RFC+sucursal (vía la fila de CLIENTES o la ruta en
+  // Drive). El link crudo de la fila nunca se usa directamente — un enlace
+  // viejo o de otro cliente no debe colarse aunque tenga formato válido, y
+  // así la detección de backend desactualizado tampoco puede saltarse.
   async function resolveDriveLinkForCurrentProfile_() {
     const rfc = (document.getElementById('rfc')?.value || '').trim().toUpperCase();
     const branch = (document.getElementById('branch')?.value || '').trim() || 'Matriz';
@@ -604,29 +602,12 @@
 
     try {
       const response = await SEAAuth.wrapFetch(
-        `${SHEETS_SCRIPT_URL}?action=buscarClienteRFC&rfc=${encodeURIComponent(rfc)}`
-      );
-      const result = await response.json();
-      const expectedBranch = normalizeBranchKey(branch);
-      const exact = result.found && Array.isArray(result.sucursales)
-        ? result.sucursales.find(item =>
-            normalizeBranchKey(item.sucursal || 'Matriz') === expectedBranch &&
-            String(item.rfc || '').trim().toUpperCase() === rfc
-          )
-        : null;
-      const storedLink = exact && exact.link_drive_cliente ? String(exact.link_drive_cliente) : '';
-      const storedId = extractDriveFolderId(storedLink);
-      if (storedId) return { link: canonicalFolderLink(storedId), code: 'OK' };
-
-      // Compatibilidad read-only para filas históricas cuyo Link Drive está
-      // vacío: el backend busca la ruta exacta RFC+sucursal sin modificar Excel.
-      const fallbackResponse = await SEAAuth.wrapFetch(
         `${SHEETS_SCRIPT_URL}?action=resolverCarpetaCliente&rfc=${encodeURIComponent(rfc)}&sucursal=${encodeURIComponent(branch)}&razon_social=${encodeURIComponent(company)}`
       );
-      const fallback = await fallbackResponse.json();
-      const fallbackId = fallback && fallback.found ? extractDriveFolderId(fallback.linkDrive) : '';
-      if (fallbackId) return { link: canonicalFolderLink(fallbackId), code: 'OK' };
-      return { link: '', code: classifyResolverFailure_(fallback) };
+      const result = await response.json();
+      const folderId = result && result.found ? extractDriveFolderId(result.linkDrive) : '';
+      if (folderId) return { link: canonicalFolderLink(folderId), code: 'OK' };
+      return { link: '', code: classifyResolverFailure_(result) };
     } catch (error) {
       console.error('No se pudo validar la carpeta exacta del cliente:', error);
       return { link: '', code: 'TEMPORARY' };
