@@ -1034,7 +1034,7 @@ function parentFolderMatchesClient_(parentName, rfc, razonSocial) {
   if (rfcAppearsDelimited_(parentName, rfc)) return true;
   if (!razonSocial) return false;
   const cleanedCompany = cleanCompanyName(razonSocial).toUpperCase();
-  if (cleanedCompany.length < 5 || cleanedCompany === 'CLIENTE') return false;
+  if (cleanedCompany.length < 5 || cleanedCompany === 'CLIENTE' || cleanedCompany === 'SIN_NOMBRE') return false;
   return sanitizeFileName(parentName).toUpperCase().indexOf(cleanedCompany) === 0;
 }
 
