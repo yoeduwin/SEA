@@ -544,10 +544,36 @@
 
   // ================== LÓGICA EXCEL Y UI ==================
   function getCellValue(ws, cellRef) { try { const c = ws[cellRef]; return (c && c.v !== undefined) ? c.v : ''; } catch(e) { return ''; } }
+  // Los mensajes de error y advertencia NO se ocultan solos: un fallo que
+  // desaparece a los pocos segundos impide leerlo y diagnosticarlo. Permanecen
+  // hasta que el usuario los cierra o hasta que otro mensaje los reemplaza.
+  // Los de éxito sí se ocultan, pero con holgura para anotar el folio.
+  const STATUS_AUTOHIDE_MS_ = { success: 20000 };
+
   function showStatus(elementId, message, type = 'success') {
     const el = document.getElementById(elementId); if (!el) return;
-    el.innerHTML = `<span class="status-message status-${type}">${message}</span>`;
-    setTimeout(() => { el.innerHTML = ''; }, 5000);
+    if (el._statusTimer) { clearTimeout(el._statusTimer); el._statusTimer = null; }
+    el.innerHTML = '';
+
+    const span = document.createElement('span');
+    span.className = 'status-message status-' + type;
+    span.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    // textContent y no innerHTML: el mensaje puede incluir texto del backend.
+    span.textContent = message;
+
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.textContent = '×';
+    close.title = 'Cerrar mensaje';
+    close.setAttribute('aria-label', 'Cerrar mensaje');
+    close.style.cssText = 'margin-left:10px; background:none; border:none; color:inherit;' +
+      ' font-size:16px; line-height:1; cursor:pointer; padding:0 2px; font-weight:bold;';
+    close.onclick = () => { el.innerHTML = ''; };
+    span.appendChild(close);
+    el.appendChild(span);
+
+    const autoHide = STATUS_AUTOHIDE_MS_[type];
+    if (autoHide) el._statusTimer = setTimeout(() => { el.innerHTML = ''; }, autoHide);
   }
 
   // Misma lógica que extractDriveFolderId_ del backend: acepta /folders/<id>,
