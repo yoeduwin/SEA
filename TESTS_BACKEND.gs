@@ -43,6 +43,8 @@ var TEST_FOLIO_GARBAGE  = 'TEST-E2E-GARBAGE-LINK';
 var TEST_FOLIO_LEGACY   = 'TEST-E2E-LEGACY';
 var TEST_FOLIO_LEGACYLINK = 'TEST-E2E-LEGACY-LINK';
 var TEST_FOLIO_RESOLVED = 'TEST-E2E-RESOLVED';
+var TEST_FOLIO_FAKEID   = 'TEST-E2E-FAKE-ID';
+var TEST_FOLIO_FOREIGN  = 'TEST-E2E-FOREIGN-LINK';
 var TEST_RFC_MANUAL     = 'MANU000000TST';
 var TEST_SUCURSAL       = 'Sucursal Test E2E';
 var TEST_SUCURSAL_HIST  = 'Sucursal Histórica E2E';
@@ -52,7 +54,8 @@ var TEST_PARENT_MANUAL  = 'CLIENTE MANUAL E2E (SIN RFC EN NOMBRE)';
 var TEST_FOLIOS_ = [
   TEST_FOLIO, TEST_FOLIO_B, TEST_FOLIO_MISSING,
   TEST_FOLIO_EMPTY, TEST_FOLIO_GARBAGE, TEST_FOLIO_LEGACY,
-  TEST_FOLIO_LEGACYLINK, TEST_FOLIO_RESOLVED
+  TEST_FOLIO_LEGACYLINK, TEST_FOLIO_RESOLVED,
+  TEST_FOLIO_FAKEID, TEST_FOLIO_FOREIGN
 ];
 var TEST_RFCS_ = [TEST_RFC, TEST_RFC_HIST, TEST_RFC_MISSING, TEST_RFC_MANUAL];
 
@@ -1080,6 +1083,23 @@ function runTest_E16() {
     _countRowsByOt_(sheet, TEST_FOLIO_EMPTY, CO.OT), 0);
   _eq_('E16-5: no se escribió OT con enlace basura',
     _countRowsByOt_(sheet, TEST_FOLIO_GARBAGE, CO.OT), 0);
+
+  // Un ID con formato válido pero inexistente no debe colarse: el servidor
+  // verifica que la carpeta exista y corresponda al RFC+sucursal.
+  var fakeId = fase2_RegistrarOT(payload(
+    TEST_FOLIO_FAKEID, 'https://drive.google.com/open?id=NoExisteEsteId0123456789',
+    TEST_RFC_MISSING, 'Sucursal Inexistente', 'CLIENTE SIN CARPETA E2E'));
+  _check_('E16-FK1: ID bien formado pero inexistente es rechazado', fakeId.success === false);
+  _eq_('E16-FK2: no se escribió OT con ID inexistente',
+    _countRowsByOt_(sheet, TEST_FOLIO_FAKEID, CO.OT), 0);
+
+  // Un enlace real pero de OTRO cliente/sucursal tampoco se acepta.
+  var foreign = fase2_RegistrarOT(payload(
+    TEST_FOLIO_FOREIGN, 'https://drive.google.com/drive/folders/' + _ctx_.clienteFolderId,
+    TEST_RFC_MISSING, 'Sucursal Inexistente', 'CLIENTE SIN CARPETA E2E'));
+  _check_('E16-FR1: enlace de otra carpeta de cliente es rechazado', foreign.success === false);
+  _eq_('E16-FR2: no se escribió OT con enlace ajeno',
+    _countRowsByOt_(sheet, TEST_FOLIO_FOREIGN, CO.OT), 0);
 
   // Enlace legado open?id= del cliente registrado en E01: se acepta y la
   // columna M guarda la forma canónica /folders/<id>.

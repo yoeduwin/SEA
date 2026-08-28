@@ -901,11 +901,20 @@ function fase2_RegistrarOT(data) {
   if (!data || !data.ot_folio || !data.cliente_razon_social || !data.sucursal || !data.rfc) {
     return { success: false, error: 'Faltan datos obligatorios de la OT: folio, cliente, sucursal o RFC.' };
   }
-  let folderId = extractDriveFolderId_(String(data.link_drive_cliente || '').trim());
+  // No confiar a ciegas en el enlace recibido: sólo se acepta si resuelve a
+  // una carpeta real de Drive que corresponda al RFC+sucursal de la OT (un ID
+  // con formato válido puede estar mal tecleado, ser un archivo o pertenecer
+  // a otro cliente).
+  let folderId = '';
+  const suppliedFolder = getFolderByDriveLinkSafe_(String(data.link_drive_cliente || '').trim());
+  if (suppliedFolder && folderMatchesClientBranch_(suppliedFolder, data.rfc, data.sucursal, data.cliente_razon_social)) {
+    folderId = suppliedFolder.getId();
+  }
   if (!folderId) {
-    // Fallback server-side: frontends antiguos o filas históricas con Link
-    // Drive vacío. La resolución es la misma que usa SEAOT (RFC+sucursal),
-    // así que el servidor nunca es más estricto que el frontend actualizado.
+    // Fallback server-side: frontends antiguos, filas históricas con Link
+    // Drive vacío o enlaces que no pasaron la validación anterior. La
+    // resolución es la misma que usa SEAOT (RFC+sucursal), así que el
+    // servidor nunca es más estricto que el frontend actualizado.
     const resolved = fase2_ResolverCarpetaCliente_(data.rfc, data.sucursal, data.cliente_razon_social);
     if (resolved && resolved.found && resolved.linkDrive) {
       folderId = extractDriveFolderId_(resolved.linkDrive);
