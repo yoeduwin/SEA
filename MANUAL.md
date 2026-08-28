@@ -479,6 +479,28 @@ Registro automático de todos los cambios de estatus. Se crea automáticamente a
 
 La función `cleanCompanyName()` elimina sufijos legales (SA DE CV, S.A., S.C., etc.) del nombre para mantener los nombres de carpeta cortos y legibles. La función `sanitizeFileName()` elimina caracteres especiales y trunca a 50 caracteres.
 
+### Formatos de enlace Drive aceptados
+
+`extractDriveFolderId_()` (y su espejo en SEAOT) extrae el ID de carpeta de cualquiera de estos formatos, y el sistema guarda siempre la forma canónica `https://drive.google.com/drive/folders/<id>`:
+
+| Formato | Ejemplo |
+|---|---|
+| Canónico | `https://drive.google.com/drive/folders/<id>` |
+| Legado `open?id=` | `https://drive.google.com/open?id=<id>` |
+| Otros con parámetro `id=` | `uc?export=download&id=<id>`, `folderview#id=<id>` |
+| ID suelto | `<id>` (mínimo 25 caracteres) |
+
+Las filas históricas de CLIENTES con enlaces legados funcionan sin migración.
+
+### Regla de identificación de la carpeta del cliente
+
+Una carpeta de sucursal se acepta para un RFC+sucursal si el nombre de la carpeta coincide con la sucursal (normalizado con `sanitizeFileName()`) **y** su carpeta padre identifica al cliente por **una** de estas vías:
+
+1. El RFC aparece en el nombre del padre, delimitado (al inicio como en la convención SEAPD `{RFC} — {RAZON_SOCIAL}`, o en cualquier posición como en carpetas manuales tipo `RAZON SOCIAL (RFC)`). Un RFC incrustado dentro de otra palabra no cuenta.
+2. El nombre del padre **empieza con** la razón social limpia completa (`cleanCompanyName()`), para carpetas creadas a mano sin RFC. Se exige "empieza con" —no "contiene"— y una razón social significativa (≥ 5 caracteres, distinta de los defaults `Cliente`/`Sin_nombre`), de modo que un nombre corto no coincida con el nombre más largo de otro cliente.
+
+Límites de seguridad que se conservan: nunca se crea nada en la carpeta raíz, nunca se cruza de sucursal, y la búsqueda directa en Drive sólo inspecciona los hijos directos de la raíz (carpetas anidadas más profundo sólo se alcanzan vía el Link Drive de la fila del cliente). Riesgo residual documentado: dos clientes cuya razón social limpia es prefijo estricta de la otra, con la misma sucursal y un link erróneo en la fila, podrían confundirse; el RFC en el nombre de la carpeta evita ese caso.
+
 ---
 
 ## 6. API Backend — Referencia de Funciones
@@ -813,6 +835,18 @@ En el editor GAS → Implementar → Nueva implementación → Aplicación web:
 
 Copiar la URL de la implementación y usarla como endpoint en el frontend.
 
+### 8.5 Actualizar un despliegue existente (IMPORTANTE)
+
+Los archivos `.gs` de este repositorio **NO se despliegan solos**: GitHub Pages publica automáticamente los HTML al hacer merge, pero el backend de Apps Script debe actualizarse a mano. Si el frontend estrena una acción nueva (p. ej. `resolverCarpetaCliente`) y el backend desplegado es viejo, el servidor responde `AUTH_REQUIRED / "Acción no autorizada."`.
+
+Pasos para actualizar sin romper los frontends:
+
+1. Copiar el contenido actualizado de `BACKEND_FIXES.gs` y `TESTS_BACKEND.gs` al editor de Apps Script y guardar.
+2. Ejecutar `runUnitTests` y confirmar `0 FAIL`.
+3. Ir a **Implementar → Administrar implementaciones → ✏️ (editar) → Versión: Nueva versión → Implementar**.
+
+⚠️ Usar **"Nueva versión" sobre la implementación existente**, NUNCA "Nueva implementación": una implementación nueva genera otra URL `/exec` y todos los frontends (SEAPD, SEAOT, SEAINF, SEADB) dejarían de apuntar al backend.
+
 ---
 
 ## 9. Sistema de Respaldos
@@ -934,33 +968,34 @@ El Spreadsheet de staging debe conservar los contratos `CLIENTES_MAESTRO` A–V,
 | E13 | SEAINF | Lote parcial guarda válidos y reporta el rechazado |
 | E14 | SEAOT | Cliente histórico sin enlace se resuelve sin escribir la celda |
 | E15 | Seguridad | RFC+sucursal inexistentes no crean carpeta ni fila INFORMES |
-| E16 | SEAOT | Enlace vacío o inválido bloquea el alta de la OT |
+| E16 | SEAOT | Cliente sin carpeta bloquea la OT; enlace legado y resolución server-side la aceptan con link canónico |
 | E17 | Drive | Expediente legado de cuatro subcarpetas se completa a seis sin duplicados |
+| E18 | Drive | Carpeta manual sin RFC en el nombre del padre se resuelve por fila con link legado y por razón social |
 
 ### 11.4 Cómo ejecutar
 
 **Solo unitarias, sin efectos secundarios:**
 
 1. Seleccionar `runUnitTests`.
-2. Ejecutar y revisar el registro: el resultado esperado es `74 PASS | 0 FAIL`.
+2. Ejecutar y revisar el registro: el resultado esperado es `89 PASS | 0 FAIL`.
 
 **E2E completas, únicamente después de configurar staging:**
 
 1. Confirmar las tres Script Properties de staging.
 2. Seleccionar `runE2ETests`.
-3. Ejecutar y revisar los resultados E01–E17.
+3. Ejecutar y revisar los resultados E01–E18.
 4. El runner realiza limpieza previa y final. Elimina filas de prueba en CLIENTES, ORDENES, INFORMES y AUDITORIA, y envía sus carpetas de staging —incluida `01_Cliente`— a la papelera.
 
-Cada `runTest_E01` … `runTest_E17` vuelve a comprobar el guard de staging cuando se ejecuta individualmente.
+Cada `runTest_E01` … `runTest_E18` vuelve a comprobar el guard de staging cuando se ejecuta individualmente.
 
 ### 11.5 Datos reservados para pruebas
 
 | Dato | Valor principal |
 |---|---|
-| RFC | `XTES000000TST` |
+| RFC | `XTES000000TST` (auxiliares: `HIST000000TST`, `MISS000000TST`, `MANU000000TST`) |
 | Folios | `TEST-E2E-001`, `TEST-E2E-002` y auxiliares `TEST-E2E-*` |
-| Sucursal | `Sucursal Test E2E` |
-| Empresa | `EMPRESA TEST E2E SA DE CV` |
+| Sucursal | `Sucursal Test E2E` (auxiliares: `Sucursal Histórica E2E`, `Sucursal Manual E2E`) |
+| Empresa | `EMPRESA TEST E2E SA DE CV` (E18 usa `CLIENTE MANUAL E2E SA DE CV`) |
 
 ### 11.6 Verificaciones manuales previas al despliegue
 
@@ -978,15 +1013,31 @@ Poblar enlaces históricos o renombrar carpetas sería una migración separada y
 
 ## 12. Solución de Problemas
 
-### Error: "No se encontró una carpeta exacta para el RFC y la sucursal"
+### Error: "No existe una carpeta exacta para este RFC y sucursal" / "No se encontró una carpeta exacta para el RFC y la sucursal"
 
-**Causa:** El cliente/sucursal no está registrado en SEAPD, el enlace de Drive no es accesible o no coincide exactamente con el RFC y la sucursal de la OT.
+**Causa:** Este mensaje ahora sólo aparece cuando la carpeta genuinamente no se encontró: el cliente/sucursal no está registrado en SEAPD y tampoco existe en Drive una carpeta identificable por RFC o razón social (ver la regla en §5). Los enlaces legados (`open?id=`), las carpetas manuales con la razón social en el nombre y los errores temporales o de despliegue ya no producen este mensaje.
 
 **Solución:**
-1. Verificar en SEAPD que exista el RFC con la sucursal correcta.
-2. Volver a seleccionar el cliente en SEAOT para validar su carpeta exacta.
+1. Verificar en SEAPD que exista el RFC con la sucursal correcta (nombre de sucursal igual al de la carpeta en Drive, salvo caracteres especiales).
+2. Si la carpeta existe pero fue creada a mano, confirmar que el nombre del padre contenga el RFC delimitado o empiece con la razón social limpia.
 3. No editar, insertar ni reordenar columnas manualmente en el Excel productivo.
 4. El backend detiene la operación; no crea expedientes en otra sucursal ni en la raíz.
+
+---
+
+### Error: "El servidor de la Base Maestra está desactualizado…" (SEAOT)
+
+**Causa:** El frontend publicado en GitHub Pages usa una acción (p. ej. `resolverCarpetaCliente`) que el despliegue de Apps Script aún no incluye. El servidor responde `AUTH_REQUIRED / "Acción no autorizada."`.
+
+**Solución:** Seguir el runbook de §8.5: pegar el `BACKEND_FIXES.gs` actual en el editor de Apps Script, correr `runUnitTests`, y publicar **Nueva versión** sobre la implementación existente (misma URL `/exec`).
+
+---
+
+### Error: "Error temporal al validar la carpeta del cliente…" (SEAOT)
+
+**Causa:** Fallo transitorio: red, respuesta malformada, o el candado de escritura del servidor (15 s) estaba ocupado.
+
+**Solución:** Reintentar después de unos segundos. Si persiste, revisar la pestaña Network del navegador y las ejecuciones recientes en el editor de Apps Script.
 
 ---
 
