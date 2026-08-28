@@ -45,6 +45,7 @@ var TEST_FOLIO_LEGACYLINK = 'TEST-E2E-LEGACY-LINK';
 var TEST_FOLIO_RESOLVED = 'TEST-E2E-RESOLVED';
 var TEST_FOLIO_FAKEID   = 'TEST-E2E-FAKE-ID';
 var TEST_FOLIO_FOREIGN  = 'TEST-E2E-FOREIGN-LINK';
+var TEST_FOLIO_INTRUDER = 'TEST-E2E-INTRUDER-RFC';
 var TEST_RFC_MANUAL     = 'MANU000000TST';
 var TEST_SUCURSAL       = 'Sucursal Test E2E';
 var TEST_SUCURSAL_HIST  = 'Sucursal Histórica E2E';
@@ -55,7 +56,7 @@ var TEST_FOLIOS_ = [
   TEST_FOLIO, TEST_FOLIO_B, TEST_FOLIO_MISSING,
   TEST_FOLIO_EMPTY, TEST_FOLIO_GARBAGE, TEST_FOLIO_LEGACY,
   TEST_FOLIO_LEGACYLINK, TEST_FOLIO_RESOLVED,
-  TEST_FOLIO_FAKEID, TEST_FOLIO_FOREIGN
+  TEST_FOLIO_FAKEID, TEST_FOLIO_FOREIGN, TEST_FOLIO_INTRUDER
 ];
 var TEST_RFCS_ = [TEST_RFC, TEST_RFC_HIST, TEST_RFC_MISSING, TEST_RFC_MANUAL];
 
@@ -1230,6 +1231,32 @@ function runTest_E18() {
     extractDriveFolderId_(byName.linkDrive), branch.getId());
   _eq_('E18-5: LINK_DRIVE permanece vacío (read-only)',
     sheet.getRange(sheetRow, CL.LINK_DRIVE + 1).getValue(), '');
+
+  // 3) Un RFC no registrado (o mal tecleado) NO puede adoptar la carpeta de
+  //    esta empresa: sin fila maestra que lo ate, la coincidencia por razón
+  //    social no aplica.
+  var intruso = fase2_ResolverCarpetaCliente_(
+    TEST_RFC_MISSING, TEST_SUCURSAL_MANUAL, 'CLIENTE MANUAL E2E SA DE CV');
+  _check_('E18-6: RFC no registrado no resuelve por razón social',
+    intruso.success === true && intruso.found === false);
+
+  var intrusoOt = fase2_RegistrarOT({
+    ot_folio: TEST_FOLIO_INTRUDER,
+    tipo_orden: 'OTA',
+    nom_servicio: 'TEST',
+    cliente_razon_social: 'CLIENTE MANUAL E2E SA DE CV',
+    sucursal: TEST_SUCURSAL_MANUAL,
+    rfc: TEST_RFC_MISSING,
+    personal_asignado: 'Ing. Test',
+    fecha_visita: '01/08/2026',
+    fecha_entrega_limite: '31/12/2026',
+    link_drive_cliente: 'https://drive.google.com/drive/folders/' + branch.getId(),
+    observaciones: 'Debe rechazarse: RFC ajeno a la carpeta'
+  });
+  _check_('E18-7: OT con RFC ajeno a la carpeta es rechazada', intrusoOt.success === false);
+  var sheetOt = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+  _eq_('E18-8: no se escribió la OT del RFC ajeno',
+    _countRowsByOt_(sheetOt, TEST_FOLIO_INTRUDER, CO.OT), 0);
 }
 
 // =========================================================================
@@ -1534,7 +1561,7 @@ function runUnitTests() {
     }
   };
   _check_('U66: sucursal normalizada acepta guion en Drive y diagonal en hoja',
-    folderMatchesClientBranch_(branchStub, 'ABC010101AB1', 'Planta Norte / Puebla', 'EMPRESA'));
+    folderMatchesClientBranch_(branchStub, 'ABC010101AB1', 'Planta Norte / Puebla', 'EMPRESA', false));
 
   // ── Consulta acotada a la raíz ───────────────────────────────────────────
   _eq_('U67: RFC real usa búsqueda por prefijo',
@@ -1568,20 +1595,35 @@ function runUnitTests() {
     canonicalDriveFolderLink_('1AbC_d-123xyz'), 'https://drive.google.com/drive/folders/1AbC_d-123xyz');
 
   // ── Coincidencia relajada del padre ──────────────────────────────────────
+  // El cuarto argumento (allowCompanyFallback) representa la fila de
+  // CLIENTES_MAESTRO que ata RFC+sucursal+empresa. Sin ella sólo aplica la
+  // regla del RFC.
   _check_('U80: padre con prefijo RFC (convención SEAPD)',
-    parentFolderMatchesClient_('ABC010101AB1 - EMPRESA', 'ABC010101AB1', 'EMPRESA SA DE CV'));
+    parentFolderMatchesClient_('ABC010101AB1 - EMPRESA', 'ABC010101AB1', 'EMPRESA SA DE CV', false));
   _check_('U81: RFC delimitado en cualquier parte del nombre',
-    parentFolderMatchesClient_('EMPRESA DEMO (ABC010101AB1)', 'ABC010101AB1', ''));
+    parentFolderMatchesClient_('EMPRESA DEMO (ABC010101AB1)', 'ABC010101AB1', '', false));
   _check_('U82: RFC incrustado sin delimitador no coincide',
-    !parentFolderMatchesClient_('XABC010101AB1X', 'ABC010101AB1', ''));
-  _check_('U83: nombre que empieza con la razón social limpia coincide',
-    parentFolderMatchesClient_('BODEGA CRUZ AZUL DEL CENTRO (matriz)', 'ZZZ010101ZZ9', 'BODEGA CRUZ AZUL DEL CENTRO S.A. DE C.V.'));
+    !parentFolderMatchesClient_('XABC010101AB1X', 'ABC010101AB1', '', false));
+  _check_('U83: nombre que empieza con la razón social limpia coincide con fila maestra',
+    parentFolderMatchesClient_('BODEGA CRUZ AZUL DEL CENTRO (matriz)', 'ZZZ010101ZZ9', 'BODEGA CRUZ AZUL DEL CENTRO S.A. DE C.V.', true));
   _check_('U84: razón social corta no coincide con el nombre más largo de otro cliente',
-    !parentFolderMatchesClient_('BODEGA CRUZ AZUL DEL CENTRO', 'ZZZ010101ZZ9', 'CRUZ AZUL S.A. DE C.V.'));
+    !parentFolderMatchesClient_('BODEGA CRUZ AZUL DEL CENTRO', 'ZZZ010101ZZ9', 'CRUZ AZUL S.A. DE C.V.', true));
   _check_('U85: razón social vacía sin RFC en el nombre no coincide',
-    !parentFolderMatchesClient_('CUALQUIER CARPETA', 'ZZZ010101ZZ9', ''));
+    !parentFolderMatchesClient_('CUALQUIER CARPETA', 'ZZZ010101ZZ9', '', true));
   _check_('U86: el default Sin_nombre no coincide con todo',
-    !parentFolderMatchesClient_('SIN_NOMBRE HISTORICO', 'ZZZ010101ZZ9', ' S.A. DE C.V.'));
+    !parentFolderMatchesClient_('SIN_NOMBRE HISTORICO', 'ZZZ010101ZZ9', ' S.A. DE C.V.', true));
+
+  // ── La razón social exige respaldo de fila maestra ───────────────────────
+  _check_('U87: sin fila maestra, la razón social no adopta la carpeta',
+    !parentFolderMatchesClient_('BODEGA CRUZ AZUL DEL CENTRO (matriz)', 'ZZZ010101ZZ9', 'BODEGA CRUZ AZUL DEL CENTRO S.A. DE C.V.', false));
+  _check_('U88: RFC mal tecleado no hereda la carpeta de la empresa registrada',
+    !parentFolderMatchesClient_('BODEGA CRUZ AZUL DEL CENTRO', 'MALTECLEADO99', 'BODEGA CRUZ AZUL DEL CENTRO S.A. DE C.V.', false));
+  _check_('U89: el flag omitido falla cerrado (sólo regla de RFC)',
+    !parentFolderMatchesClient_('BODEGA CRUZ AZUL DEL CENTRO', 'ZZZ010101ZZ9', 'BODEGA CRUZ AZUL DEL CENTRO S.A. DE C.V.'));
+  _check_('U90: con fila maestra el RFC correcto sí resuelve la carpeta manual',
+    parentFolderMatchesClient_('BODEGA CRUZ AZUL DEL CENTRO', 'ZZZ010101ZZ9', 'BODEGA CRUZ AZUL DEL CENTRO S.A. DE C.V.', true));
+  _check_('U91: la regla del RFC no depende del flag',
+    parentFolderMatchesClient_('OTRA EMPRESA (ABC010101AB1)', 'ABC010101AB1', 'NO COINCIDE SA DE CV', false));
 
   var pass = _results_.filter(function(r){ return r.indexOf('PASS') === 0; }).length;
   var fail = _results_.filter(function(r){ return r.indexOf('FAIL') === 0; }).length;

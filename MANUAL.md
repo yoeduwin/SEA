@@ -499,7 +499,9 @@ Una carpeta de sucursal se acepta para un RFC+sucursal si el nombre de la carpet
 1. El RFC aparece en el nombre del padre, delimitado (al inicio como en la convención SEAPD `{RFC} — {RAZON_SOCIAL}`, o en cualquier posición como en carpetas manuales tipo `RAZON SOCIAL (RFC)`). Un RFC incrustado dentro de otra palabra no cuenta.
 2. El nombre del padre **empieza con** la razón social limpia completa (`cleanCompanyName()`), para carpetas creadas a mano sin RFC. Se exige "empieza con" —no "contiene"— y una razón social significativa (≥ 5 caracteres, distinta de los defaults `Cliente`/`Sin_nombre`), de modo que un nombre corto no coincida con el nombre más largo de otro cliente.
 
-Límites de seguridad que se conservan: nunca se crea nada en la carpeta raíz, nunca se cruza de sucursal, y la búsqueda directa en Drive sólo inspecciona los hijos directos de la raíz (carpetas anidadas más profundo sólo se alcanzan vía el Link Drive de la fila del cliente). Riesgo residual documentado: dos clientes cuya razón social limpia es prefijo estricta de la otra, con la misma sucursal y un link erróneo en la fila, podrían confundirse; el RFC en el nombre de la carpeta evita ese caso.
+   **Esta segunda vía requiere además una fila en CLIENTES_MAESTRO que ate el RFC solicitado con esa sucursal y esa razón social** (`hasMasterRowForClient_`). Una carpeta sin el RFC en su nombre no puede probar por sí sola a qué RFC pertenece, así que la fila de registro es la que hace ese vínculo: sin ella, un RFC no registrado o mal tecleado podría adoptar la carpeta de una empresa existente. El predicado falla cerrado — si no se le pasa explícitamente ese respaldo, sólo aplica la regla del RFC.
+
+Límites de seguridad que se conservan: nunca se crea nada en la carpeta raíz, nunca se cruza de sucursal, y la búsqueda directa en Drive sólo inspecciona los hijos directos de la raíz (carpetas anidadas más profundo sólo se alcanzan vía el Link Drive de la fila del cliente). Riesgo residual documentado: dos clientes cuya razón social limpia es prefijo estricta de la otra, con la misma sucursal, ambos registrados y con un link erróneo en la fila, podrían confundirse; el RFC en el nombre de la carpeta evita ese caso.
 
 ---
 
@@ -970,14 +972,14 @@ El Spreadsheet de staging debe conservar los contratos `CLIENTES_MAESTRO` A–V,
 | E15 | Seguridad | RFC+sucursal inexistentes no crean carpeta ni fila INFORMES |
 | E16 | SEAOT | Cliente sin carpeta bloquea la OT; enlace legado y resolución server-side la aceptan con link canónico |
 | E17 | Drive | Expediente legado de cuatro subcarpetas se completa a seis sin duplicados |
-| E18 | Drive | Carpeta manual sin RFC en el nombre del padre se resuelve por fila con link legado y por razón social |
+| E18 | Drive | Carpeta manual sin RFC en el nombre del padre se resuelve por fila con link legado y por razón social; un RFC no registrado no puede adoptarla |
 
 ### 11.4 Cómo ejecutar
 
 **Solo unitarias, sin efectos secundarios:**
 
 1. Seleccionar `runUnitTests`.
-2. Ejecutar y revisar el registro: el resultado esperado es `89 PASS | 0 FAIL`.
+2. Ejecutar y revisar el registro: el resultado esperado es `94 PASS | 0 FAIL`.
 
 **E2E completas, únicamente después de configurar staging:**
 
