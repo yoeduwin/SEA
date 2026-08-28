@@ -907,11 +907,8 @@ function fase2_RegistrarOT(data) {
   // a otro cliente).
   let folderId = '';
   const suppliedFolder = getFolderByDriveLinkSafe_(String(data.link_drive_cliente || '').trim());
-  if (suppliedFolder) {
-    const allowCompanyFallback = hasMasterRowForClient_(data.rfc, data.sucursal, data.cliente_razon_social);
-    if (folderMatchesClientBranch_(suppliedFolder, data.rfc, data.sucursal, data.cliente_razon_social, allowCompanyFallback)) {
-      folderId = suppliedFolder.getId();
-    }
+  if (suppliedFolder && folderMatchesClientBranch_(suppliedFolder, data.rfc, data.sucursal, data.cliente_razon_social)) {
+    folderId = suppliedFolder.getId();
   }
   if (!folderId) {
     // Fallback server-side: frontends antiguos, filas históricas con Link
@@ -1009,10 +1006,16 @@ function isParentFolderForRfc_(folderName, rfc) {
   return /[^A-Z0-9Ñ&]/.test(name.charAt(expectedRfc.length));
 }
 
-// El RFC identifica al cliente aunque no esté al inicio del nombre, siempre
-// que aparezca delimitado (los caracteres vecinos no son alfanuméricos): así
-// "RAZON SOCIAL (RFC)" cuenta, pero un RFC incrustado dentro de otra palabra no.
-// El caso con RFC al inicio queda cubierto por esta misma regla.
+// El RFC es el identificador del cliente y es obligatorio en todo registro,
+// así que es lo único que se acepta para atar una carpeta a un cliente. Se
+// admite en cualquier posición del nombre mientras aparezca delimitado (los
+// caracteres vecinos no son alfanuméricos): así la convención de SEAPD
+// "RFC - Razón Social" y una carpeta manual "RAZON SOCIAL (RFC)" cuentan,
+// pero un RFC incrustado dentro de otra palabra no.
+// Deliberadamente NO se identifica por razón social: dos clientes pueden
+// tener nombres donde uno es prefijo del otro (p. ej. "BODEGA CRUZ AZUL" y
+// "BODEGA CRUZ AZUL DEL CENTRO") y una carpeta sin RFC no puede probar por
+// sí sola a cuál pertenece.
 function rfcAppearsDelimited_(folderName, rfc) {
   const name = String(folderName || '').toUpperCase().trim();
   const expectedRfc = String(rfc || '').toUpperCase().trim();
@@ -1028,70 +1031,11 @@ function rfcAppearsDelimited_(folderName, rfc) {
   return false;
 }
 
-// Término de búsqueda en Drive por razón social. Drive compara contra el
-// título CRUDO de la carpeta, así que el término no puede sanitizarse; en
-// cambio se recorta al prefijo que sobrevive intacto a cleanCompanyName():
-//  - máximo 50 caracteres, el mismo truncado de sanitizeFileName() (la
-//    sustitución es carácter por carácter, así que las posiciones del nombre
-//    crudo y del sanitizado coinciden 1:1);
-//  - se corta antes del primer carácter que la sanitización convertiría en
-//    "_" (coma, punto, paréntesis…), que en la carpeta ya no aparecería
-//    literal.
-// Así el término está contenido tanto en una carpeta creada por SEAPD (cuyo
-// título ya viene sanitizado y truncado) como en una creada a mano, y la
-// consulta nunca descarta una carpeta que el comparador sí aceptaría.
-function companyQueryTerm_(razonSocial) {
-  const withinLimit = String(razonSocial || '')
-    .replace(LEGAL_SUFFIX_REGEX_, '')
-    .trim()
-    .substring(0, 50);
-  const firstUnsafe = withinLimit.search(/[^a-z0-9áéíóúñü ]/i);
-  return (firstUnsafe === -1 ? withinLimit : withinLimit.substring(0, firstUnsafe)).trim();
-}
-
-// Prueba de registro: CLIENTES_MAESTRO tiene una fila que ata RFC + sucursal
-// (y la razón social, cuando se proporciona). Sólo con esa fila se habilita la
-// coincidencia por razón social: sin ella, un RFC no registrado o mal tecleado
-// podría adoptar la carpeta de una empresa existente.
-function hasMasterRowForClient_(rfc, sucursal, razonSocial) {
-  const expectedRfc = String(rfc || '').toUpperCase().trim();
-  if (!expectedRfc || expectedRfc === 'SIN_RFC') return false;
-  const sheetCli = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_CLIENTES);
-  if (!sheetCli) return false;
-  const expectedBranch = sanitizeFileName(sucursal || 'Matriz').toLowerCase();
-  const expectedCompany = cleanCompanyName(razonSocial || '').toUpperCase();
-  const rows = sheetCli.getDataRange().getValues();
-  for (let i = rows.length - 1; i >= 1; i--) {
-    if (String(rows[i][CL.RFC]).toUpperCase().trim() !== expectedRfc) continue;
-    if (sanitizeFileName(rows[i][CL.SUCURSAL] || 'Matriz').toLowerCase() !== expectedBranch) continue;
-    if (razonSocial && cleanCompanyName(rows[i][CL.RAZON_SOCIAL] || '').toUpperCase() !== expectedCompany) continue;
-    return true;
-  }
-  return false;
-}
-
-// Regla relajada de coincidencia del padre. Un padre identifica al cliente si:
-//  (a) contiene el RFC delimitado (incluye la convención SEAPD "RFC - Razón
-//      Social" y carpetas manuales tipo "RAZON SOCIAL (RFC)"), o
-//  (b) su nombre sanitizado empieza con la razón social limpia COMPLETA, y
-//      SÓLO si allowCompanyFallback es true — es decir, si CLIENTES_MAESTRO
-//      ya ata ese RFC con esa sucursal y esa empresa (ver
-//      hasMasterRowForClient_). El padre sin RFC no puede probar por sí solo
-//      a qué RFC pertenece, así que la fila de registro es la que lo ata.
-// La guarda de longitud >= 5 y los defaults 'Cliente'/'Sin_nombre' evitan que
-// una razón social vacía o trivial coincida con cualquier carpeta. Se exige
-// "empieza con" (no "contiene") para que un nombre corto no coincida con el
-// nombre más largo de otro cliente. Falla cerrado: sin el flag explícito sólo
-// aplica la regla (a).
-function parentFolderMatchesClient_(parentName, rfc, razonSocial, allowCompanyFallback) {
-  if (rfcAppearsDelimited_(parentName, rfc)) return true;
-  if (allowCompanyFallback !== true || !razonSocial) return false;
-  const cleanedCompany = cleanCompanyName(razonSocial).toUpperCase();
-  if (cleanedCompany.length < 5 || cleanedCompany === 'CLIENTE' || cleanedCompany === 'SIN_NOMBRE') return false;
-  return sanitizeFileName(parentName).toUpperCase().indexOf(cleanedCompany) === 0;
-}
-
-function folderMatchesClientBranch_(folder, rfc, sucursal, razonSocial, allowCompanyFallback) {
+// Identifica la carpeta de sucursal de un cliente. El nombre de la carpeta
+// debe coincidir con la sucursal y su padre debe llevar el RFC delimitado —
+// el RFC es el único identificador que prueba a qué cliente pertenece una
+// carpeta, y es un dato obligatorio en todo registro.
+function folderMatchesClientBranch_(folder, rfc, sucursal, razonSocial) {
   if (!folder) return false;
   const expectedBranch = sanitizeFileName(sucursal || 'Matriz').toLowerCase();
   const actualBranch = sanitizeFileName(folder.getName() || 'Matriz').toLowerCase();
@@ -1105,7 +1049,7 @@ function folderMatchesClientBranch_(folder, rfc, sucursal, razonSocial, allowCom
     const parentName = parents.next().getName();
     if (expectedRfc === 'SIN_RFC') {
       if (razonSocial && parentName === expectedSinRfcParent) return true;
-    } else if (parentFolderMatchesClient_(parentName, expectedRfc, razonSocial, allowCompanyFallback)) {
+    } else if (rfcAppearsDelimited_(parentName, expectedRfc)) {
       return true;
     }
   }
@@ -1126,12 +1070,8 @@ function findExactClientBranchFolder_(rfc, sucursal, razonSocial) {
     if (sanitizeFileName(rows[i][CL.SUCURSAL] || 'Matriz').toLowerCase() !== expectedBranch) continue;
     if (expectedRfc === 'SIN_RFC' &&
         (!expectedCompany || cleanCompanyName(rows[i][CL.RAZON_SOCIAL] || '') !== expectedCompany)) continue;
-    // Esta fila ya ata RFC+sucursal; la coincidencia por razón social se
-    // habilita sólo si además la empresa registrada es la solicitada.
-    const rowTiesCompany = !!razonSocial &&
-      cleanCompanyName(rows[i][CL.RAZON_SOCIAL] || '').toUpperCase() === String(expectedCompany).toUpperCase();
     const folder = getFolderByDriveLinkSafe_(rows[i][CL.LINK_DRIVE]);
-    if (folder && folderMatchesClientBranch_(folder, expectedRfc, sucursal, razonSocial, rowTiesCompany)) return folder;
+    if (folder && folderMatchesClientBranch_(folder, expectedRfc, sucursal, razonSocial)) return folder;
   }
   return null;
 }
@@ -1162,33 +1102,18 @@ function findClientBranchByExactPath_(rfc, razonSocial, sucursal) {
   // clientes cada vez que una fila histórica carece de Link Drive. La búsqueda
   // sigue limitada a hijos directos de CONFIG.FOLDER_ID: carpetas anidadas más
   // profundo sólo se alcanzan vía el Link Drive de la fila del cliente.
-  // La coincidencia por razón social exige una fila de CLIENTES_MAESTRO que
-  // ate RFC+sucursal+empresa: una carpeta sin RFC en el nombre no prueba por
-  // sí sola a qué RFC pertenece.
-  const allowCompanyFallback = hasMasterRowForClient_(expectedRfc, sucursal, razonSocial);
-
-  const byRfc = scanParentsForBranch_(
-    root.searchFolders(buildClientParentFolderQuery_(expectedRfc, razonSocial)),
-    expectedRfc, razonSocial, expectedBranch, expectedSinRfcParent, allowCompanyFallback
-  );
-  if (byRfc) return byRfc;
-
-  // Segunda pasada: carpetas manuales nombradas por razón social sin el RFC.
-  // Sin fila maestra que respalde el registro no se intenta siquiera.
-  const companyTerm = companyQueryTerm_(razonSocial);
-  if (!allowCompanyFallback || expectedRfc === 'SIN_RFC' || companyTerm.length < 5) return null;
   return scanParentsForBranch_(
-    root.searchFolders("title contains '" + escapeDriveQueryValue_(companyTerm) + "' and trashed = false"),
-    expectedRfc, razonSocial, expectedBranch, expectedSinRfcParent, allowCompanyFallback
+    root.searchFolders(buildClientParentFolderQuery_(expectedRfc, razonSocial)),
+    expectedRfc, razonSocial, expectedBranch, expectedSinRfcParent
   );
 }
 
-function scanParentsForBranch_(parents, expectedRfc, razonSocial, expectedBranch, expectedSinRfcParent, allowCompanyFallback) {
+function scanParentsForBranch_(parents, expectedRfc, razonSocial, expectedBranch, expectedSinRfcParent) {
   while (parents.hasNext()) {
     const parent = parents.next();
     if (expectedRfc === 'SIN_RFC') {
       if (parent.getName() !== expectedSinRfcParent) continue;
-    } else if (!parentFolderMatchesClient_(parent.getName(), expectedRfc, razonSocial, allowCompanyFallback)) {
+    } else if (!rfcAppearsDelimited_(parent.getName(), expectedRfc)) {
       continue;
     }
 
@@ -1230,10 +1155,9 @@ function resolveClientBranchFolder_(info, otRow) {
     otRow ? otRow[CO.LINK_DRIVE] : '',
     info.linkDrive || ''
   ];
-  const allowCompanyFallback = hasMasterRowForClient_(info.rfc, info.sucursal, company);
   for (let i = 0; i < candidates.length; i++) {
     const folder = getFolderByDriveLinkSafe_(candidates[i]);
-    if (folderMatchesClientBranch_(folder, info.rfc, info.sucursal, company, allowCompanyFallback)) return folder;
+    if (folderMatchesClientBranch_(folder, info.rfc, info.sucursal, company)) return folder;
   }
 
   // Último intento seguro: ruta exacta por RFC+sucursal. Nunca se elige otra
