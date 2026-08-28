@@ -901,13 +901,34 @@ function fase2_RegistrarOT(data) {
   if (!data || !data.ot_folio || !data.cliente_razon_social || !data.sucursal || !data.rfc) {
     return { success: false, error: 'Faltan datos obligatorios de la OT: folio, cliente, sucursal o RFC.' };
   }
-  const linkDrive = String(data.link_drive_cliente || '').trim();
-  if (!extractDriveFolderId_(linkDrive)) {
+  // No confiar a ciegas en el enlace recibido: sólo se acepta si resuelve a
+  // una carpeta real de Drive que corresponda al RFC+sucursal de la OT (un ID
+  // con formato válido puede estar mal tecleado, ser un archivo o pertenecer
+  // a otro cliente).
+  let folderId = '';
+  const suppliedFolder = getFolderByDriveLinkSafe_(String(data.link_drive_cliente || '').trim());
+  if (suppliedFolder && folderMatchesClientBranch_(suppliedFolder, data.rfc, data.sucursal, data.cliente_razon_social)) {
+    folderId = suppliedFolder.getId();
+  }
+  if (!folderId) {
+    // Fallback server-side: frontends antiguos, filas históricas con Link
+    // Drive vacío o enlaces que no pasaron la validación anterior. La
+    // resolución es la misma que usa SEAOT (RFC+sucursal), así que el
+    // servidor nunca es más estricto que el frontend actualizado.
+    const resolved = fase2_ResolverCarpetaCliente_(data.rfc, data.sucursal, data.cliente_razon_social);
+    if (resolved && resolved.found && resolved.linkDrive) {
+      folderId = extractDriveFolderId_(resolved.linkDrive);
+    }
+  }
+  if (!folderId) {
     return {
       success: false,
-      error: 'La OT requiere un enlace válido de la carpeta exacta del cliente y sucursal. Registra o selecciona primero el cliente en SEAPD.'
+      code: 'CARPETA_NO_ENCONTRADA',
+      error: 'No existe una carpeta exacta en Drive para este RFC y sucursal. Registra o corrige el cliente en SEAPD.'
     };
   }
+  // Se guarda siempre la forma canónica, aunque la fila tuviera un link legado.
+  const linkDrive = canonicalDriveFolderLink_(folderId);
 
   const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
   if (!sheet || sheet.getMaxColumns() < 17) {
@@ -948,9 +969,22 @@ function normalizeOtForSeainf_(ot) {
   return String(ot == null ? '' : ot).trim().toUpperCase();
 }
 
+// Acepta el formato canónico /folders/<id> y los formatos legados que aún
+// viven en filas históricas de CLIENTES_MAESTRO: open?id=, uc?id=,
+// folderview?id= y el ID suelto pegado sin URL.
 function extractDriveFolderId_(link) {
-  const match = String(link || '').match(/folders\/([a-zA-Z0-9_-]+)/);
-  return match ? match[1] : '';
+  const value = String(link || '').trim();
+  if (!value) return '';
+  const canonical = value.match(/folders\/([a-zA-Z0-9_-]+)/);
+  if (canonical) return canonical[1];
+  const byParam = value.match(/[?&#]id=([a-zA-Z0-9_-]{10,})/);
+  if (byParam) return byParam[1];
+  const bare = value.match(/^[a-zA-Z0-9_-]{25,}$/);
+  return bare ? bare[0] : '';
+}
+
+function canonicalDriveFolderLink_(id) {
+  return id ? 'https://drive.google.com/drive/folders/' + id : '';
 }
 
 function getFolderByDriveLinkSafe_(link) {
@@ -972,6 +1006,35 @@ function isParentFolderForRfc_(folderName, rfc) {
   return /[^A-Z0-9Ñ&]/.test(name.charAt(expectedRfc.length));
 }
 
+// El RFC es el identificador del cliente y es obligatorio en todo registro,
+// así que es lo único que se acepta para atar una carpeta a un cliente. Se
+// admite en cualquier posición del nombre mientras aparezca delimitado (los
+// caracteres vecinos no son alfanuméricos): así la convención de SEAPD
+// "RFC - Razón Social" y una carpeta manual "RAZON SOCIAL (RFC)" cuentan,
+// pero un RFC incrustado dentro de otra palabra no.
+// Deliberadamente NO se identifica por razón social: dos clientes pueden
+// tener nombres donde uno es prefijo del otro (p. ej. "BODEGA CRUZ AZUL" y
+// "BODEGA CRUZ AZUL DEL CENTRO") y una carpeta sin RFC no puede probar por
+// sí sola a cuál pertenece.
+function rfcAppearsDelimited_(folderName, rfc) {
+  const name = String(folderName || '').toUpperCase().trim();
+  const expectedRfc = String(rfc || '').toUpperCase().trim();
+  if (!expectedRfc) return false;
+  let idx = name.indexOf(expectedRfc);
+  while (idx !== -1) {
+    const before = idx === 0 ? '' : name.charAt(idx - 1);
+    const afterIdx = idx + expectedRfc.length;
+    const after = afterIdx >= name.length ? '' : name.charAt(afterIdx);
+    if ((!before || /[^A-Z0-9Ñ&]/.test(before)) && (!after || /[^A-Z0-9Ñ&]/.test(after))) return true;
+    idx = name.indexOf(expectedRfc, idx + 1);
+  }
+  return false;
+}
+
+// Identifica la carpeta de sucursal de un cliente. El nombre de la carpeta
+// debe coincidir con la sucursal y su padre debe llevar el RFC delimitado —
+// el RFC es el único identificador que prueba a qué cliente pertenece una
+// carpeta, y es un dato obligatorio en todo registro.
 function folderMatchesClientBranch_(folder, rfc, sucursal, razonSocial) {
   if (!folder) return false;
   const expectedBranch = sanitizeFileName(sucursal || 'Matriz').toLowerCase();
@@ -986,7 +1049,7 @@ function folderMatchesClientBranch_(folder, rfc, sucursal, razonSocial) {
     const parentName = parents.next().getName();
     if (expectedRfc === 'SIN_RFC') {
       if (razonSocial && parentName === expectedSinRfcParent) return true;
-    } else if (isParentFolderForRfc_(parentName, expectedRfc)) {
+    } else if (rfcAppearsDelimited_(parentName, expectedRfc)) {
       return true;
     }
   }
@@ -1036,14 +1099,21 @@ function findClientBranchByExactPath_(rfc, razonSocial, sucursal) {
 
   // Folder.searchFolders limita la consulta a los hijos directos de la raíz.
   // Drive filtra por nombre antes de devolver el iterador: no enumeramos los N
-  // clientes cada vez que una fila histórica carece de Link Drive.
-  const parents = root.searchFolders(buildClientParentFolderQuery_(expectedRfc, razonSocial));
+  // clientes cada vez que una fila histórica carece de Link Drive. La búsqueda
+  // sigue limitada a hijos directos de CONFIG.FOLDER_ID: carpetas anidadas más
+  // profundo sólo se alcanzan vía el Link Drive de la fila del cliente.
+  return scanParentsForBranch_(
+    root.searchFolders(buildClientParentFolderQuery_(expectedRfc, razonSocial)),
+    expectedRfc, razonSocial, expectedBranch, expectedSinRfcParent
+  );
+}
 
+function scanParentsForBranch_(parents, expectedRfc, razonSocial, expectedBranch, expectedSinRfcParent) {
   while (parents.hasNext()) {
     const parent = parents.next();
     if (expectedRfc === 'SIN_RFC') {
       if (parent.getName() !== expectedSinRfcParent) continue;
-    } else if (!isParentFolderForRfc_(parent.getName(), expectedRfc)) {
+    } else if (!rfcAppearsDelimited_(parent.getName(), expectedRfc)) {
       continue;
     }
 
@@ -1063,12 +1133,12 @@ function fase2_ResolverCarpetaCliente_(rfc, sucursal, razonSocial) {
   const expectedBranch = String(sucursal || '').trim();
   const expectedCompany = String(razonSocial || '').trim();
   if (!expectedRfc || !expectedBranch || (expectedRfc === 'SIN_RFC' && !expectedCompany)) {
-    return { success: false, found: false };
+    return { success: false, found: false, code: 'PARAMETROS_INVALIDOS' };
   }
 
   let folder = findExactClientBranchFolder_(expectedRfc, expectedBranch, expectedCompany);
   if (!folder) folder = findClientBranchByExactPath_(expectedRfc, expectedCompany, expectedBranch);
-  if (!folder) return { success: true, found: false };
+  if (!folder) return { success: true, found: false, code: 'CARPETA_NO_ENCONTRADA' };
   return { success: true, found: true, linkDrive: folder.getUrl() };
 }
 
@@ -1321,6 +1391,7 @@ function fase3_CrearExpediente(payload) {
   if (!branchFolder) {
     return {
       success: false,
+      code: 'CARPETA_NO_ENCONTRADA',
       error: 'No se encontró una carpeta exacta para el RFC y la sucursal. No se creó el expediente en otra sucursal ni en la raíz.'
     };
   }
@@ -2049,7 +2120,8 @@ function formatFileSize(bytes) {
   const k = 1024; const sizes = ['B', 'KB', 'MB', 'GB']; const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
-function cleanCompanyName(name) { return sanitizeFileName((name || 'Cliente').replace(/ S\.A\. DE C\.V\.| SA DE CV| S\.A\.| S\.C\./gi, '').trim()); }
+var LEGAL_SUFFIX_REGEX_ = / S\.A\. DE C\.V\.| SA DE CV| S\.A\.| S\.C\./gi;
+function cleanCompanyName(name) { return sanitizeFileName((name || 'Cliente').replace(LEGAL_SUFFIX_REGEX_, '').trim()); }
 function sanitizeFileName(name) { return String(name || 'Sin_nombre').replace(/[^a-z0-9áéíóúñü ]/gi, '_').substring(0, 50); }
 function guardarLogEnDrive(carpetaCliente, logEntries, data) {
   try { const blob = Utilities.newBlob(logEntries.join('\n'), 'text/plain', `LOG_${Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'yyyyMMdd_HHmmss')}.txt`); carpetaCliente.createFile(blob); } catch (e) {}

@@ -550,44 +550,67 @@
     setTimeout(() => { el.innerHTML = ''; }, 5000);
   }
 
-  function normalizeBranchKey(value) {
-    return String(value || 'Matriz')
-      .replace(/[^a-z0-9áéíóúñü ]/gi, '_')
-      .substring(0, 50)
-      .toLowerCase();
+  // Misma lógica que extractDriveFolderId_ del backend: acepta /folders/<id>,
+  // los formatos legados open?id= / uc?id= / folderview#id= y el ID suelto.
+  function extractDriveFolderId(link) {
+    const value = String(link || '').trim();
+    if (!value) return '';
+    const canonical = value.match(/folders\/([a-zA-Z0-9_-]+)/);
+    if (canonical) return canonical[1];
+    const byParam = value.match(/[?&#]id=([a-zA-Z0-9_-]{10,})/);
+    if (byParam) return byParam[1];
+    const bare = value.match(/^[a-zA-Z0-9_-]{25,}$/);
+    return bare ? bare[0] : '';
+  }
+  function canonicalFolderLink(id) {
+    return id ? 'https://drive.google.com/drive/folders/' + id : '';
   }
 
+  // Distingue por qué el backend no devolvió carpeta, para no disfrazar un
+  // despliegue desactualizado o un error temporal de "cliente no registrado".
+  function classifyResolverFailure_(resp) {
+    const err = String((resp && resp.error) || '');
+    const msg = String((resp && resp.message) || '');
+    if (/no reconocida/i.test(err)) return 'BACKEND_OUTDATED';
+    if (err === 'AUTH_REQUIRED') {
+      return /no autorizada/i.test(msg) ? 'BACKEND_OUTDATED' : 'AUTH';
+    }
+    if (/^Error en el servidor/i.test(err)) return 'TEMPORARY';
+    if (resp && resp.success === true && resp.found === false) return 'NOT_FOUND';
+    return 'TEMPORARY';
+  }
+
+  const RESOLVER_MESSAGES_ = {
+    NOT_FOUND: 'No existe una carpeta exacta para este RFC y sucursal. Registra primero el cliente en SEAPD.',
+    BACKEND_OUTDATED: 'El servidor de la Base Maestra está desactualizado: no reconoce la validación de carpetas (resolverCarpetaCliente). Vuelve a desplegar BACKEND_FIXES.gs en Apps Script (Implementar → Administrar implementaciones → Nueva versión) y reintenta.',
+    AUTH: 'Tu sesión expiró o tu cuenta no tiene acceso al módulo SEAOT. Recarga la página e inicia sesión de nuevo.',
+    TEMPORARY: 'Error temporal al validar la carpeta del cliente (red o servidor ocupado). Inténtalo de nuevo en unos segundos.'
+  };
+
+  // Devuelve { link, code }: link canónico /folders/<id> cuando code === 'OK';
+  // en caso contrario link vacío y un code de RESOLVER_MESSAGES_.
+  // La única fuente es el resolver del backend: valida que la carpeta exista
+  // y corresponda al RFC+sucursal (vía la fila de CLIENTES o la ruta en
+  // Drive). El link crudo de la fila nunca se usa directamente — un enlace
+  // viejo o de otro cliente no debe colarse aunque tenga formato válido, y
+  // así la detección de backend desactualizado tampoco puede saltarse.
   async function resolveDriveLinkForCurrentProfile_() {
     const rfc = (document.getElementById('rfc')?.value || '').trim().toUpperCase();
     const branch = (document.getElementById('branch')?.value || '').trim() || 'Matriz';
     const company = (document.getElementById('companyName')?.value || '').trim();
-    if (!rfc) return '';
+    if (!rfc) return { link: '', code: 'NOT_FOUND' };
 
     try {
       const response = await SEAAuth.wrapFetch(
-        `${SHEETS_SCRIPT_URL}?action=buscarClienteRFC&rfc=${encodeURIComponent(rfc)}`
-      );
-      const result = await response.json();
-      const expectedBranch = normalizeBranchKey(branch);
-      const exact = result.found && Array.isArray(result.sucursales)
-        ? result.sucursales.find(item =>
-            normalizeBranchKey(item.sucursal || 'Matriz') === expectedBranch &&
-            String(item.rfc || '').trim().toUpperCase() === rfc
-          )
-        : null;
-      const storedLink = exact && exact.link_drive_cliente ? String(exact.link_drive_cliente) : '';
-      if (/\/folders\/[a-zA-Z0-9_-]+/.test(storedLink)) return storedLink;
-
-      // Compatibilidad read-only para filas históricas cuyo Link Drive está
-      // vacío: el backend busca la ruta exacta RFC+sucursal sin modificar Excel.
-      const fallbackResponse = await SEAAuth.wrapFetch(
         `${SHEETS_SCRIPT_URL}?action=resolverCarpetaCliente&rfc=${encodeURIComponent(rfc)}&sucursal=${encodeURIComponent(branch)}&razon_social=${encodeURIComponent(company)}`
       );
-      const fallback = await fallbackResponse.json();
-      return fallback && fallback.found && fallback.linkDrive ? fallback.linkDrive : '';
+      const result = await response.json();
+      const folderId = result && result.found ? extractDriveFolderId(result.linkDrive) : '';
+      if (folderId) return { link: canonicalFolderLink(folderId), code: 'OK' };
+      return { link: '', code: classifyResolverFailure_(result) };
     } catch (error) {
       console.error('No se pudo validar la carpeta exacta del cliente:', error);
-      return '';
+      return { link: '', code: 'TEMPORARY' };
     }
   }
   function showSyncIndicator() {
@@ -632,11 +655,14 @@
           const el = document.getElementById(id); if (el) el.value = String(getCellValue(ws, excelCellMapping[id]));
         });
         syncData();
-        profileData.link_drive_cliente = await resolveDriveLinkForCurrentProfile_();
-        if (profileData.link_drive_cliente) {
+        const resolved = await resolveDriveLinkForCurrentProfile_();
+        profileData.link_drive_cliente = resolved.link;
+        if (resolved.code === 'OK') {
           showStatus('profileStatus','Perfil cargado y carpeta exacta de la sucursal validada','success');
-        } else {
+        } else if (resolved.code === 'NOT_FOUND') {
           showStatus('profileStatus','Perfil cargado, pero el cliente/sucursal debe registrarse primero en SEAPD','warning');
+        } else {
+          showStatus('profileStatus','Perfil cargado. ' + RESOLVER_MESSAGES_[resolved.code],'warning');
         }
       } catch(err) { showStatus('profileStatus','Error al leer archivo Excel','error'); }
     };
@@ -932,12 +958,12 @@ Tel: 222-941-7295`;
 
       // Resolver siempre el enlace exacto RFC+sucursal en el momento de registrar.
       // Nunca reutilizar un enlace conservado de otro cliente o de otra sucursal.
-      const exactDriveLink = await resolveDriveLinkForCurrentProfile_();
-      if (!exactDriveLink) {
-        showStatus('workorderStatus','No existe una carpeta exacta para este RFC y sucursal. Registra primero el cliente en SEAPD.','error');
+      const resolved = await resolveDriveLinkForCurrentProfile_();
+      if (resolved.code !== 'OK') {
+        showStatus('workorderStatus', RESOLVER_MESSAGES_[resolved.code] || RESOLVER_MESSAGES_.TEMPORARY, 'error');
         return;
       }
-      profileData.link_drive_cliente = exactDriveLink;
+      profileData.link_drive_cliente = resolved.link;
 
       const services = [], personnel = [], dates = [];
       document.querySelectorAll('#workTableBody tr').forEach(row => {

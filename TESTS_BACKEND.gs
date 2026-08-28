@@ -12,13 +12,14 @@
 //   E07  SEAOT  → registrarOT tipo OTB (segundo tipo de orden)
 //   E08  SEADB  → updateEstatus ENTREGADO (estatus externo + fecha real)
 //   E09  SEAINF → updateEstatusInforme FINALIZADO (estatus interno del informe)
-//   E10–E17 → idempotencia, versionado, aislamiento y fallbacks seguros
+//   E10–E18 → idempotencia, versionado, aislamiento, fallbacks seguros y
+//             coincidencia relajada de carpetas manuales / links legados
 //
 // USO
 //   1. Configurar Script Properties de staging:
 //      SEA_E2E_ENABLED=TRUE, SEA_TEST_SPREADSHEET_ID y SEA_TEST_FOLDER_ID.
 //   2. Editor GAS → seleccionar runE2ETests → ▶ Ejecutar → Ver registros.
-//   Para ejecutar un flujo individual: runTest_E01 … runTest_E17.
+//   Para ejecutar un flujo individual: runTest_E01 … runTest_E18.
 //   Para solo pruebas unitarias: runUnitTests (no requiere staging).
 //
 // SEGURIDAD
@@ -40,14 +41,24 @@ var TEST_FOLIO_MISSING  = 'TEST-E2E-MISSING';
 var TEST_FOLIO_EMPTY    = 'TEST-E2E-EMPTY-LINK';
 var TEST_FOLIO_GARBAGE  = 'TEST-E2E-GARBAGE-LINK';
 var TEST_FOLIO_LEGACY   = 'TEST-E2E-LEGACY';
+var TEST_FOLIO_LEGACYLINK = 'TEST-E2E-LEGACY-LINK';
+var TEST_FOLIO_RESOLVED = 'TEST-E2E-RESOLVED';
+var TEST_FOLIO_FAKEID   = 'TEST-E2E-FAKE-ID';
+var TEST_FOLIO_FOREIGN  = 'TEST-E2E-FOREIGN-LINK';
+var TEST_FOLIO_INTRUDER = 'TEST-E2E-INTRUDER-RFC';
+var TEST_RFC_MANUAL     = 'MANU000000TST';
 var TEST_SUCURSAL       = 'Sucursal Test E2E';
 var TEST_SUCURSAL_HIST  = 'Sucursal Histórica E2E';
+var TEST_SUCURSAL_MANUAL = 'Sucursal Manual E2E';
+var TEST_PARENT_MANUAL  = 'CLIENTE MANUAL E2E (' + TEST_RFC_MANUAL + ')';
 
 var TEST_FOLIOS_ = [
   TEST_FOLIO, TEST_FOLIO_B, TEST_FOLIO_MISSING,
-  TEST_FOLIO_EMPTY, TEST_FOLIO_GARBAGE, TEST_FOLIO_LEGACY
+  TEST_FOLIO_EMPTY, TEST_FOLIO_GARBAGE, TEST_FOLIO_LEGACY,
+  TEST_FOLIO_LEGACYLINK, TEST_FOLIO_RESOLVED,
+  TEST_FOLIO_FAKEID, TEST_FOLIO_FOREIGN, TEST_FOLIO_INTRUDER
 ];
-var TEST_RFCS_ = [TEST_RFC, TEST_RFC_HIST, TEST_RFC_MISSING];
+var TEST_RFCS_ = [TEST_RFC, TEST_RFC_HIST, TEST_RFC_MISSING, TEST_RFC_MANUAL];
 
 // ─── Estado compartido entre flujos ──────────────────────────────────────
 var _ctx_ = {
@@ -148,13 +159,13 @@ function runE2ETests() {
   var results = {
     e01: false, e02: false, e03: false, e04: false, e05: false, e06: false,
     e07: false, e08: false, e09: false, e10: false, e11: false, e12: false,
-    e13: false, e14: false, e15: false, e16: false, e17: false
+    e13: false, e14: false, e15: false, e16: false, e17: false, e18: false
   };
 
   var tests = [
     runTest_E01, runTest_E02, runTest_E03, runTest_E04, runTest_E05, runTest_E06,
     runTest_E07, runTest_E08, runTest_E09, runTest_E10, runTest_E11, runTest_E12,
-    runTest_E13, runTest_E14, runTest_E15, runTest_E16, runTest_E17
+    runTest_E13, runTest_E14, runTest_E15, runTest_E16, runTest_E17, runTest_E18
   ];
   for (var n = 0; n < tests.length; n++) {
     var number = String(n + 1).padStart(2, '0');
@@ -191,8 +202,9 @@ function runE2ETests() {
   Logger.log('  E13 rechazo parcial        : ' + (results.e13 ? 'OK' : 'FALLO'));
   Logger.log('  E14 histórico read-only    : ' + (results.e14 ? 'OK' : 'FALLO'));
   Logger.log('  E15 bloqueo sin carpeta    : ' + (results.e15 ? 'OK' : 'FALLO'));
-  Logger.log('  E16 OT sin enlace          : ' + (results.e16 ? 'OK' : 'FALLO'));
+  Logger.log('  E16 OT sin carpeta/legado  : ' + (results.e16 ? 'OK' : 'FALLO'));
   Logger.log('  E17 retroajuste carpetas   : ' + (results.e17 ? 'OK' : 'FALLO'));
+  Logger.log('  E18 carpetas manuales      : ' + (results.e18 ? 'OK' : 'FALLO'));
   Logger.log('══════════════════════════════════════════════');
 
   // Ejecutar también las pruebas unitarias
@@ -374,7 +386,9 @@ function runTest_E02() {
 
   var linkEnOT = String(filaOT[CO.LINK_DRIVE] || '');
   _check_('E02-16: link_drive_cliente guardado en col M (índice 12)', linkEnOT !== '');
-  _check_('E02-17: link en OT coincide con link del cliente', linkEnOT === linkDrive);
+  // El backend guarda siempre la forma canónica; se compara por ID de carpeta.
+  _eq_('E02-17: link en OT apunta a la carpeta del cliente',
+    extractDriveFolderId_(linkEnOT), extractDriveFolderId_(linkDrive));
 
   _ctx_.folioOT = TEST_FOLIO;
   Logger.log('  OT registrada con folio: ' + TEST_FOLIO);
@@ -1032,39 +1046,91 @@ function runTest_E15() {
 }
 
 // =========================================================================
-// E16 — Registrar OT exige enlace Drive válido
+// E16 — Registrar OT: bloqueo sin carpeta resoluble, aceptación de links
+//       legados y resolución server-side para clientes registrados
 // =========================================================================
 function runTest_E16() {
   _activateE2EStaging_();
   Logger.log('');
-  Logger.log('── E16: OT sin enlace válido ─────────────────────');
+  Logger.log('── E16: OT sin carpeta resoluble / links legados ──');
 
-  function payload(folio, link) {
+  function payload(folio, link, rfc, sucursal, razon) {
     return {
       ot_folio: folio,
       tipo_orden: 'OTA',
       nom_servicio: 'TEST',
-      cliente_razon_social: 'CLIENTE LINK E2E',
-      sucursal: TEST_SUCURSAL,
-      rfc: TEST_RFC,
+      cliente_razon_social: razon,
+      sucursal: sucursal,
+      rfc: rfc,
       personal_asignado: 'Ing. Test',
       fecha_visita: '01/08/2026',
       fecha_entrega_limite: '31/12/2026',
       link_drive_cliente: link,
-      observaciones: 'Debe rechazarse'
+      observaciones: 'Caso E16'
     };
   }
 
-  var empty = fase2_RegistrarOT(payload(TEST_FOLIO_EMPTY, ''));
-  var garbage = fase2_RegistrarOT(payload(TEST_FOLIO_GARBAGE, 'https://example.com/no-drive'));
-  _check_('E16-1: enlace vacío es rechazado', empty.success === false);
-  _check_('E16-2: enlace basura es rechazado', garbage.success === false);
+  // Cliente inexistente: ni el enlace ni la resolución server-side salvan la OT.
+  var empty = fase2_RegistrarOT(payload(
+    TEST_FOLIO_EMPTY, '', TEST_RFC_MISSING, 'Sucursal Inexistente', 'CLIENTE SIN CARPETA E2E'));
+  var garbage = fase2_RegistrarOT(payload(
+    TEST_FOLIO_GARBAGE, 'https://example.com/no-drive', TEST_RFC_MISSING, 'Sucursal Inexistente', 'CLIENTE SIN CARPETA E2E'));
+  _check_('E16-1: cliente sin carpeta con enlace vacío es rechazado', empty.success === false);
+  _eq_('E16-2: el rechazo trae code CARPETA_NO_ENCONTRADA', empty.code, 'CARPETA_NO_ENCONTRADA');
+  _check_('E16-3: enlace basura sin carpeta es rechazado', garbage.success === false);
 
   var sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
-  _eq_('E16-3: no se escribió OT con enlace vacío',
+  _eq_('E16-4: no se escribió OT con enlace vacío',
     _countRowsByOt_(sheet, TEST_FOLIO_EMPTY, CO.OT), 0);
-  _eq_('E16-4: no se escribió OT con enlace basura',
+  _eq_('E16-5: no se escribió OT con enlace basura',
     _countRowsByOt_(sheet, TEST_FOLIO_GARBAGE, CO.OT), 0);
+
+  // Un ID con formato válido pero inexistente no debe colarse: el servidor
+  // verifica que la carpeta exista y corresponda al RFC+sucursal.
+  var fakeId = fase2_RegistrarOT(payload(
+    TEST_FOLIO_FAKEID, 'https://drive.google.com/open?id=NoExisteEsteId0123456789',
+    TEST_RFC_MISSING, 'Sucursal Inexistente', 'CLIENTE SIN CARPETA E2E'));
+  _check_('E16-FK1: ID bien formado pero inexistente es rechazado', fakeId.success === false);
+  _eq_('E16-FK2: no se escribió OT con ID inexistente',
+    _countRowsByOt_(sheet, TEST_FOLIO_FAKEID, CO.OT), 0);
+
+  // Un enlace real pero de OTRO cliente/sucursal tampoco se acepta.
+  var foreign = fase2_RegistrarOT(payload(
+    TEST_FOLIO_FOREIGN, 'https://drive.google.com/drive/folders/' + _ctx_.clienteFolderId,
+    TEST_RFC_MISSING, 'Sucursal Inexistente', 'CLIENTE SIN CARPETA E2E'));
+  _check_('E16-FR1: enlace de otra carpeta de cliente es rechazado', foreign.success === false);
+  _eq_('E16-FR2: no se escribió OT con enlace ajeno',
+    _countRowsByOt_(sheet, TEST_FOLIO_FOREIGN, CO.OT), 0);
+
+  // Enlace legado open?id= del cliente registrado en E01: se acepta y la
+  // columna M guarda la forma canónica /folders/<id>.
+  var legacy = fase2_RegistrarOT(payload(
+    TEST_FOLIO_LEGACYLINK, 'https://drive.google.com/open?id=' + _ctx_.clienteFolderId,
+    TEST_RFC, TEST_SUCURSAL, 'EMPRESA TEST E2E SA DE CV'));
+  _check_('E16-6: enlace legado open?id= es aceptado', legacy.success === true);
+  var rowsOT = sheet.getDataRange().getValues();
+  var filaLegacy = null;
+  for (var i = rowsOT.length - 1; i >= 1; i--) {
+    if (String(rowsOT[i][CO.OT]).trim() === TEST_FOLIO_LEGACYLINK) { filaLegacy = rowsOT[i]; break; }
+  }
+  _check_('E16-7: fila de OT con enlace legado existe', filaLegacy !== null);
+  _eq_('E16-8: col M guarda la forma canónica /folders/',
+    String(filaLegacy[CO.LINK_DRIVE]),
+    'https://drive.google.com/drive/folders/' + _ctx_.clienteFolderId);
+
+  // Sin enlace pero cliente registrado: el servidor resuelve la carpeta
+  // (mismo criterio RFC+sucursal que usa SEAOT).
+  var resolved = fase2_RegistrarOT(payload(
+    TEST_FOLIO_RESOLVED, '', TEST_RFC, TEST_SUCURSAL, 'EMPRESA TEST E2E SA DE CV'));
+  _check_('E16-9: sin enlace, la carpeta se resuelve server-side', resolved.success === true);
+  rowsOT = sheet.getDataRange().getValues();
+  var filaResolved = null;
+  for (var r = rowsOT.length - 1; r >= 1; r--) {
+    if (String(rowsOT[r][CO.OT]).trim() === TEST_FOLIO_RESOLVED) { filaResolved = rowsOT[r]; break; }
+  }
+  _check_('E16-10: fila de OT resuelta existe', filaResolved !== null);
+  _eq_('E16-11: col M apunta a la sucursal del cliente',
+    extractDriveFolderId_(String(filaResolved[CO.LINK_DRIVE])), _ctx_.clienteFolderId);
 }
 
 // =========================================================================
@@ -1119,6 +1185,77 @@ function runTest_E17() {
     var expected = CONFIG.FOLDER_STRUCTURE[key];
     _eq_('E17: existe una sola subcarpeta ' + expected, counts[expected] || 0, 1);
   });
+}
+
+// =========================================================================
+// E18 — Carpeta manual con el RFC fuera del prefijo + Link Drive legado
+// =========================================================================
+// Un cliente cuya carpeta fue creada a mano como "RAZON SOCIAL (RFC)" —el RFC
+// está, pero no al inicio— y cuyo Link Drive usa el formato legado open?id=.
+// El código anterior a este PR exigía el RFC como prefijo y la rechazaba.
+function runTest_E18() {
+  _activateE2EStaging_();
+  Logger.log('');
+  Logger.log('── E18: coincidencia relajada de carpetas manuales ─');
+
+  var root = DriveApp.getFolderById(CONFIG.FOLDER_ID);
+  var parent = root.createFolder(TEST_PARENT_MANUAL);
+  var branch = parent.createFolder(TEST_SUCURSAL_MANUAL);
+  _ctx_.folderIdsToTrash.push(parent.getId());
+
+  var sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_CLIENTES);
+  var row = Array(22).fill('');
+  row[CL.FECHA_REGISTRO] = new Date();
+  row[CL.RAZON_SOCIAL] = 'CLIENTE MANUAL E2E SA DE CV';
+  row[CL.SUCURSAL] = TEST_SUCURSAL_MANUAL;
+  row[CL.RFC] = TEST_RFC_MANUAL;
+  row[CL.LINK_DRIVE] = 'https://drive.google.com/open?id=' + branch.getId(); // formato legado
+  sheet.appendRow(row);
+  var sheetRow = sheet.getLastRow();
+
+  // 1) Link legado en la fila: se resuelve vía fila (el RFC está en el padre,
+  //    pero no como prefijo).
+  var byRow = fase2_ResolverCarpetaCliente_(
+    TEST_RFC_MANUAL, TEST_SUCURSAL_MANUAL, 'CLIENTE MANUAL E2E SA DE CV');
+  _check_('E18-1: link legado open?id= resuelto vía fila', byRow.success && byRow.found);
+  _eq_('E18-2: la URL corresponde a la sucursal manual',
+    extractDriveFolderId_(byRow.linkDrive), branch.getId());
+
+  // 2) Sin link en la fila: se resuelve con la búsqueda en raíz por RFC.
+  sheet.getRange(sheetRow, CL.LINK_DRIVE + 1).setValue('');
+  var byName = fase2_ResolverCarpetaCliente_(
+    TEST_RFC_MANUAL, TEST_SUCURSAL_MANUAL, 'CLIENTE MANUAL E2E SA DE CV');
+  _check_('E18-3: carpeta con el RFC fuera del prefijo encontrada en la raíz',
+    byName.success && byName.found);
+  _eq_('E18-4: misma carpeta de sucursal',
+    extractDriveFolderId_(byName.linkDrive), branch.getId());
+  _eq_('E18-5: LINK_DRIVE permanece vacío (read-only)',
+    sheet.getRange(sheetRow, CL.LINK_DRIVE + 1).getValue(), '');
+
+  // 3) Otro RFC NO puede adoptar la carpeta de esta empresa aunque envíe la
+  //    razón social correcta: la identificación es sólo por RFC.
+  var intruso = fase2_ResolverCarpetaCliente_(
+    TEST_RFC_MISSING, TEST_SUCURSAL_MANUAL, 'CLIENTE MANUAL E2E SA DE CV');
+  _check_('E18-6: otro RFC no resuelve la carpeta de esta empresa',
+    intruso.success === true && intruso.found === false);
+
+  var intrusoOt = fase2_RegistrarOT({
+    ot_folio: TEST_FOLIO_INTRUDER,
+    tipo_orden: 'OTA',
+    nom_servicio: 'TEST',
+    cliente_razon_social: 'CLIENTE MANUAL E2E SA DE CV',
+    sucursal: TEST_SUCURSAL_MANUAL,
+    rfc: TEST_RFC_MISSING,
+    personal_asignado: 'Ing. Test',
+    fecha_visita: '01/08/2026',
+    fecha_entrega_limite: '31/12/2026',
+    link_drive_cliente: 'https://drive.google.com/drive/folders/' + branch.getId(),
+    observaciones: 'Debe rechazarse: RFC ajeno a la carpeta'
+  });
+  _check_('E18-7: OT con RFC ajeno a la carpeta es rechazada', intrusoOt.success === false);
+  var sheetOt = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+  _eq_('E18-8: no se escribió la OT del RFC ajeno',
+    _countRowsByOt_(sheetOt, TEST_FOLIO_INTRUDER, CO.OT), 0);
 }
 
 // =========================================================================
@@ -1205,12 +1342,19 @@ function _cleanup_() {
       var parents = root.searchFolders(buildClientParentFolderQuery_(testRfc, 'CLIENTE HISTORICO E2E SA DE CV'));
       while (parents.hasNext()) {
         var parent = parents.next();
-        if (isParentFolderForRfc_(parent.getName(), testRfc)) {
+        if (rfcAppearsDelimited_(parent.getName(), testRfc)) {
           parent.setTrashed(true);
           Logger.log('  Carpeta padre de staging enviada a papelera: ' + parent.getName());
         }
       }
     });
+    // La carpeta manual de E18 no lleva RFC en el nombre: se busca por nombre.
+    var manualParents = root.getFoldersByName(TEST_PARENT_MANUAL);
+    while (manualParents.hasNext()) {
+      var manualParent = manualParents.next();
+      manualParent.setTrashed(true);
+      Logger.log('  Carpeta manual de staging enviada a papelera: ' + manualParent.getName());
+    }
   } catch (e) { Logger.log('  ERROR cleanup carpeta raíz: ' + e.message); }
 }
 
@@ -1433,6 +1577,50 @@ function runUnitTests() {
     _isUnsafeE2ETarget_(CONFIG.SPREADSHEET_ID, 'folder-staging') === true);
   _check_('U71: IDs distintos de producción son elegibles para staging',
     _isUnsafeE2ETarget_('sheet-staging', 'folder-staging') === false);
+
+  // ── Formatos de enlace Drive aceptados ───────────────────────────────────
+  _eq_('U72: extrae ID de /folders/ con sufijo',
+    extractDriveFolderId_('https://drive.google.com/drive/folders/1AbC_d-123xyz?usp=sharing'), '1AbC_d-123xyz');
+  _eq_('U73: extrae ID del formato legado open?id=',
+    extractDriveFolderId_('https://drive.google.com/open?id=1AbCdEfGh123456789012345678'), '1AbCdEfGh123456789012345678');
+  _eq_('U74: extrae ID de uc?export=download&id=',
+    extractDriveFolderId_('https://drive.google.com/uc?export=download&id=1AbCdEfGh123456789012345678'), '1AbCdEfGh123456789012345678');
+  _eq_('U75: extrae ID suelto de 28 caracteres',
+    extractDriveFolderId_('1AbCdEfGh123456789012345678x'), '1AbCdEfGh123456789012345678x');
+  _eq_('U76: enlace vacío no produce ID', extractDriveFolderId_(''), '');
+  _eq_('U77: URL sin Drive no produce ID', extractDriveFolderId_('https://example.com/no-drive'), '');
+  _eq_('U78: token corto no es un ID', extractDriveFolderId_('PENDIENTE'), '');
+  _eq_('U79: forma canónica del enlace',
+    canonicalDriveFolderLink_('1AbC_d-123xyz'), 'https://drive.google.com/drive/folders/1AbC_d-123xyz');
+
+  // ── Coincidencia relajada del padre ──────────────────────────────────────
+  // ── Identificación del cliente: sólo por RFC ────────────────────────────
+  _check_('U80: padre con prefijo RFC (convención SEAPD)',
+    rfcAppearsDelimited_('ABC010101AB1 - EMPRESA', 'ABC010101AB1'));
+  _check_('U81: RFC delimitado en cualquier parte del nombre',
+    rfcAppearsDelimited_('EMPRESA DEMO (ABC010101AB1)', 'ABC010101AB1'));
+  _check_('U82: RFC incrustado sin delimitador no coincide',
+    !rfcAppearsDelimited_('XABC010101AB1X', 'ABC010101AB1'));
+  _check_('U83: RFC de otro cliente no coincide',
+    !rfcAppearsDelimited_('ZZZ010101ZZ9 - EMPRESA', 'ABC010101AB1'));
+  _check_('U84: sin RFC en el nombre no hay coincidencia',
+    !rfcAppearsDelimited_('BODEGA CRUZ AZUL DEL CENTRO', 'ABC010101AB1'));
+  _check_('U85: RFC vacío nunca coincide', !rfcAppearsDelimited_('CUALQUIER CARPETA', ''));
+
+  // La razón social NO identifica: dos clientes pueden compartir prefijo y una
+  // carpeta sin RFC no prueba a cuál pertenece (caso real: "BODEGA CRUZ AZUL"
+  // vs "BODEGA CRUZ AZUL DEL CENTRO").
+  var padreSinRfc = { getName: function() { return 'BODEGA CRUZ AZUL DEL CENTRO'; } };
+  var sucursalStub = {
+    getName: function() { return 'Matriz'; },
+    getParents: function() {
+      var pendiente = true;
+      return { hasNext: function() { return pendiente; },
+               next: function() { pendiente = false; return padreSinRfc; } };
+    }
+  };
+  _check_('U86: carpeta sin RFC no se adjudica por razón social',
+    !folderMatchesClientBranch_(sucursalStub, 'BCA001206674', 'Matriz', 'BODEGA CRUZ AZUL SA DE CV'));
 
   var pass = _results_.filter(function(r){ return r.indexOf('PASS') === 0; }).length;
   var fail = _results_.filter(function(r){ return r.indexOf('FAIL') === 0; }).length;
