@@ -979,7 +979,7 @@ El Spreadsheet de staging debe conservar los contratos `CLIENTES_MAESTRO` A–V,
 **Solo unitarias, sin efectos secundarios:**
 
 1. Seleccionar `runUnitTests`.
-2. Ejecutar y revisar el registro: el resultado esperado es `94 PASS | 0 FAIL`.
+2. Ejecutar y revisar el registro: el resultado esperado es `101 PASS | 0 FAIL`.
 
 **E2E completas, únicamente después de configurar staging:**
 

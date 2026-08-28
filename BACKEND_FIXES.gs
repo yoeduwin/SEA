@@ -1028,10 +1028,25 @@ function rfcAppearsDelimited_(folderName, rfc) {
   return false;
 }
 
-// Término de búsqueda en Drive por razón social: sin sufijos legales y sin
-// sanitizar con guiones bajos (Drive compara contra el nombre real).
+// Término de búsqueda en Drive por razón social. Drive compara contra el
+// título CRUDO de la carpeta, así que el término no puede sanitizarse; en
+// cambio se recorta al prefijo que sobrevive intacto a cleanCompanyName():
+//  - máximo 50 caracteres, el mismo truncado de sanitizeFileName() (la
+//    sustitución es carácter por carácter, así que las posiciones del nombre
+//    crudo y del sanitizado coinciden 1:1);
+//  - se corta antes del primer carácter que la sanitización convertiría en
+//    "_" (coma, punto, paréntesis…), que en la carpeta ya no aparecería
+//    literal.
+// Así el término está contenido tanto en una carpeta creada por SEAPD (cuyo
+// título ya viene sanitizado y truncado) como en una creada a mano, y la
+// consulta nunca descarta una carpeta que el comparador sí aceptaría.
 function companyQueryTerm_(razonSocial) {
-  return String(razonSocial || '').replace(LEGAL_SUFFIX_REGEX_, '').trim();
+  const withinLimit = String(razonSocial || '')
+    .replace(LEGAL_SUFFIX_REGEX_, '')
+    .trim()
+    .substring(0, 50);
+  const firstUnsafe = withinLimit.search(/[^a-z0-9áéíóúñü ]/i);
+  return (firstUnsafe === -1 ? withinLimit : withinLimit.substring(0, firstUnsafe)).trim();
 }
 
 // Prueba de registro: CLIENTES_MAESTRO tiene una fila que ata RFC + sucursal

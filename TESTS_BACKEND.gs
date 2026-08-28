@@ -1625,6 +1625,27 @@ function runUnitTests() {
   _check_('U91: la regla del RFC no depende del flag',
     parentFolderMatchesClient_('OTRA EMPRESA (ABC010101AB1)', 'ABC010101AB1', 'NO COINCIDE SA DE CV', false));
 
+  // ── El término de búsqueda en Drive concuerda con el comparador ──────────
+  // Invariante: el término debe estar contenido en el nombre de la carpeta que
+  // el comparador aceptaría; si no, Drive filtra la carpeta antes de evaluarla.
+  var nombreLargo = 'CORPORATIVO INDUSTRIAL METALURGICO DEL BAJIO Y OCCIDENTE S.A. DE C.V.';
+  var carpetaLarga = cleanCompanyName(nombreLargo);
+  _check_('U92: razón social larga se trunca a 50 caracteres', carpetaLarga.length === 50);
+  _check_('U93: el término de búsqueda cabe en el nombre truncado de la carpeta',
+    carpetaLarga.indexOf(companyQueryTerm_(nombreLargo)) === 0);
+  _check_('U94: la carpeta truncada sigue siendo aceptada por el comparador',
+    parentFolderMatchesClient_(carpetaLarga, 'ZZZ010101ZZ9', nombreLargo, true));
+
+  var nombreConSignos = 'GRUPO XYZ, S DE RL';
+  _eq_('U95: el término se corta antes del primer carácter que se sanitiza',
+    companyQueryTerm_(nombreConSignos), 'GRUPO XYZ');
+  _check_('U96: el término cortado está contenido en el nombre sanitizado',
+    cleanCompanyName(nombreConSignos).indexOf(companyQueryTerm_(nombreConSignos)) === 0);
+
+  _eq_('U97: razón social normal no se altera',
+    companyQueryTerm_('BODEGA CRUZ AZUL DEL CENTRO S.A. DE C.V.'), 'BODEGA CRUZ AZUL DEL CENTRO');
+  _eq_('U98: razón social vacía no produce término', companyQueryTerm_(''), '');
+
   var pass = _results_.filter(function(r){ return r.indexOf('PASS') === 0; }).length;
   var fail = _results_.filter(function(r){ return r.indexOf('FAIL') === 0; }).length;
   Logger.log('');
