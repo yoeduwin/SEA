@@ -2138,14 +2138,25 @@ function valorOGuion_(value) {
 /**
  * Normaliza un teléfono al formato que exige wa.me: sólo dígitos y con lada
  * de país. Devuelve null si el número no es utilizable.
+ *
+ * El campo es texto libre, así que antes de quedarnos con los dígitos hay que
+ * descartar la extensión: pegada al número convertiría "2221458890 ext. 12" en
+ * un número internacional distinto, y el equipo escribiría a un desconocido.
+ * Por la misma razón sólo se aceptan estructuras mexicanas reconocibles; ante
+ * cualquier otra cosa se devuelve null y el correo se envía sin el botón.
  */
 function normalizarTelefonoWhatsApp_(telefono) {
-  let digitos = String(telefono || '').replace(/\D/g, '');
+  let texto = String(telefono || '');
+  texto = texto.split(/\s*(?:ext\.?|extn\.?|extensi[oó]n|conmutador|opci[oó]n|#|,|;|\/|\|)/i)[0];
+  texto = texto.replace(/\s*x\s*\d+\s*$/i, '');   // "2221458890 x102"
+
+  const digitos = texto.replace(/\D/g, '').replace(/^0+/, '');
   if (!digitos) return null;
-  digitos = digitos.replace(/^0+/, '');            // 00 internacional o ceros guía
-  if (digitos.length === 10) digitos = '52' + digitos;  // número nacional a 10 dígitos
-  if (digitos.length < 12 || digitos.length > 13) return null;
-  return digitos;
+
+  if (digitos.length === 10) return '52' + digitos;                            // nacional a 10 dígitos
+  if (digitos.length === 12 && digitos.indexOf('52') === 0) return digitos;    // 52 + 10 dígitos
+  if (digitos.length === 13 && digitos.indexOf('521') === 0) return digitos;   // 521 + 10 (móvil)
+  return null;
 }
 
 /**
