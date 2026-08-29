@@ -2153,9 +2153,11 @@ function normalizarTelefonoWhatsApp_(telefono) {
   const digitos = texto.replace(/\D/g, '').replace(/^0+/, '');
   if (!digitos) return null;
 
-  if (digitos.length === 10) return '52' + digitos;                            // nacional a 10 dígitos
-  if (digitos.length === 12 && digitos.indexOf('52') === 0) return digitos;    // 52 + 10 dígitos
-  if (digitos.length === 13 && digitos.indexOf('521') === 0) return digitos;   // 521 + 10 (móvil)
+  if (digitos.length === 10) return '52' + digitos;                          // nacional a 10 dígitos
+  if (digitos.length === 12 && digitos.indexOf('52') === 0) return digitos;  // 52 + 10 dígitos
+  // Forma heredada "+52 1 ..." de los móviles: el 1 dejó de usarse en 2019 y
+  // se descarta para dejar el número en su forma actual, 52 + 10 dígitos.
+  if (digitos.length === 13 && digitos.indexOf('521') === 0) return '52' + digitos.slice(3);
   return null;
 }
 
