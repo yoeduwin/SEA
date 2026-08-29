@@ -2204,7 +2204,8 @@ function contactoWhatsAppCliente_(data) {
         numero: numero,
         mensaje: mensaje,
         url: `https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`,
-        telefonoMostrado: String(candidatos[i]).trim()
+        telefonoMostrado: String(candidatos[i]).trim(),
+        origen: i === 0 ? 'responsable' : 'empresa'
       };
     }
   }
@@ -2217,6 +2218,13 @@ function botonEmail_(texto, url, estilo) {
   const color  = estilo === 'secundario' ? EMAIL_COLORS_.verde : '#FFFFFF';
   const borde  = estilo === 'secundario' ? '1px solid #C6D5CB' : `1px solid ${fondo}`;
   return `<td style="padding:0 8px 8px 0;"><a href="${url}" style="display:inline-block; background-color:${fondo}; color:${color}; border:${borde}; padding:12px 20px; border-radius:8px; font-size:14px; font-weight:600; text-decoration:none; white-space:nowrap; font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">${texto}</a></td>`;
+}
+
+/** Teléfono como enlace marcable, o guion si no se capturó. */
+function telefonoHTML_(telefono) {
+  const valor = String(telefono || '').trim();
+  if (!valor) return '—';
+  return `<a href="tel:${escHtml_(valor.replace(/\s+/g, ''))}" style="color:${EMAIL_COLORS_.verde}; font-weight:600; text-decoration:none;">${escHtml_(valor)}</a>`;
 }
 
 /** Etiqueta de sección en versalitas. */
@@ -2292,6 +2300,7 @@ function enviarNotificacionEquipo(data, files, carpetaCliente, sheetUrl) {
   const mensajeHTML = contacto
     ? `<div style="margin-top:16px; background-color:${EMAIL_COLORS_.panel}; border:1px solid ${EMAIL_COLORS_.borde}; border-left:3px solid ${EMAIL_COLORS_.whatsapp}; border-radius:0 8px 8px 0; padding:16px;">
         ${etiquetaEmail_('Mensaje de seguimiento · seleccione y copie')}
+        <p style="margin:0 0 10px 0; font-size:12px; color:${EMAIL_COLORS_.textoSuave};">El botón abre WhatsApp con el teléfono ${contacto.origen === 'empresa' ? 'de la empresa' : 'del responsable'}: ${escHtml_(contacto.telefonoMostrado)}</p>
         <div style="font-size:13px; line-height:1.65; color:#3A453B; white-space:pre-line;">${escHtml_(contacto.mensaje)}</div>
       </div>`
     : `<p style="margin:12px 0 0 0; font-size:13px; color:${EMAIL_COLORS_.textoSuave};">No se capturó un teléfono utilizable para WhatsApp. El contacto deberá realizarse por correo.</p>`;
@@ -2324,10 +2333,6 @@ function enviarNotificacionEquipo(data, files, carpetaCliente, sheetUrl) {
       </table>`
     : '';
 
-  const telefonoContactoHTML = contacto
-    ? `<a href="tel:${escHtml_(contacto.telefonoMostrado)}" style="color:${EMAIL_COLORS_.verde}; font-weight:600; text-decoration:none;">${escHtml_(contacto.telefonoMostrado)}</a>`
-    : valorOGuion_(data.telefono_responsable);
-
   const cuerpo = `<tr><td style="padding:26px 30px;">
     ${etiquetaEmail_('Acciones')}
     <table border="0" cellpadding="0" cellspacing="0"><tr>${botonesHTML}</tr></table>
@@ -2342,8 +2347,8 @@ function enviarNotificacionEquipo(data, files, carpetaCliente, sheetUrl) {
     <table width="100%" border="0" cellpadding="0" cellspacing="0">
       ${filaEmail_('Solicitante', valorOGuion_(data.nombre_solicitante))}
       ${filaEmail_('Responsable en sitio', valorOGuion_(data.responsable))}
-      ${filaEmail_('Teléfono de contacto', telefonoContactoHTML)}
-      ${filaEmail_('Teléfono de empresa', valorOGuion_(data.telefono_empresa))}
+      ${filaEmail_('Teléfono de contacto', telefonoHTML_(data.telefono_responsable))}
+      ${filaEmail_('Teléfono de empresa', telefonoHTML_(data.telefono_empresa))}
       ${filaEmail_('Correo para informe', data.correo_informe ? `<a href="mailto:${escHtml_(data.correo_informe)}" style="color:${EMAIL_COLORS_.verde}; font-weight:600; text-decoration:none;">${escHtml_(data.correo_informe)}</a>` : '—')}
     </table>
 
