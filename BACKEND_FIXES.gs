@@ -34,7 +34,8 @@ const CONFIG = {
 
   // ── Datos de contacto de soporte (aparecen en correos al cliente) ─────────
   SUPPORT_EMAIL: 'aclientes@ejecutivambiental.com',
-  SUPPORT_PHONE: '222 941 7295',
+  SUPPORT_PHONE: '222 941 7295',        // conmutador fijo: sólo para marcar
+  SUPPORT_WHATSAPP: '56 5282 1561',     // línea móvil de Atención a Clientes
 
   // ── Identidad de la empresa ───────────────────────────────────────────────
   COMPANY_NAME: 'Ejecutiva Ambiental',
@@ -2165,13 +2166,37 @@ function normalizarTelefonoWhatsApp_(telefono) {
  * Primer nombre del contacto, sin tratamientos (Ing., Lic., C., etc.).
  * Devuelve cadena vacía si no hay un nombre utilizable.
  */
-function primerNombre_(nombreCompleto) {
-  const limpio = String(nombreCompleto || '')
+function nombreSinTratamiento_(nombreCompleto) {
+  return String(nombreCompleto || '')
     .replace(/\b(ing|lic|arq|dr|dra|mtro|mtra|c|sr|sra|srita|q\.f\.b|tsu)\b\.?/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  if (!limpio) return '';
-  return limpio.split(' ')[0];
+}
+
+function primerNombre_(nombreCompleto) {
+  const limpio = nombreSinTratamiento_(nombreCompleto);
+  return limpio ? limpio.split(' ')[0] : '';
+}
+
+/**
+ * Mensaje que el cliente envía a Atención a Clientes desde su correo de
+ * confirmación. Va en su voz, no en la de la empresa, y se presenta con
+ * su nombre y empresa para que quien reciba el mensaje sepa de inmediato
+ * de qué registro se trata.
+ */
+function mensajeClienteWhatsApp_(data) {
+  const nombre = nombreSinTratamiento_(data.nombre_solicitante) || nombreSinTratamiento_(data.responsable);
+  const empresa = String(data.razon_social || '').trim();
+  // La razón social suele terminar en punto ("S.A. DE C.V."); evitamos el doble punto.
+  const cerrar = (frase) => /[.!?]$/.test(frase) ? frase : frase + '.';
+  const presentacion = nombre
+    ? cerrar(empresa ? `Hola, soy ${nombre} de ${empresa}` : `Hola, soy ${nombre}`)
+    : (empresa ? cerrar(`Hola, escribo de parte de ${empresa}`) : 'Hola.');
+  return [
+    presentacion,
+    `Acabo de registrarme en la plataforma de ${CONFIG.COMPANY_NAME} y quiero dar seguimiento a mi solicitud de servicio.`,
+    'Quedo atento.'
+  ].join('\n');
 }
 
 /** Mensaje base de seguimiento de Atención a Clientes, personalizado. */
@@ -2426,7 +2451,8 @@ function enviarConfirmacionCliente(data, carpetaCliente, files) {
   const timestamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'dd/MM/yyyy HH:mm');
   const nombre = primerNombre_(data.nombre_solicitante) || primerNombre_(data.responsable);
   const saludo = nombre ? `Estimado(a) <strong>${escHtml_(data.nombre_solicitante || data.responsable)}</strong>,` : 'Estimado(a) cliente,';
-  const soporteWhatsApp = normalizarTelefonoWhatsApp_(CONFIG.SUPPORT_PHONE);
+  const soporteWhatsApp = normalizarTelefonoWhatsApp_(CONFIG.SUPPORT_WHATSAPP);
+  const mensajeCliente = mensajeClienteWhatsApp_(data);
 
   const pasos = [
     { titulo: 'Revisión de su información', detalle: 'Nuestro equipo técnico valida los datos y la documentación que envió.' },
@@ -2458,7 +2484,7 @@ function enviarConfirmacionCliente(data, carpetaCliente, files) {
     : '';
 
   const botonSoporte = soporteWhatsApp
-    ? `<table border="0" cellpadding="0" cellspacing="0" style="margin-top:14px;"><tr>${botonEmail_('Escribirnos por WhatsApp', `https://wa.me/${soporteWhatsApp}`, 'whatsapp')}</tr></table>`
+    ? `<table border="0" cellpadding="0" cellspacing="0" style="margin-top:14px;"><tr>${botonEmail_('Escribirnos por WhatsApp', `https://wa.me/${soporteWhatsApp}?text=${encodeURIComponent(mensajeCliente)}`, 'whatsapp')}</tr></table>`
     : '';
 
   const cuerpo = `<tr><td style="padding:26px 30px;">
@@ -2485,7 +2511,8 @@ function enviarConfirmacionCliente(data, carpetaCliente, files) {
     <div style="background-color:${EMAIL_COLORS_.panel}; border:1px solid ${EMAIL_COLORS_.borde}; border-radius:8px; padding:18px;">
       ${etiquetaEmail_('¿Necesita corregir algo o tiene dudas?')}
       <table width="100%" border="0" cellpadding="0" cellspacing="0">
-        ${filaEmail_('Atención a Clientes', `<a href="tel:${escHtml_(CONFIG.SUPPORT_PHONE)}" style="color:${EMAIL_COLORS_.verde}; font-weight:600; text-decoration:none;">${escHtml_(CONFIG.SUPPORT_PHONE)}</a>`)}
+        ${filaEmail_('Teléfono', telefonoHTML_(CONFIG.SUPPORT_PHONE))}
+        ${soporteWhatsApp ? filaEmail_('WhatsApp', telefonoHTML_(CONFIG.SUPPORT_WHATSAPP)) : ''}
         ${filaEmail_('Correo', `<a href="mailto:${escHtml_(CONFIG.SUPPORT_EMAIL)}" style="color:${EMAIL_COLORS_.verde}; font-weight:600; text-decoration:none;">${escHtml_(CONFIG.SUPPORT_EMAIL)}</a>`)}
       </table>
       ${botonSoporte}
@@ -2521,7 +2548,7 @@ function enviarConfirmacionCliente(data, carpetaCliente, files) {
     '2. Contacto en las próximas 24 horas.',
     '3. Programación de la evaluación.',
     '',
-    `Atención a Clientes: ${CONFIG.SUPPORT_PHONE} · ${CONFIG.SUPPORT_EMAIL}`
+    `Atención a Clientes — teléfono: ${CONFIG.SUPPORT_PHONE} · WhatsApp: ${CONFIG.SUPPORT_WHATSAPP} · ${CONFIG.SUPPORT_EMAIL}`
   ].join('\n');
 
   GmailApp.sendEmail(emailCliente, `Recibimos su información · ${CONFIG.COMPANY_NAME}`, textoPlano, { htmlBody: htmlCliente, name: CONFIG.COMPANY_NAME });
