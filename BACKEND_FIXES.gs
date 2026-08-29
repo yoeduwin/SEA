@@ -2077,7 +2077,7 @@ function enviarNotificacionRobusta(data, files, carpetaCliente, sheetUrl, addLog
     try {
       enviarNotificacionEquipo(data, files, carpetaCliente, sheetUrl);
       Utilities.sleep(1000);
-      enviarConfirmacionCliente(data, carpetaCliente);
+      enviarConfirmacionCliente(data, carpetaCliente, files);
       return { success: true };
     } catch (error) {
       lastError = error;
@@ -2087,31 +2087,491 @@ function enviarNotificacionRobusta(data, files, carpetaCliente, sheetUrl, addLog
   try { enviarEmailSimpleFallback(data, carpetaCliente, sheetUrl); return { success: true, usedFallback: true }; }
   catch (fallbackError) { return { success: false, error: fallbackError.toString() }; }
 }
+// ─────────────────────────────────────────────────────────────────────────────
+// CORREOS DE REGISTRO SEADB
+// Presentación de los correos que dispara el registro de un servicio.
+// No alteran el flujo de registro: sólo reacomodan datos que el proceso ya
+// produce. No se agregan campos al formulario ni columnas a CLIENTES_MAESTRO.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Firma de quien da seguimiento desde Atención a Clientes.
+const ATENCION_NOMBRE_ = 'Jimmy';
+
+// Paleta corporativa usada en ambos correos.
+const EMAIL_COLORS_ = {
+  verdeOscuro: '#123A28',
+  verde:       '#1E5A3E',
+  verdeClaro:  '#A9CBB8',
+  verdeTenue:  '#7FB89A',
+  whatsapp:    '#1FA855',
+  fondo:       '#F4F6F4',
+  panel:       '#F5F8F5',
+  borde:       '#E6EBE4',
+  bordeSuave:  '#EFF2ED',
+  texto:       '#2B322B',
+  textoFuerte: '#1E2620',
+  textoSuave:  '#6E796E',
+  etiqueta:    '#7A857A',
+  ambar:       '#C79A2E',
+  ambarFondo:  '#FBF7EC',
+  ambarTexto:  '#8A5F0C'
+};
+
+/**
+ * Escapa texto capturado por el usuario antes de inyectarlo en el HTML del
+ * correo, para que un dato con < o & no rompa el maquetado.
+ */
+function escHtml_(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** Valor listo para mostrar; si viene vacío devuelve un guion. */
+function valorOGuion_(value) {
+  const v = String(value == null ? '' : value).trim();
+  return v === '' ? '—' : escHtml_(v);
+}
+
+/**
+ * Normaliza un teléfono al formato que exige wa.me: sólo dígitos y con lada
+ * de país. Devuelve null si el número no es utilizable.
+ */
+function normalizarTelefonoWhatsApp_(telefono) {
+  let digitos = String(telefono || '').replace(/\D/g, '');
+  if (!digitos) return null;
+  digitos = digitos.replace(/^0+/, '');            // 00 internacional o ceros guía
+  if (digitos.length === 10) digitos = '52' + digitos;  // número nacional a 10 dígitos
+  if (digitos.length < 12 || digitos.length > 13) return null;
+  return digitos;
+}
+
+/**
+ * Primer nombre del contacto, sin tratamientos (Ing., Lic., C., etc.).
+ * Devuelve cadena vacía si no hay un nombre utilizable.
+ */
+function primerNombre_(nombreCompleto) {
+  const limpio = String(nombreCompleto || '')
+    .replace(/\b(ing|lic|arq|dr|dra|mtro|mtra|c|sr|sra|srita|q\.f\.b|tsu)\b\.?/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!limpio) return '';
+  return limpio.split(' ')[0];
+}
+
+/** Mensaje base de seguimiento de Atención a Clientes, personalizado. */
+function mensajeSeguimientoWhatsApp_(data) {
+  const nombre = primerNombre_(data.responsable) || primerNombre_(data.nombre_solicitante);
+  const saludo = nombre ? `Buen día, ${nombre}.` : 'Buen día.';
+  return [
+    saludo,
+    `Soy ${ATENCION_NOMBRE_} de Atención a Clientes de Ejecutiva Ambiental.`,
+    'Estaré dando seguimiento a su servicio.',
+    'En caso de requerir información adicional para la programación, me estaré comunicando con usted.',
+    'Por este medio también puede contactarme para cualquier duda o seguimiento relacionado con su servicio.',
+    'Quedo pendiente.'
+  ].join('\n');
+}
+
+/**
+ * Datos de contacto por WhatsApp del cliente registrado.
+ * Prioriza el teléfono del responsable que atiende; si no sirve, usa el de la
+ * empresa. Devuelve null cuando no hay ningún teléfono utilizable, en cuyo
+ * caso el correo se envía completo pero sin el botón.
+ */
+function contactoWhatsAppCliente_(data) {
+  const candidatos = [data.telefono_responsable, data.telefono_empresa];
+  for (let i = 0; i < candidatos.length; i++) {
+    const numero = normalizarTelefonoWhatsApp_(candidatos[i]);
+    if (numero) {
+      const mensaje = mensajeSeguimientoWhatsApp_(data);
+      return {
+        numero: numero,
+        mensaje: mensaje,
+        url: `https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`,
+        telefonoMostrado: String(candidatos[i]).trim()
+      };
+    }
+  }
+  return null;
+}
+
+/** Botón de correo compatible con Gmail, Outlook y Apple Mail. */
+function botonEmail_(texto, url, estilo) {
+  const fondo  = estilo === 'whatsapp' ? EMAIL_COLORS_.whatsapp : (estilo === 'primario' ? EMAIL_COLORS_.verde : '#FFFFFF');
+  const color  = estilo === 'secundario' ? EMAIL_COLORS_.verde : '#FFFFFF';
+  const borde  = estilo === 'secundario' ? '1px solid #C6D5CB' : `1px solid ${fondo}`;
+  return `<td style="padding:0 8px 8px 0;"><a href="${url}" style="display:inline-block; background-color:${fondo}; color:${color}; border:${borde}; padding:12px 20px; border-radius:8px; font-size:14px; font-weight:600; text-decoration:none; white-space:nowrap; font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">${texto}</a></td>`;
+}
+
+/** Etiqueta de sección en versalitas. */
+function etiquetaEmail_(texto) {
+  return `<p style="margin:0 0 12px 0; font-size:11px; letter-spacing:1.3px; text-transform:uppercase; color:${EMAIL_COLORS_.etiqueta}; font-weight:600;">${texto}</p>`;
+}
+
+/** Separador horizontal entre bloques. */
+function separadorEmail_() {
+  return `<div style="height:1px; line-height:1px; font-size:0; background-color:${EMAIL_COLORS_.borde}; margin:26px 0;">&nbsp;</div>`;
+}
+
+/** Fila etiqueta / valor. */
+function filaEmail_(etiqueta, valorHtml) {
+  return `<tr><td style="padding:9px 14px 9px 0; border-bottom:1px solid ${EMAIL_COLORS_.bordeSuave}; font-size:14px; color:${EMAIL_COLORS_.textoSuave}; width:38%; vertical-align:top;">${etiqueta}</td><td style="padding:9px 0; border-bottom:1px solid ${EMAIL_COLORS_.bordeSuave}; font-size:14px; color:${EMAIL_COLORS_.textoFuerte}; font-weight:500; vertical-align:top;">${valorHtml}</td></tr>`;
+}
+
+/** Chip de estado. */
+function chipEmail_(texto, tono) {
+  const paleta = tono === 'aplica'
+    ? { bg: '#FBF0D8', fg: '#8A5F0C' }
+    : (tono === 'noAplica' ? { bg: '#E9F2EC', fg: '#2C6B47' } : { bg: '#EEF2EC', fg: '#5A665A' });
+  return `<span style="display:inline-block; background-color:${paleta.bg}; color:${paleta.fg}; font-size:11px; font-weight:700; letter-spacing:0.4px; padding:6px 11px; border-radius:6px; margin:0 8px 8px 0;">${texto}</span>`;
+}
+
+/** Encabezado verde compartido por ambos correos. */
+function encabezadoEmail_(opciones) {
+  const metas = (opciones.metas || []).map(m =>
+    `<td style="padding:0 26px 0 0; font-size:11px; letter-spacing:0.7px; text-transform:uppercase; color:${EMAIL_COLORS_.verdeTenue}; vertical-align:top;">${m.etiqueta}<br><span style="font-size:14px; color:#FFFFFF; letter-spacing:0; text-transform:none; font-weight:600;">${m.valor}</span></td>`
+  ).join('');
+  const bloqueMetas = metas
+    ? `<table border="0" cellpadding="0" cellspacing="0" style="margin-top:18px; border-top:1px solid rgba(255,255,255,0.16); padding-top:16px; width:100%;"><tr><td style="padding-top:16px;"><table border="0" cellpadding="0" cellspacing="0"><tr>${metas}</tr></table></td></tr></table>`
+    : '';
+  return `<tr><td style="background-color:${EMAIL_COLORS_.verdeOscuro}; padding:26px 30px;">
+    <table border="0" cellpadding="0" cellspacing="0" style="margin-bottom:18px;"><tr>
+      <td style="width:26px; height:26px; background-color:#EAF3ED; color:${EMAIL_COLORS_.verdeOscuro}; border-radius:6px; text-align:center; font-size:12px; font-weight:700; font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">EA</td>
+      <td style="padding-left:10px; font-size:12px; letter-spacing:1.6px; text-transform:uppercase; color:${EMAIL_COLORS_.verdeClaro}; font-weight:600;">Ejecutiva Ambiental</td>
+    </tr></table>
+    <p style="margin:0 0 6px 0; font-size:11px; letter-spacing:1.6px; text-transform:uppercase; color:${EMAIL_COLORS_.verdeTenue}; font-weight:600;">${opciones.kicker}</p>
+    <h1 style="margin:0 0 4px 0; font-size:22px; line-height:1.25; color:#FFFFFF; font-weight:600;">${opciones.titulo}</h1>
+    <p style="margin:0; font-size:13px; color:${EMAIL_COLORS_.verdeClaro};">${opciones.subtitulo}</p>
+    ${bloqueMetas}
+  </td></tr>`;
+}
+
+/** Pie compartido. */
+function pieEmail_(lineas) {
+  const cuerpo = lineas.map(l => `<p style="margin:0 0 4px 0; font-size:11px; color:#8A948A; line-height:1.6;">${l}</p>`).join('');
+  return `<tr><td style="background-color:${EMAIL_COLORS_.panel}; border-top:1px solid ${EMAIL_COLORS_.borde}; padding:20px 30px; text-align:center;">${cuerpo}</td></tr>`;
+}
+
+/** Envoltura completa del correo (fondo, ancho fijo, tipografía). */
+function envolturaEmail_(preheader, contenidoFilas) {
+  return `<!DOCTYPE html><html><body style="margin:0; padding:0; background-color:${EMAIL_COLORS_.fondo}; font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif; color:${EMAIL_COLORS_.texto};">
+<div style="display:none; max-height:0; overflow:hidden; opacity:0; color:transparent; font-size:1px; line-height:1px;">${preheader}</div>
+<table width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color:${EMAIL_COLORS_.fondo}; padding:20px;"><tr><td align="center">
+<table width="600" border="0" cellpadding="0" cellspacing="0" style="max-width:600px; background-color:#FFFFFF; border:1px solid #E2E7E0; border-radius:10px; overflow:hidden;">
+${contenidoFilas}
+</table></td></tr></table></body></html>`;
+}
+
 function enviarNotificacionEquipo(data, files, carpetaCliente, sheetUrl) {
   const timestamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'dd/MM/yyyy HH:mm');
-  let filesListHTML = '';
+  const contacto = contactoWhatsAppCliente_(data);
+
+  // ── Acciones ──────────────────────────────────────────────────────────────
+  // El botón de WhatsApp sólo se imprime si hay un teléfono utilizable.
+  let botonesHTML = '';
+  if (contacto) botonesHTML += botonEmail_('Contactar por WhatsApp', contacto.url, 'whatsapp');
+  botonesHTML += botonEmail_('Ver carpeta en Drive', carpetaCliente.getUrl(), 'secundario');
+  botonesHTML += botonEmail_('Ver perfil de datos', sheetUrl, 'secundario');
+
+  const mensajeHTML = contacto
+    ? `<div style="margin-top:16px; background-color:${EMAIL_COLORS_.panel}; border:1px solid ${EMAIL_COLORS_.borde}; border-left:3px solid ${EMAIL_COLORS_.whatsapp}; border-radius:0 8px 8px 0; padding:16px;">
+        ${etiquetaEmail_('Mensaje de seguimiento · seleccione y copie')}
+        <div style="font-size:13px; line-height:1.65; color:#3A453B; white-space:pre-line;">${escHtml_(contacto.mensaje)}</div>
+      </div>`
+    : `<p style="margin:12px 0 0 0; font-size:13px; color:${EMAIL_COLORS_.textoSuave};">No se capturó un teléfono utilizable para WhatsApp. El contacto deberá realizarse por correo.</p>`;
+
+  // ── Servicios ─────────────────────────────────────────────────────────────
+  const chipNom  = data.aplica_nom020 === 'si'
+    ? chipEmail_('NOM-020-STPS · SÍ APLICA', 'aplica')
+    : chipEmail_('NOM-020-STPS · NO APLICA', 'noAplica');
+  const chipPipc = data.requiere_pipc === 'si'
+    ? chipEmail_('PIPC · SÍ REQUIERE', 'aplica')
+    : chipEmail_('PIPC · NO REQUIERE', 'noAplica');
+
+  // ── Documentación ─────────────────────────────────────────────────────────
+  let filasArchivos = '';
   if (files.length > 0) {
-    files.forEach(f => { filesListHTML += `<tr><td style="padding: 8px 0; border-bottom: 1px solid #eee;"><a href="${f.url}" style="color:#1e5a3e; text-decoration:none; font-weight:600;">${f.label}</a></td><td style="padding: 8px 0; border-bottom: 1px solid #eee; text-align:right; color:#777; font-size:12px;">${formatFileSize(f.size)}</td></tr>`; });
-  } else { filesListHTML = '<tr><td colspan="2" style="padding:10px; color:#999; font-style:italic;">No se adjuntaron archivos</td></tr>'; }
-  const tagNom = data.aplica_nom020 === 'si' ? '<span style="background:#fff3cd; color:#856404; padding:4px 8px; border-radius:4px; font-weight:bold; font-size:11px;">SI APLICA</span>' : '<span style="background:#e8f5e9; color:#2e7d32; padding:4px 8px; border-radius:4px; font-weight:bold; font-size:11px;">NO APLICA</span>';
-  const tagPipc = data.requiere_pipc === 'si' ? '<span style="background:#fff3cd; color:#856404; padding:4px 8px; border-radius:4px; font-weight:bold; font-size:11px;">SI REQUIERE</span>' : '<span style="background:#e8f5e9; color:#2e7d32; padding:4px 8px; border-radius:4px; font-weight:bold; font-size:11px;">NO REQUIERE</span>';
-  const nom020DetailsHTML = data.aplica_nom020 === 'si'
-    ? `<h3 style="color:#1e5a3e; border-bottom:2px solid #1e5a3e; padding-bottom:8px;">Datos NOM-020-STPS</h3><table width="100%" border="0" cellspacing="0" cellpadding="5" style="font-size:14px; color:#333; margin-bottom:20px;"><tr><td width="40%" style="font-weight:bold; color:#555;">Jefe de Mantenimiento / Responsable:</td><td>${data.jefe_mantenimiento || '-'}</td></tr><tr><td style="font-weight:bold; color:#555;">Testigo 1 (Nombre y Puesto):</td><td>${data.testigo1 || '-'}</td></tr><tr><td style="font-weight:bold; color:#555;">Testigo 2 (Nombre y Puesto):</td><td>${data.testigo2 || '-'}</td></tr></table>`
+    files.forEach(f => {
+      filasArchivos += `<tr><td style="padding:10px 0; border-bottom:1px solid ${EMAIL_COLORS_.bordeSuave}; font-size:13px;"><a href="${f.url}" style="color:${EMAIL_COLORS_.verde}; font-weight:600; text-decoration:none;">${escHtml_(f.label)}</a></td><td style="padding:10px 0; border-bottom:1px solid ${EMAIL_COLORS_.bordeSuave}; text-align:right; color:#8A948A; font-size:12px; white-space:nowrap;">${formatFileSize(f.size)}</td></tr>`;
+    });
+  } else {
+    filasArchivos = `<tr><td colspan="2" style="padding:10px 0; color:#8A948A; font-style:italic; font-size:13px;">No se adjuntaron archivos</td></tr>`;
+  }
+
+  // ── NOM-020: sólo si aplica ───────────────────────────────────────────────
+  const bloqueNom020 = data.aplica_nom020 === 'si'
+    ? separadorEmail_() + etiquetaEmail_('NOM-020-STPS') +
+      `<table width="100%" border="0" cellpadding="0" cellspacing="0">
+        ${filaEmail_('Jefe de mantenimiento', valorOGuion_(data.jefe_mantenimiento))}
+        ${filaEmail_('Testigo 1', valorOGuion_(data.testigo1))}
+        ${filaEmail_('Testigo 2', valorOGuion_(data.testigo2))}
+      </table>`
     : '';
-  const htmlBody = `<!DOCTYPE html><html><body style="margin:0; padding:0; background-color:#f4f6f8; font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;"><table width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color:#f4f6f8; padding:20px;"><tr><td align="center"><table width="600" border="0" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 4px 15px rgba(0,0,0,0.05);"><tr><td style="background-color:#1e5a3e; padding:30px; text-align:center;"><h1 style="color:#ffffff; margin:0; font-size:24px; font-weight:700;">Nuevo Perfil de Datos</h1><p style="color:#a8e6cf; margin:5px 0 0 0; font-size:14px;">${data.razon_social || 'Cliente Nuevo'}</p><p style="color:#a8e6cf; margin:3px 0 0 0; font-size:12px;">Sucursal: ${data.sucursal || 'N/A'}</p></td></tr><tr><td style="padding:30px;"><p style="text-align:right; font-size:11px; color:#999; margin-top:0;">Recibido: ${timestamp}</p><h3 style="color:#1e5a3e; border-bottom:2px solid #1e5a3e; padding-bottom:8px; margin-top:0;">Información de Contacto</h3><table width="100%" border="0" cellspacing="0" cellpadding="5" style="font-size:14px; color:#333; margin-bottom:20px;"><tr><td width="30%" style="font-weight:bold; color:#555;">Solicitante:</td><td>${data.nombre_solicitante || '-'}</td></tr><tr><td style="font-weight:bold; color:#555;">Sucursal:</td><td><strong>${data.sucursal || '-'}</strong></td></tr><tr><td style="font-weight:bold; color:#555;">Teléfono:</td><td><a href="tel:${data.telefono_empresa}" style="text-decoration:none; color:#333;">${data.telefono_empresa || '-'}</a></td></tr><tr><td style="font-weight:bold; color:#555;">Correo:</td><td><a href="mailto:${data.correo_informe}" style="color:#1e5a3e; font-weight:bold;">${data.correo_informe || '-'}</a></td></tr><tr><td style="font-weight:bold; color:#555;">Giro:</td><td>${data.giro || '-'}</td></tr></table><h3 style="color:#1e5a3e; border-bottom:2px solid #1e5a3e; padding-bottom:8px;">Servicios Solicitados</h3><table width="100%" border="0" cellspacing="0" cellpadding="5" style="font-size:14px; color:#333; margin-bottom:20px;"><tr><td width="50%"><strong>NOM-020-STPS:</strong> ${tagNom}</td><td width="50%"><strong>Prot. Civil (PIPC):</strong> ${tagPipc}</td></tr></table>${nom020DetailsHTML}<div style="background-color:#fff8e1; border-left:4px solid #ffc107; padding:15px; margin-bottom:25px; border-radius:4px;"><strong style="color:#f57f17; font-size:12px; text-transform:uppercase;">FECHAS PREFERIDAS PARA EVALUACIÓN:</strong><p style="margin:8px 0 0 0; font-size:14px; color:#333; line-height:1.6;">${data.fechas_preferidas || 'No especificadas'}</p></div><h3 style="color:#1e5a3e; border-bottom:2px solid #1e5a3e; padding-bottom:8px;">Documentación Adjunta (${files.length})</h3><table width="100%" border="0" cellspacing="0" cellpadding="0" style="font-size:13px; color:#333;">${filesListHTML}</table><table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-top:30px;"><tr><td align="center"><a href="${carpetaCliente.getUrl()}" style="background-color:#1e5a3e; color:#ffffff; padding:12px 25px; text-decoration:none; border-radius:5px; font-weight:bold; font-size:14px; margin-right:10px; display:inline-block;">Ver Carpeta Drive</a><a href="${sheetUrl}" style="background-color:#2196f3; color:#ffffff; padding:12px 25px; text-decoration:none; border-radius:5px; font-weight:bold; font-size:14px; display:inline-block;">Ver Perfil Excel</a></td></tr></table></td></tr><tr><td style="background-color:#f8f9fa; padding:15px; text-align:center; border-top:1px solid #eee; font-size:11px; color:#888;">Sistema de Registro Automático v7.1 - ${CONFIG.COMPANY_NAME}<br>Este es un mensaje automático, no responder.</td></tr></table></td></tr></table></body></html>`;
-  GmailApp.sendEmail(CONFIG.EMAIL_TO.join(','), `Nuevo Registro - ${data.razon_social} - ${data.sucursal}`, 'Su cliente de correo no soporta HTML.', { htmlBody: htmlBody, name: CONFIG.COMPANY_NAME });
+
+  const telefonoContactoHTML = contacto
+    ? `<a href="tel:${escHtml_(contacto.telefonoMostrado)}" style="color:${EMAIL_COLORS_.verde}; font-weight:600; text-decoration:none;">${escHtml_(contacto.telefonoMostrado)}</a>`
+    : valorOGuion_(data.telefono_responsable);
+
+  const cuerpo = `<tr><td style="padding:26px 30px;">
+    ${etiquetaEmail_('Acciones')}
+    <table border="0" cellpadding="0" cellspacing="0"><tr>${botonesHTML}</tr></table>
+    ${mensajeHTML}
+
+    ${separadorEmail_()}
+    ${etiquetaEmail_('Servicios solicitados')}
+    <div>${chipNom}${chipPipc}</div>
+
+    ${separadorEmail_()}
+    ${etiquetaEmail_('Contacto')}
+    <table width="100%" border="0" cellpadding="0" cellspacing="0">
+      ${filaEmail_('Solicitante', valorOGuion_(data.nombre_solicitante))}
+      ${filaEmail_('Responsable en sitio', valorOGuion_(data.responsable))}
+      ${filaEmail_('Teléfono de contacto', telefonoContactoHTML)}
+      ${filaEmail_('Teléfono de empresa', valorOGuion_(data.telefono_empresa))}
+      ${filaEmail_('Correo para informe', data.correo_informe ? `<a href="mailto:${escHtml_(data.correo_informe)}" style="color:${EMAIL_COLORS_.verde}; font-weight:600; text-decoration:none;">${escHtml_(data.correo_informe)}</a>` : '—')}
+    </table>
+
+    ${separadorEmail_()}
+    ${etiquetaEmail_('Empresa')}
+    <table width="100%" border="0" cellpadding="0" cellspacing="0">
+      ${filaEmail_('RFC', valorOGuion_(data.rfc))}
+      ${filaEmail_('Giro', valorOGuion_(data.giro))}
+      ${filaEmail_('Dirección de evaluación', valorOGuion_(data.direccion_evaluacion))}
+      ${filaEmail_('Registro patronal', valorOGuion_(data.registro_patronal))}
+    </table>
+    ${bloqueNom020}
+
+    ${separadorEmail_()}
+    <div style="background-color:${EMAIL_COLORS_.ambarFondo}; border-left:3px solid ${EMAIL_COLORS_.ambar}; padding:14px 16px; border-radius:0 6px 6px 0;">
+      <p style="margin:0 0 6px 0; font-size:11px; letter-spacing:1.3px; text-transform:uppercase; color:${EMAIL_COLORS_.ambarTexto}; font-weight:600;">Fechas preferidas para evaluación</p>
+      <p style="margin:0; font-size:14px; color:#463A20; line-height:1.55;">${valorOGuion_(data.fechas_preferidas) === '—' ? 'No especificadas' : escHtml_(data.fechas_preferidas)}</p>
+    </div>
+
+    ${separadorEmail_()}
+    ${etiquetaEmail_(`Documentación adjunta · ${files.length}`)}
+    <table width="100%" border="0" cellpadding="0" cellspacing="0">${filasArchivos}</table>
+  </td></tr>`;
+
+  const htmlBody = envolturaEmail_(
+    `${escHtml_(data.razon_social || 'Cliente nuevo')} · ${escHtml_(data.sucursal || 'Matriz')} · recibido ${timestamp}`,
+    encabezadoEmail_({
+      kicker: 'Registro SEADB',
+      titulo: escHtml_(data.razon_social || 'Cliente nuevo'),
+      subtitulo: `Sucursal: ${valorOGuion_(data.sucursal)}`,
+      metas: [
+        { etiqueta: 'Recibido',   valor: timestamp },
+        { etiqueta: 'RFC',        valor: valorOGuion_(data.rfc) },
+        { etiqueta: 'Documentos', valor: `${files.length} ${files.length === 1 ? 'archivo' : 'archivos'}` }
+      ]
+    }) + cuerpo + pieEmail_([
+      `<strong style="color:#5A665A;">${CONFIG.COMPANY_NAME}</strong> · Registro automático SEADB`,
+      'Mensaje generado por el sistema. No responder a este correo.'
+    ])
+  );
+
+  GmailApp.sendEmail(
+    CONFIG.EMAIL_TO.join(','),
+    `Nuevo registro · ${data.razon_social} — ${data.sucursal}`,
+    textoPlanoEquipo_(data, files, carpetaCliente, sheetUrl, contacto),
+    { htmlBody: htmlBody, name: CONFIG.COMPANY_NAME }
+  );
 }
-function enviarConfirmacionCliente(data, carpetaCliente) {
+
+/** Versión en texto plano del correo interno, para clientes sin HTML. */
+function textoPlanoEquipo_(data, files, carpetaCliente, sheetUrl, contacto) {
+  const lineas = [
+    `NUEVO REGISTRO SEADB`,
+    `Cliente: ${data.razon_social || '-'}`,
+    `Sucursal: ${data.sucursal || '-'}`,
+    `RFC: ${data.rfc || '-'}`,
+    `Solicitante: ${data.nombre_solicitante || '-'}`,
+    `Responsable en sitio: ${data.responsable || '-'}`,
+    `Correo: ${data.correo_informe || '-'}`,
+    `Documentos adjuntos: ${files.length}`,
+    ``,
+    `Carpeta Drive: ${carpetaCliente.getUrl()}`,
+    `Perfil de datos: ${sheetUrl}`
+  ];
+  if (contacto) {
+    lineas.push(``, `Contactar por WhatsApp: ${contacto.url}`, ``, contacto.mensaje);
+  }
+  return lineas.join('\n');
+}
+
+function enviarConfirmacionCliente(data, carpetaCliente, files) {
   const emailCliente = data.correo_informe;
   if (!emailCliente || emailCliente.trim() === '') return;
-  const htmlCliente = `<!DOCTYPE html><html><body style="margin:0; padding:0; background-color:#f4f6f8; font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;"><table width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color:#f4f6f8; padding:20px;"><tr><td align="center"><table width="600" border="0" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 4px 15px rgba(0,0,0,0.05);"><tr><td style="background-color:#1e5a3e; padding:30px; text-align:center;"><h1 style="color:#ffffff; margin:0; font-size:24px; font-weight:700;">¡Información Recibida!</h1><p style="color:#a8e6cf; margin:8px 0 0 0; font-size:14px;">Ejecutiva Ambiental</p></td></tr><tr><td style="padding:30px;"><p style="font-size:16px; color:#333; line-height:1.6; margin-top:0;">Estimado(a) <strong>${data.nombre_solicitante || 'Cliente'}</strong>,</p><p style="font-size:15px; color:#333; line-height:1.8;">Hemos recibido correctamente su <strong>Perfil de Datos</strong> para:</p><div style="background-color:#e8f5e9; border-left:4px solid #4caf50; padding:15px; margin:20px 0; border-radius:4px;"><p style="margin:0; font-size:14px; color:#2e7d32; line-height:1.6;"><strong>Empresa:</strong> ${data.razon_social}<br><strong>Sucursal:</strong> ${data.sucursal || 'N/A'}<br><strong>RFC:</strong> ${data.rfc || 'N/A'}</p></div><p style="font-size:15px; color:#333; line-height:1.8;">Nuestro equipo de <strong>Atención a Clientes</strong> revisará la información y se comunicará con usted en las próximas <strong>24 horas</strong> para coordinar los detalles del servicio.</p><div style="background-color:#fff3cd; border-left:4px solid #ffc107; padding:15px; margin:25px 0; border-radius:4px;"><p style="margin:0; font-size:13px; color:#856404; line-height:1.6;"><strong>¿Necesita realizar algún cambio?</strong><br>Por favor comuníquese con nosotros:<br><br><strong>${CONFIG.SUPPORT_PHONE}</strong><br><strong>${CONFIG.SUPPORT_EMAIL}</strong></p></div><p style="font-size:14px; color:#666; line-height:1.6;">Gracias por su confianza en <strong>Ejecutiva Ambiental</strong>.</p><p style="font-size:14px; color:#666; margin-bottom:0;">Atentamente,<br><strong style="color:#1e5a3e;">Equipo de Ejecutiva Ambiental</strong></p></td></tr><tr><td style="background-color:#f8f9fa; padding:15px; text-align:center; border-top:1px solid #eee; font-size:11px; color:#888;">Sistema de Registro Automático - ${CONFIG.COMPANY_NAME}<br>Este es un mensaje automático, por favor no responder a este correo.</td></tr></table></td></tr></table></body></html>`;
-  GmailApp.sendEmail(emailCliente, '✓ Información Recibida - Ejecutiva Ambiental', 'Su cliente de correo no soporta HTML.', { htmlBody: htmlCliente, name: CONFIG.COMPANY_NAME });
+
+  const timestamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'dd/MM/yyyy HH:mm');
+  const nombre = primerNombre_(data.nombre_solicitante) || primerNombre_(data.responsable);
+  const saludo = nombre ? `Estimado(a) <strong>${escHtml_(data.nombre_solicitante || data.responsable)}</strong>,` : 'Estimado(a) cliente,';
+  const soporteWhatsApp = normalizarTelefonoWhatsApp_(CONFIG.SUPPORT_PHONE);
+
+  const pasos = [
+    { titulo: 'Revisión de su información', detalle: 'Nuestro equipo técnico valida los datos y la documentación que envió.' },
+    { titulo: 'Contacto en las próximas 24 horas', detalle: 'Atención a Clientes se comunicará con usted para confirmar los detalles del servicio.' },
+    { titulo: 'Programación de la evaluación', detalle: 'Acordamos la fecha de visita considerando su disponibilidad.' }
+  ];
+  const pasosHTML = pasos.map((p, i) =>
+    `<tr>
+      <td style="padding:14px 14px 14px 0; border-bottom:1px solid ${EMAIL_COLORS_.bordeSuave}; vertical-align:top; width:24px;">
+        <div style="width:24px; height:24px; line-height:24px; border-radius:12px; background-color:#E9F2EC; color:${EMAIL_COLORS_.verde}; font-size:12px; font-weight:700; text-align:center;">${i + 1}</div>
+      </td>
+      <td style="padding:14px 0; border-bottom:1px solid ${EMAIL_COLORS_.bordeSuave}; vertical-align:top;">
+        <strong style="display:block; color:${EMAIL_COLORS_.textoFuerte}; font-size:14px; margin-bottom:2px;">${p.titulo}</strong>
+        <span style="color:${EMAIL_COLORS_.textoSuave}; font-size:13px; line-height:1.5;">${p.detalle}</span>
+      </td>
+    </tr>`
+  ).join('');
+
+  const chipsServicios =
+    (data.aplica_nom020 === 'si' ? chipEmail_('NOM-020-STPS', 'aplica') : '') +
+    (data.requiere_pipc === 'si' ? chipEmail_('Programa Interno de Protección Civil', 'aplica') : '');
+
+  // Las fechas son texto libre: van en una fila completa, nunca recortadas.
+  const filaFechas = data.fechas_preferidas
+    ? filaEmail_('Fechas solicitadas', escHtml_(data.fechas_preferidas))
+    : '';
+  const filaDocumentos = files && files.length > 0
+    ? filaEmail_('Documentos recibidos', `${files.length} ${files.length === 1 ? 'archivo' : 'archivos'}`)
+    : '';
+
+  const botonSoporte = soporteWhatsApp
+    ? `<table border="0" cellpadding="0" cellspacing="0" style="margin-top:14px;"><tr>${botonEmail_('Escribirnos por WhatsApp', `https://wa.me/${soporteWhatsApp}`, 'whatsapp')}</tr></table>`
+    : '';
+
+  const cuerpo = `<tr><td style="padding:26px 30px;">
+    <p style="margin:0 0 16px 0; font-size:15px; line-height:1.7; color:${EMAIL_COLORS_.texto};">${saludo}</p>
+    <p style="margin:0 0 16px 0; font-size:15px; line-height:1.7; color:${EMAIL_COLORS_.texto};">Gracias por enviar su perfil de datos. A continuación encontrará el resumen de lo que registramos y los siguientes pasos del proceso.</p>
+
+    ${separadorEmail_()}
+    ${etiquetaEmail_('Datos registrados')}
+    <table width="100%" border="0" cellpadding="0" cellspacing="0">
+      ${filaEmail_('Empresa', valorOGuion_(data.razon_social))}
+      ${filaEmail_('Sucursal', valorOGuion_(data.sucursal))}
+      ${filaEmail_('RFC', valorOGuion_(data.rfc))}
+      ${filaDocumentos}
+      ${filaFechas}
+    </table>
+
+    ${chipsServicios ? separadorEmail_() + etiquetaEmail_('Servicios solicitados') + `<div>${chipsServicios}</div>` : ''}
+
+    ${separadorEmail_()}
+    ${etiquetaEmail_('Qué sigue')}
+    <table width="100%" border="0" cellpadding="0" cellspacing="0">${pasosHTML}</table>
+
+    ${separadorEmail_()}
+    <div style="background-color:${EMAIL_COLORS_.panel}; border:1px solid ${EMAIL_COLORS_.borde}; border-radius:8px; padding:18px;">
+      ${etiquetaEmail_('¿Necesita corregir algo o tiene dudas?')}
+      <table width="100%" border="0" cellpadding="0" cellspacing="0">
+        ${filaEmail_('Atención a Clientes', `<a href="tel:${escHtml_(CONFIG.SUPPORT_PHONE)}" style="color:${EMAIL_COLORS_.verde}; font-weight:600; text-decoration:none;">${escHtml_(CONFIG.SUPPORT_PHONE)}</a>`)}
+        ${filaEmail_('Correo', `<a href="mailto:${escHtml_(CONFIG.SUPPORT_EMAIL)}" style="color:${EMAIL_COLORS_.verde}; font-weight:600; text-decoration:none;">${escHtml_(CONFIG.SUPPORT_EMAIL)}</a>`)}
+      </table>
+      ${botonSoporte}
+    </div>
+
+    <p style="margin:24px 0 16px 0; font-size:15px; line-height:1.7; color:${EMAIL_COLORS_.texto};">Agradecemos su confianza.</p>
+    <p style="margin:0; font-size:14px; line-height:1.6; color:${EMAIL_COLORS_.textoSuave};">Atentamente,<br><strong style="color:${EMAIL_COLORS_.verde};">Equipo de ${CONFIG.COMPANY_NAME}</strong></p>
+  </td></tr>`;
+
+  const htmlCliente = envolturaEmail_(
+    `Recibimos su perfil de datos · ${escHtml_(data.razon_social || '')} ${escHtml_(data.sucursal || '')}`,
+    encabezadoEmail_({
+      kicker: 'Acuse de recepción',
+      titulo: 'Recibimos su información',
+      subtitulo: 'Su perfil de datos quedó registrado correctamente.',
+      metas: [{ etiqueta: 'Fecha de recepción', valor: timestamp }]
+    }) + cuerpo + pieEmail_([
+      `<strong style="color:#5A665A;">${CONFIG.COMPANY_NAME}</strong> · Seguridad, higiene y medio ambiente`,
+      `Mensaje automático generado por SEADB. Para cualquier aclaración, escriba a ${escHtml_(CONFIG.SUPPORT_EMAIL)}`
+    ])
+  );
+
+  const textoPlano = [
+    'Recibimos su información.',
+    '',
+    `Empresa: ${data.razon_social || '-'}`,
+    `Sucursal: ${data.sucursal || '-'}`,
+    `RFC: ${data.rfc || '-'}`,
+    `Fecha de recepción: ${timestamp}`,
+    '',
+    'Qué sigue:',
+    '1. Revisión de su información.',
+    '2. Contacto en las próximas 24 horas.',
+    '3. Programación de la evaluación.',
+    '',
+    `Atención a Clientes: ${CONFIG.SUPPORT_PHONE} · ${CONFIG.SUPPORT_EMAIL}`
+  ].join('\n');
+
+  GmailApp.sendEmail(emailCliente, `Recibimos su información · ${CONFIG.COMPANY_NAME}`, textoPlano, { htmlBody: htmlCliente, name: CONFIG.COMPANY_NAME });
 }
+
 function enviarEmailSimpleFallback(data, carpetaCliente, sheetUrl) {
   const subject = `NUEVO REGISTRO: ${data.razon_social} - ${data.sucursal}`;
-  const body = `NUEVO PERFIL DE DATOS RECIBIDO\nCliente: ${data.razon_social}\nSucursal: ${data.sucursal}\nRFC: ${data.rfc}\nCarpeta Drive: ${carpetaCliente.getUrl()}`;
+  const contacto = contactoWhatsAppCliente_(data);
+  let body = `NUEVO PERFIL DE DATOS RECIBIDO\nCliente: ${data.razon_social}\nSucursal: ${data.sucursal}\nRFC: ${data.rfc}\nCarpeta Drive: ${carpetaCliente.getUrl()}`;
+  if (contacto) body += `\n\nContactar por WhatsApp: ${contacto.url}\n\n${contacto.mensaje}`;
   GmailApp.sendEmail(CONFIG.EMAIL_TO.join(','), subject, body);
 }
+/**
+ * Envía ambos correos con datos ficticios a un solo destinatario, para
+ * revisarlos en la bandeja real antes de liberarlos al equipo.
+ * Uso desde el editor de Apps Script:
+ *   probarCorreosRegistro('correo@ejecutivambiental.com')
+ * No escribe en Drive ni en las hojas de cálculo.
+ */
+function probarCorreosRegistro(destinatario) {
+  const correo = destinatario || Session.getActiveUser().getEmail();
+  const dataPrueba = {
+    razon_social: 'EMPRESA DE PRUEBA, S.A. DE C.V.',
+    sucursal: 'Planta Puebla',
+    rfc: 'EPR980412K42',
+    nombre_solicitante: 'Ing. Ricardo Palma Estrada',
+    responsable: 'Ing. Ricardo Palma Estrada',
+    telefono_responsable: '222 145 8890',
+    telefono_empresa: '222 231 4400',
+    correo_informe: correo,
+    giro: 'Manufactura metalmecánica',
+    direccion_evaluacion: 'Av. Industrial 220, Parque Industrial Puebla 2000, Puebla, Pue.',
+    registro_patronal: 'C1234567890',
+    aplica_nom020: 'si',
+    requiere_pipc: 'no',
+    jefe_mantenimiento: 'Ing. Óscar Villanueva',
+    testigo1: 'Marisol Cruz — Coordinadora SST',
+    testigo2: 'Jorge Medina — Supervisor de planta',
+    fechas_preferidas: 'Segunda quincena de septiembre, preferentemente martes o jueves por la mañana.'
+  };
+  const filesPrueba = [
+    { label: 'Constancia de situación fiscal.pdf', url: 'https://drive.google.com/', size: 421888 },
+    { label: 'Layout de planta.pdf', url: 'https://drive.google.com/', size: 1887436 }
+  ];
+  const carpetaFalsa = { getUrl: function () { return 'https://drive.google.com/'; } };
+  const sheetUrlFalso = 'https://docs.google.com/spreadsheets/';
+
+  // Ambos correos se redirigen al destinatario de prueba.
+  const destinosReales = CONFIG.EMAIL_TO.slice();
+  CONFIG.EMAIL_TO = [correo];
+  try {
+    enviarNotificacionEquipo(dataPrueba, filesPrueba, carpetaFalsa, sheetUrlFalso);
+    Utilities.sleep(1000);
+    enviarConfirmacionCliente(dataPrueba, carpetaFalsa, filesPrueba);
+    // Variante sin teléfono: verifica que el correo se envía sin botón de WhatsApp.
+    Utilities.sleep(1000);
+    const sinTelefono = Object.assign({}, dataPrueba, {
+      razon_social: 'EMPRESA DE PRUEBA (SIN TELÉFONO)',
+      telefono_responsable: '',
+      telefono_empresa: ''
+    });
+    enviarNotificacionEquipo(sinTelefono, [], carpetaFalsa, sheetUrlFalso);
+  } finally {
+    CONFIG.EMAIL_TO = destinosReales;
+  }
+  Logger.log('Correos de prueba enviados a ' + correo);
+}
+
 function enviarEmailEmergencia(error, logEntries) {
   GmailApp.sendEmail(CONFIG.EMAIL_TO[0], 'ERROR CRÍTICO - Sistema v2', `Error: ${error.toString()}\n\nLOGS:\n${logEntries.join('\n')}`);
 }
