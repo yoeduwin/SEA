@@ -2627,7 +2627,13 @@ function formatFileSize(bytes) {
 }
 var LEGAL_SUFFIX_REGEX_ = / S\.A\. DE C\.V\.| SA DE CV| S\.A\.| S\.C\./gi;
 function cleanCompanyName(name) { return sanitizeFileName((name || 'Cliente').replace(LEGAL_SUFFIX_REGEX_, '').trim()); }
-function sanitizeFileName(name) { return String(name || 'Sin_nombre').replace(/[^a-z0-9áéíóúñü ]/gi, '_').substring(0, 50); }
+// Recorta espacios en los extremos ANTES y DESPUES de normalizar. Sin esto,
+// una sucursal capturada como "OXXO FINSA " creaba en Drive una carpeta con el
+// espacio final, mientras que al buscarla el nombre llegaba ya recortado: la
+// comparacion "oxxo finsa " vs "oxxo finsa" nunca coincidia y el cliente
+// quedaba invisible para el sistema. El segundo trim cubre el caso en que el
+// truncado a 50 caracteres deje un espacio al final.
+function sanitizeFileName(name) { return String(name || 'Sin_nombre').trim().replace(/[^a-z0-9áéíóúñü ]/gi, '_').substring(0, 50).trim(); }
 function guardarLogEnDrive(carpetaCliente, logEntries, data) {
   try { const blob = Utilities.newBlob(logEntries.join('\n'), 'text/plain', `LOG_${Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'yyyyMMdd_HHmmss')}.txt`); carpetaCliente.createFile(blob); } catch (e) {}
 }

@@ -1619,6 +1619,23 @@ function runUnitTests() {
                next: function() { pendiente = false; return padreSinRfc; } };
     }
   };
+  // ── Espacios en los extremos del nombre de sucursal ─────────────────────
+  // Caso real: SEAPD creó "OXXO FINSA " (con espacio final) y SEAOT buscaba
+  // "OXXO FINSA"; la comparación fallaba y el cliente quedaba invisible.
+  _eq_('U86a: sanitizeFileName recorta el espacio final',
+    sanitizeFileName('OXXO FINSA '), 'OXXO FINSA');
+  _eq_('U86b: sanitizeFileName recorta el espacio inicial',
+    sanitizeFileName('  LIBRES'), 'LIBRES');
+  _eq_('U86c: nombre con espacios en ambos extremos y dentro',
+    sanitizeFileName('  PLANTA NORTE  '), 'PLANTA NORTE');
+  _check_('U86d: la carpeta creada con espacio final sigue siendo encontrable',
+    sanitizeFileName('OXXO FINSA ').toLowerCase() === sanitizeFileName('OXXO FINSA').toLowerCase());
+  // 49 caracteres, luego un espacio: al truncar a 50 el ultimo seria un
+  // espacio, y el segundo trim debe eliminarlo.
+  var corte50 = sanitizeFileName(Array(50).join('A') + ' PLANTA');
+  _eq_('U86e: el truncado a 50 no deja espacio al final', corte50.length, 49);
+  _check_('U86f: el nombre truncado no termina en espacio', !/ $/.test(corte50));
+
   _check_('U86: carpeta sin RFC no se adjudica por razón social',
     !folderMatchesClientBranch_(sucursalStub, 'BCA001206674', 'Matriz', 'BODEGA CRUZ AZUL SA DE CV'));
 
