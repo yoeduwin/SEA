@@ -205,6 +205,40 @@ Del mismo par de registros reales, tres cosas que hoy no rompen nada pero convie
 Y confirmado en las dos filas: **`REQUIERE_PIPC = NO`**, tal como describe §2.1. Los RFC de ambas
 (`CCO8605231N4`, `AAC151218QKA`) pasan `validarRFC_` sin problema.
 
+### 2.5 · Límite estructural: la columna 22 guarda un asesor por cliente, no por servicio
+
+Al precisar la regla de preservación (§4, Fase 1.2) aparece un problema que **ninguna versión de esa
+regla resuelve**, porque no está en la regla sino en la forma del dato.
+
+`fase4_GetTablero` no lee el asesor de la OT: lo resuelve en vivo con un mapa de
+**una sola entrada por cliente y sucursal**, y se lo asigna a *todas* las OT de esa pareja:
+
+```javascript
+asesorMap[rfc + '|' + suc] = asesor;                    // una entrada por RFC|Sucursal
+…
+asesor_consultor: asesorMap[rfc + '|' + suc] || '',     // aplicada a TODAS las OT de esa pareja
+```
+
+Entonces, si el asesor A trajo a un cliente y meses después el asesor B registra otro servicio para la
+misma sucursal, ninguna de las dos opciones es correcta:
+
+| Regla | Qué rompe |
+|---|---|
+| Conservar siempre a A | El servicio nuevo de B queda atribuido a A |
+| Guardar siempre a B (lo de hoy) | **Todas las OT históricas de A pasan a mostrar a B**, retroactivamente |
+
+La columna 22 simplemente no tiene la forma del dato: el asesor es un atributo **del servicio**, no
+**del cliente**. Por eso:
+
+- **`SOLICITUDES` es la fuente autoritativa** del asesor por registro — ahí sí hay una fila por
+  servicio, con su `ot_folio`.
+- **La columna 22 se degrada a conveniencia**: “último asesor conocido de esta sucursal”. La regla de
+  §4 (guardar el que viene, conservar solo si viene vacío) es la correcta para ese propósito.
+- **Límite conocido y aceptado por ahora**: mientras SEADB siga resolviendo el asesor con `asesorMap`,
+  su columna “Asesor/Consultor” seguirá siendo *el último*, no *el de cada OT*. Corregirlo es trabajo
+  de SEADB —resolver el asesor por OT vía `SOLICITUDES.ot_folio`— y queda **fuera de este alcance**,
+  anotado aquí para no descubrirlo después.
+
 ---
 
 ## 3. ¿Compagina con lo que se deriva? — el rastreo completo
@@ -309,9 +343,26 @@ misma solución:
 > caben el servicio solicitado, el asesor y su correo, sin tocar el contrato de 22 columnas, sin que
 > PORTAL los vea y sin depender de que SEAPD respete un campo que no conoce.
 
-Columnas propuestas: `timestamp · folio · portal_origen · asesor · correo_asesor · telefono_asesor ·
-RFC · sucursal · servicio_canonico · fechas_preferidas · link_carpeta · estatus`
+Columnas propuestas: `timestamp · folio · portal_origen · asesor · correo_acuse · telefono_asesor ·
+RFC · sucursal · servicio_canonico · fechas_preferidas · link_carpeta · estatus · ot_folio`
 (`RECIBIDA` → `OT_GENERADA` → `DESCARTADA`).
+
+#### Por qué `ot_folio` no es opcional
+
+Con la regla de un servicio por registro, **el mismo RFC y sucursal va a tener varias solicitudes
+abiertas a la vez** — es la consecuencia esperada, no un caso raro. Sin un identificador que ate cada
+solicitud a su OT:
+
+- SEAOT no puede saber **cuál** de las tres solicitudes pendientes está atendiendo, así que el
+  prellenado de la NOM no tiene de dónde elegir.
+- El embudo solicitud → OT no se puede auditar: `estatus = OT_GENERADA` diría *que* se generó una, pero
+  no *cuál*.
+
+El enlace tiene que vivir del lado de `SOLICITUDES`, no de `ORDENES_TRABAJO`. Se podría agregar una
+columna R a la hoja de OT —el guard es `getMaxColumns() < 17`, un mínimo, así que no reventaría—, pero
+`fase2_RegistrarOT` escribe exactamente 17 valores con `appendRow`, así que habría que tocarlo y
+arrastrar a SEAOT a la conversación. Poner `ot_folio` en la hoja nueva cuesta cero y no toca ningún
+contrato vigente.
 
 ### 3.6 🟠 La hoja de perfil no tiene dónde poner lo de PAIC
 
@@ -353,9 +404,14 @@ actual.**
    `hojas_campo_laboratorio`, `fotografias_laboratorio`, `croquis_laboratorio`,
    `hojas_campo_higiene`, `fotografias_higiene`, `croquis_higiene`. SEAPD no envía esas llaves, así
    que para él es literalmente un no-op. *(§3.4)*
-2. **Rama de preservación en el upsert**: con `portal_origen === 'PAIC'` y fila existente, conservar
-   `REQUIERE_PIPC` y `ASESOR_CONSULTOR` en vez de sobrescribirlos. Sutileza: hay que distinguir
-   **campo ausente** de **campo en `'no'`**. *(§2.1)*
+2. **Rama de preservación en el upsert**, con `portal_origen === 'PAIC'` y fila existente. La regla es
+   **conservar solo cuando el payload no trae el dato**, nunca de forma incondicional:
+   - `REQUIERE_PIPC`: PAIC nunca lo manda, así que siempre se conserva el valor previo en vez de
+     escribir `'NO'`. Sutileza: hay que distinguir **campo ausente** de **campo en `'no'`**, porque hoy
+     los dos colapsan al mismo `'NO'`.
+   - `ASESOR_CONSULTOR`: se conserva **solo si el payload viene vacío**. Si el registro trae asesor, se
+     guarda el que trae — de lo contrario un asesor B que registra un servicio nuevo quedaría atribuido
+     al asesor A del registro anterior. *(§2.1 y §2.5)*
 3. **Rama de correos**: el acuse se manda a `correo_acuse` en vez de a `correo_informe`. Tres líneas,
    sin tocar el cuerpo del correo. *(§2.3)*
 4. **Omitir el chip de PIPC** en el correo interno cuando el origen es PAIC. *(§2.1)*
@@ -387,7 +443,11 @@ actual.**
    “NOM-025-STPS · Iluminación” en vez de “NOM-020 NO APLICA”.
 4. **Imprimir el asesor y el origen** en el correo interno — dos filas en el bloque de contacto. Es el
    cambio más barato del plan y el que más contexto le da a Operaciones.
-5. **SEAOT prellena la NOM** desde `SOLICITUDES`, cerrando el embudo solicitud → OT.
+5. **SEAOT elige la solicitud y la cierra.** Al crear una OT para un RFC + sucursal, SEAOT lista las
+   solicitudes en estatus `RECIBIDA` de esa pareja; el operador escoge una y de ahí sale la NOM
+   prellenada. Al registrarse la OT, SEAOT escribe su folio en `ot_folio` de esa fila y la pasa a
+   `OT_GENERADA`. Sin ese paso de selección el prellenado es ambiguo en cuanto hay dos solicitudes
+   abiertas, que es el caso normal bajo la regla de un servicio por registro. *(§3.5)*
 
 ### Fase 4 — Deuda propia de PAIC
 
