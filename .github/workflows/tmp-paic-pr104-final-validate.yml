@@ -20,7 +20,7 @@ jobs:
         run: git fetch origin claude/zen-mayer-ocbfln
       - name: Validate changed-file scope
         run: |
-          test "$(git diff --name-only origin/claude/zen-mayer-ocbfln...HEAD | sort)" = $'BACKEND_FIXES.gs\nPAIC.html\n.github/workflows/tmp-paic-pr104-final-validate.yml'
+          test "$(git diff --name-only origin/claude/zen-mayer-ocbfln...HEAD | sort)" = $'.github/workflows/tmp-paic-pr104-final-validate.yml\nBACKEND_FIXES.gs\nPAIC.html'
       - name: Validate protected profile function
         run: |
           python3 - <<'PY'
