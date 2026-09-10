@@ -554,15 +554,31 @@ Sin esas llaves, los caminos vigentes permanecen intactos.
        existente llega con RFC, sucursal o `servicio_canonico` distintos de los persistidos, el
        backend devuelve un conflicto explícito y **no crea, mueve ni agrega archivos**. El formulario
        debe iniciar un registro nuevo —y por tanto una llave nueva— para esos datos modificados.
+     - **Un reintento antiguo no puede rejuvenecer `CLIENTES_MAESTRO`.** El `timestamp` de
+       `SOLICITUDES` se fija al crear la solicitud y se reutiliza en todos sus reintentos. En la rama
+       PAIC, ese instante original es también la versión lógica del upsert compartido: antes de
+       reescribir una fila existente de `CLIENTES_MAESTRO`, se compara su fecha de registro actual con
+       la fecha original de la solicitud. Si la fila actual tiene una fecha **igual o posterior**, el
+       reintento no vuelve a ejecutar el upsert; continúa únicamente con los artefactos propios de su
+       solicitud. Si la fila es anterior, sí aplica el upsert y escribe como fecha la original de la
+       solicitud, no la hora del reintento. Si una fecha existente no se puede interpretar durante un
+       reintento, se falla de forma conservadora para ese efecto: **no se pisa la fila compartida** y
+       se registra la advertencia. Así una solicitud A que perdió su respuesta no puede restaurar sus
+       datos viejos después de que una solicitud B —o cualquier registro posterior— haya actualizado
+       al mismo RFC+sucursal.
      - **Orden de escritura: fila → carpeta → `link_carpeta` → archivos.** La fila es el punto de
        commit porque es la escritura más barata y la única imprescindible; si algo muere después, el
        reintento la encuentra y continúa con el mismo folio. Cuando la carpeta se localiza o se crea,
        su URL se escribe o verifica idempotentemente en `SOLICITUDES.link_carpeta` **antes de responder
        éxito**, de modo que una fila creada antes que Drive nunca quede terminada sin enlace.
-     - **Cada paso se asegura antes de responder éxito**: localizar o crear la carpeta por folio y,
-       después, localizar o crear cada archivo esperado con `getFilesByName(nombre)`. Si el primer
-       intento murió después de la fila, el segundo crea la carpeta y completa `link_carpeta`; si
-       murió a media carga, completa únicamente los archivos faltantes.
+     - **Los archivos se verifican por contenido, no solo por nombre.** Para cada adjunto esperado, la
+       ruta PAIC debe reutilizar la lógica ya existente de `driveFileMatchesBlob_()` /
+       `storeBlobSafely_()`: si nombre, tamaño y digest corresponden al mismo contenido, el reintento
+       lo omite; si el asesor sustituyó el adjunto y llega contenido distinto con el mismo nombre, se
+       conserva como nueva versión mediante `versionedFileName_()` en vez de dar por satisfecho el
+       archivo antiguo. Ante una comparación inconclusa se conserva el entrante como versión, igual
+       que hace hoy `storeBlobSafely_()`. Así un archivo corregido entre intentos no queda descartado
+       por el simple hecho de conservar el nombre de su campo.
      - **La hoja de perfil también se trata como artefacto recuperable, no como creación ciega.** Si
        `generarPerfilSheet()` forma parte de la ruta PAIC, debe localizar/reutilizar el perfil
        correspondiente antes de crear otro; un reintento de la misma `submission_id` no debe dejar
@@ -577,12 +593,14 @@ Sin esas llaves, los caminos vigentes permanecen intactos.
 
      **Límite deliberado de idempotencia.** La garantía exactamente-una-vez se aplica a los artefactos
      operativos que no pueden duplicarse ni cruzarse: fila de `SOLICITUDES`, folio, carpeta,
-     `link_carpeta`, perfil, archivos y posteriormente el vínculo solicitud → OT. **Los correos son un
-     efecto secundario `at-least-once`**: si el servidor termina, envía el correo y la respuesta al
-     navegador se pierde, un reintento puede volver a enviar la notificación. Se acepta ese posible
-     duplicado excepcional frente al costo de introducir un outbox/ledger transaccional de correo.
-     La invariante que sí es dura en cada intento permanece intacta: **un acuse de PAIC nunca se manda
-     al cliente**. No se declara ni se busca idempotencia total de efectos externos.
+     `link_carpeta`, perfil, archivos y posteriormente el vínculo solicitud → OT. El estado compartido
+     `CLIENTES_MAESTRO` se protege además con la versión temporal original de la solicitud para que un
+     reintento antiguo no pueda revertir un registro posterior. **Los correos son un efecto secundario
+     `at-least-once`**: si el servidor termina, envía el correo y la respuesta al navegador se pierde,
+     un reintento puede volver a enviar la notificación. Se acepta ese posible duplicado excepcional
+     frente al costo de introducir un outbox/ledger transaccional de correo. La invariante que sí es
+     dura en cada intento permanece intacta: **un acuse de PAIC nunca se manda al cliente**. No se
+     declara ni se busca idempotencia total de efectos externos.
 
      Y si el `submission_id` no llega —una copia en caché de la página anterior—, **se degrada**: folio
      aleatorio y registro normal, aceptando que un reintento desde esa copia podría duplicar. Es
@@ -610,6 +628,8 @@ Sin esas llaves, los caminos vigentes permanecen intactos.
    - `ASESOR_CONSULTOR`: se conserva **solo si el payload viene vacío**. Si el registro trae asesor, se
      guarda el que trae — de lo contrario un asesor B que registra un servicio nuevo quedaría atribuido
      al asesor A del registro anterior. *(§2.1 y §2.5)*
+   - En reintentos, esta rama respeta además la versión temporal descrita en Fase 1.1: una solicitud
+     antigua no reescribe una fila de `CLIENTES_MAESTRO` con fecha igual o posterior.
 4. **Rama de correos**: guarda dura, el acuse va a `correo_acuse` o no va. *(§2.3)*
 5. **Omitir el chip de PIPC** en el correo interno cuando el origen es PAIC. *(§2.1)*
 
@@ -677,10 +697,12 @@ redefine `correo_informe`, y el backend vigente todavía manda el acuse a ese ca
    un número de OT a la interfaz**, el backend reserva ese folio para el conjunto de solicitudes, no
    para una sola fila.
 
-   Esto importa porque el `getSiguienteFolioOT_()` vigente **solo lee** `ORDENES_TRABAJO` y devuelve
-   el siguiente valor: no lo reserva. Dos operadores que abran SEAOT antes de que alguno guarde pueden
-   recibir el mismo folio aunque las llamadas estén serializadas; entre una llamada y la siguiente no
-   cambió ninguna hoja.
+   La reserva aquí sirve principalmente para **recuperar el mismo folio tras recarga o fallo parcial**,
+   no para arbitrar varios registradores simultáneos. La operación real de Ejecutiva Ambiental tiene
+   una condición más fuerte y más simple: **solo un operador registra órdenes de trabajo a la vez**.
+   Por esa razón este diseño no modifica el asignador de las OT completamente manuales ni agrega un
+   mecanismo general de coordinación entre registradores; ese escenario concurrente no forma parte
+   del proceso operativo que se está diseñando.
 
    La reserva propuesta mantiene intacto el contrato A–Q:
 
@@ -725,8 +747,8 @@ redefine `correo_informe`, y el backend vigente todavía manda el acuse a ese ca
 
    > El cambio clave es de identidad: **`sol_folios[]` identifica el conjunto lógico atendido;
    > `ot_folio` es un recurso reservado para ese conjunto.** La relación es N solicitudes → 1 OT, no
-   > 1:1. Y el generador vigente no puede seguir siendo la fuente autoritativa mientras ignore las
-   > reservas.
+   > 1:1. El alcance de la reserva es recuperación/idempotencia del flujo PAIC; no pretende sustituir
+   > la regla operativa de un solo registrador de OT a la vez.
 
 ### Fase 4 — Deuda propia de PAIC
 
@@ -757,12 +779,18 @@ redefine `correo_informe`, y el backend vigente todavía manda el acuse a ese ca
   archivos debe completar únicamente lo faltante; pérdida de respuesta después de terminar debe
   conservar la misma fila, folio, carpeta, perfil y archivos. En este último caso **se admite que el
   correo pueda repetirse**, de acuerdo con el límite `at-least-once` de Fase 1.
+- Caso de reintento obsoleto: solicitud A actualiza `CLIENTES_MAESTRO`, solicitud B posterior actualiza
+  el mismo RFC+sucursal y después A reintenta por pérdida de respuesta. A debe conservar sus propios
+  artefactos pero **no** volver a escribir la fila compartida ni restaurar sus datos antiguos.
+- Caso de archivo corregido entre reintentos: si llega el mismo nombre con contenido idéntico se omite;
+  si llega con contenido distinto, debe conservarse la nueva versión y no considerarse satisfecho por
+  la copia anterior.
 - Caso de identidad de solicitud: reutilizar un `submission_id` persistido con RFC, sucursal o servicio
   distintos debe dar conflicto y no escribir archivos; completar un registro y enviar otro sin
   recargar la página debe usar un `submission_id` y un folio nuevos.
-- Casos de concurrencia y recuperación SEAOT: dos conjuntos distintos de solicitudes de la misma serie
-  reservados antes de guardar deben recibir folios distintos; recargar un grupo `OT_RESERVADA` debe
-  volver a mostrar **todas** sus solicitudes y recuperar la misma reserva.
+- Caso de recuperación SEAOT: recargar un grupo `OT_RESERVADA` debe volver a mostrar **todas** sus
+  solicitudes y recuperar la misma reserva. No se agrega una prueba de dos operadores simultáneos:
+  el proceso vigente tiene un solo registrador de OT a la vez.
 - Caso N solicitudes → 1 OT: seleccionar dos solicitudes `RECIBIDA` del mismo RFC+sucursal debe
   reservar un solo `ot_folio`, marcar ambas `OT_RESERVADA`, guardar una sola OT que contenga ambos
   servicios y cerrar ambas como `OT_GENERADA`. Una fila manual adicional en SEAOT no debe romper el
@@ -810,12 +838,12 @@ antes de desplegarlo. En particular, **no se publica el paso 1 ni el paso 3 si e
 |---|---|---|---|
 | 1 | ⛔ **Fase 1.3–1.5 — costura `portal_origen`** (preservación, guard duro de correos, chip de PIPC) | bajo | **Gate SEAPD previo obligatorio.** Después va primero: el guard tiene que estar vivo antes de que la página redefina `correo_informe`; si no, el acuse se le va **al cliente** (§2.3) |
 | 2 | ⛔ **Fase 2 — campos de PAIC** (`correo_acuse`, selector de un servicio, datos del asesor) | bajo | Cierra la ventana del paso 1: el asesor recupera su acuse, ahora por el campo correcto |
-| 3 | ⛔ **Fase 1.1 + 1.2 + 3.1, en una sola entrega**: archivos, folio ligado a `submission_id` único, reanudación idempotente de artefactos operativos, carpeta + `link_carpeta`, hoja `SOLICITUDES` y validación de un solo servicio. **El destino de espera debe estar decidido antes de implementar la parte de archivos.** | medio | **Gate SEAPD previo obligatorio.** Los estudios dejan de perderse y quedan atribuibles, descritos y reintentables sin duplicar |
-| 4 | Fase 3.5 — selección de una o varias solicitudes en SEAOT, recuperación de grupos `OT_RESERVADA`, reserva de un folio común por `sol_folios[]` y cierre idempotente de todas las solicitudes incluidas | medio | Embudo solicitudes → OT auditable, recuperable y sin cruces entre operadores |
+| 3 | ⛔ **Fase 1.1 + 1.2 + 3.1, en una sola entrega**: archivos con comparación de contenido, folio ligado a `submission_id` único, reanudación idempotente de artefactos operativos, protección contra reintentos obsoletos sobre `CLIENTES_MAESTRO`, carpeta + `link_carpeta`, hoja `SOLICITUDES` y validación de un solo servicio. **El destino de espera debe estar decidido antes de implementar la parte de archivos.** | medio | **Gate SEAPD previo obligatorio.** Los estudios dejan de perderse y quedan atribuibles, descritos y reintentables sin duplicar ni restaurar datos viejos |
+| 4 | Fase 3.5 — selección de una o varias solicitudes en SEAOT, recuperación de grupos `OT_RESERVADA`, reserva de un folio común por `sol_folios[]` y cierre idempotente de todas las solicitudes incluidas | medio | Embudo solicitudes → OT auditable y recuperable bajo el proceso vigente de un solo registrador |
 | 5 | Fase 3.2 — traspaso de todas las solicitudes ligadas a la OT hacia el expediente (toca SEAINF) | medio | Ahora sí: el expediente nace con todo su material |
 | 6 | Fase 3.3–3.4 — correos que dicen la verdad | bajo | Operaciones ve el servicio y el asesor |
 | 7 | Fase 4 — deuda propia | bajo | Calidad del portal |
-| 8 | Fase 5 — E2E de PAIC, recuperación/concurrencia y documentación | bajo | Evidencia final; **no reemplaza los gates previos** de las entregas de backend |
+| 8 | Fase 5 — E2E de PAIC, recuperación y documentación | bajo | Evidencia final; **no reemplaza los gates previos** de las entregas de backend |
 
 > **Nota sobre cualquier entrega posterior de backend.** Aunque Codex señaló específicamente los
 > pasos 1 y 3, el criterio queda generalizado: si los pasos 4, 5 o 6 terminan modificando el backend
@@ -825,6 +853,13 @@ antes de desplegarlo. En particular, **no se publica el paso 1 ni el paso 3 si e
 > registro. Los pasos 4 y 5 no reciben ese campo y no deben inventarlo: su comportamiento nuevo se
 > activa por `sol_folios[]` / vínculos en `SOLICITUDES`. Sin vínculo de solicitud, SEAOT y SEAINF
 > siguen por el camino vigente.
+
+> **Nota operativa sobre folios manuales.** Este plan no añade un sistema general de reservas para OT
+> manuales porque Ejecutiva Ambiental opera SEAOT con **un solo registrador de OT a la vez**. La
+> reserva introducida aquí existe para que una solicitud PAIC conserve su folio al recargar o reintentar
+> el mismo flujo. Si el proceso cambiara en el futuro para permitir registradores concurrentes, la
+> coordinación del asignador manual tendría que revisarse en ese momento; no se introduce ahora como
+> complejidad para un escenario que no existe en la operación actual.
 
 > **Nota honesta sobre el paso 3.** En la versión anterior de este plan, “que los estudios dejen de
 > perderse” era la victoria barata del principio. Ya no lo es: para que esos archivos sirvan de algo
@@ -850,6 +885,8 @@ antes de desplegarlo. En particular, **no se publica el paso 1 ni el paso 3 si e
 - **No** exigir `portal_origen` a SEAOT o SEAINF: esos endpoints internos no lo reciben. Sus costuras
   válidas son `sol_folio` / `sol_folios` y las relaciones en `SOLICITUDES`; sin esas llaves, deben
   conservar el comportamiento vigente.
+- **No** rediseñar la numeración manual de OT para concurrencia inexistente: el proceso vigente tiene
+  un solo registrador a la vez. Si esa condición operativa cambia, se revisa aparte.
 - **No** poner el correo del asesor en `CLIENTES_MAESTRO`. PORTAL manda el código de acceso a **todos**
   los correos del RFC. *(§3.3)*
 - **No** ampliar `CLIENTES_MAESTRO` más allá de 22 columnas: el upsert escribe exactamente 22 y hay
