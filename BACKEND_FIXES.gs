@@ -2445,8 +2445,9 @@ function textoPlanoEquipo_(data, files, carpetaCliente, sheetUrl, contacto) {
 }
 
 function enviarConfirmacionCliente(data, carpetaCliente, files) {
-  const emailCliente = data.correo_informe;
-  if (!emailCliente || emailCliente.trim() === '') return;
+  const esPaic = String((data && data.portal_origen) || '').toUpperCase() === 'PAIC';
+  const emailCliente = esPaic ? String(data.correo_acuse || '').trim() : String(data.correo_informe || '').trim();
+  if (!emailCliente) return;
 
   const timestamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'dd/MM/yyyy HH:mm');
   const nombre = primerNombre_(data.nombre_solicitante) || primerNombre_(data.responsable);
