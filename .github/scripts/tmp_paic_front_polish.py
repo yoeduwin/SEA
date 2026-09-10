@@ -30,10 +30,9 @@ for marker in ['<div id="seccion_archivo_calibracion"', '<div id="seccion_mensaj
     if not removed:
         raise SystemExit(f'No se encontró bloque legado {marker}')
 
-# Improve modal wording: it now includes general + conditional registration documents.
 s = s.replace('<h3>Documentación general (${files.length})</h3>', '<h3>Documentación adjunta (${files.length})</h3>', 1)
 
-# Add a reusable conditional-file reset helper immediately before the generic file handlers.
+# Add helper before the first (generic) file handler. A second occurrence later only enumerates files for confirmation.
 anchor = "    document.querySelectorAll('input[type=\"file\"]').forEach(input => {"
 helper = r'''    function clearConditionalFilesByAttr(attrValue) {
       document.querySelectorAll(`[data-conditional-required="${attrValue}"]`).forEach(field => {
@@ -47,11 +46,10 @@ helper = r'''    function clearConditionalFilesByAttr(attrValue) {
     }
 
 '''
-if s.count(anchor) != 1:
-    raise SystemExit(f'Anchor de file handlers inesperado: {s.count(anchor)}')
+if anchor not in s:
+    raise SystemExit('No se encontró manejador genérico de archivos')
 s = s.replace(anchor, helper + anchor, 1)
 
-# Expand reset to clear/hide PIPC subconditionals as well.
 old_reset = r'''    function resetConditionalRegistrationSections() {
       document.querySelectorAll('input[name="aplica_nom020"], input[name="requiere_pipc"]').forEach(r => { r.checked=false; });
       document.getElementById('documentacionLegalSection')?.classList.remove('active');
@@ -81,7 +79,6 @@ if s.count(old_reset) != 1:
     raise SystemExit('resetConditionalRegistrationSections inesperado')
 s = s.replace(old_reset, new_reset, 1)
 
-# Replace the simple PIPC top-level handler with complete nested conditional behavior.
 old_handler = r'''    document.querySelectorAll('input[name="requiere_pipc"]').forEach(r => r.addEventListener('change', function() {
       const on=this.value==='si';
       document.getElementById('documentacionPIPCSection')?.classList.toggle('active',on);
