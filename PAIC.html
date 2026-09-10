@@ -513,6 +513,7 @@
         document.querySelectorAll('.file-preview').forEach(p => p.classList.remove('active'));
         document.querySelectorAll('.file-upload-group').forEach(g => g.classList.remove('has-file'));
         document.querySelectorAll('.file-on-record').forEach(i => i.remove());
+        document.querySelectorAll('[data-file-input]').forEach(input => { input.style.display=''; input.required=input.name==='planos'; });
         document.getElementById('returningBanner')?.classList.remove('active');
         if (rfcInput) rfcInput.style.borderColor='';
       } catch (error) {
