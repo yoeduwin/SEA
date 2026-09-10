@@ -1,0 +1,76 @@
+name: Temporary guarded PAIC backend patch
+
+on:
+  push:
+    branches:
+      - 'tmp/paic-backend-email-route'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[paic-patched]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tmp/paic-backend-email-route
+          fetch-depth: 0
+
+      - name: Apply exact recipient routing change
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('BACKEND_FIXES.gs')
+          text = path.read_text(encoding='utf-8')
+
+          profile_pattern = re.compile(r"function generarPerfilSheet\(.*?(?=\nfunction enviarNotificacionRobusta\()", re.S)
+          before_profile = profile_pattern.search(text)
+          if not before_profile:
+              raise SystemExit('No se pudo aislar generarPerfilSheet(); abortando.')
+          before_profile = before_profile.group(0)
+
+          old = """function enviarConfirmacionCliente(data, carpetaCliente, files) {
+            const emailCliente = data.correo_informe;
+            if (!emailCliente || emailCliente.trim() === '') return;
+          """
+          new = """function enviarConfirmacionCliente(data, carpetaCliente, files) {
+            const esPaic = String((data && data.portal_origen) || '').toUpperCase() === 'PAIC';
+            const emailCliente = esPaic ? String(data.correo_acuse || '').trim() : String(data.correo_informe || '').trim();
+            if (!emailCliente) return;
+          """
+
+          if text.count(old) != 1:
+              raise SystemExit(f'Se esperó exactamente 1 coincidencia del bloque de destinatario; encontradas: {text.count(old)}')
+
+          updated = text.replace(old, new, 1)
+          after_profile = profile_pattern.search(updated)
+          if not after_profile or after_profile.group(0) != before_profile:
+              raise SystemExit('generarPerfilSheet() cambió; abortando.')
+
+          path.write_text(updated, encoding='utf-8')
+          PY
+
+      - name: Verify scope
+        shell: bash
+        run: |
+          git diff --check
+          test "$(git diff --name-only)" = "BACKEND_FIXES.gs"
+          if git diff -- BACKEND_FIXES.gs | grep -q 'generarPerfilSheet'; then
+            echo 'El diff toca generarPerfilSheet(); abortando.' >&2
+            exit 1
+          fi
+          git diff -- BACKEND_FIXES.gs
+
+      - name: Commit exact backend change
+        shell: bash
+        run: |
+          git config user.name 'paic-guarded-patch'
+          git config user.email 'actions@users.noreply.github.com'
+          git add BACKEND_FIXES.gs
+          git commit -m 'fix(paic): route acknowledgement to advisor [paic-patched]'
+          git push origin HEAD:tmp/paic-backend-email-route
