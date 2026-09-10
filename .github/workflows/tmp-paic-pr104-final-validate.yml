@@ -1,0 +1,58 @@
+name: Validate PAIC PR104 invariants
+
+on:
+  push:
+    branches:
+      - 'tmp/paic-pr104-final-validate'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tmp/paic-pr104-final-validate
+          fetch-depth: 0
+      - name: Fetch PR base
+        run: git fetch origin claude/zen-mayer-ocbfln
+      - name: Validate changed-file scope
+        run: |
+          test "$(git diff --name-only origin/claude/zen-mayer-ocbfln...HEAD | sort)" = $'BACKEND_FIXES.gs\nPAIC.html\n.github/workflows/tmp-paic-pr104-final-validate.yml'
+      - name: Validate protected profile function
+        run: |
+          python3 - <<'PY'
+          import subprocess
+          from pathlib import Path
+          current=Path('BACKEND_FIXES.gs').read_text(encoding='utf-8')
+          base=subprocess.check_output(['git','show','origin/claude/zen-mayer-ocbfln:BACKEND_FIXES.gs'],text=True)
+          def block(t):
+              a=t.index('function generarPerfilSheet(')
+              z=t.index('\nfunction enviarNotificacionRobusta(',a)
+              return t[a:z]
+          assert block(current)==block(base), 'generarPerfilSheet() cambió'
+          PY
+      - name: Validate backend JavaScript syntax
+        run: node --check BACKEND_FIXES.gs
+      - name: Validate PAIC inline JavaScript and rules
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path('PAIC.html').read_text(encoding='utf-8')
+          blocks=re.findall(r'<script>(.*?)</script>',s,re.S)
+          assert len(blocks)==1, f'inline scripts inesperados: {len(blocks)}'
+          Path('/tmp/paic-inline.js').write_text(blocks[0],encoding='utf-8')
+          assert s.count('name="calibracion_valvula"')==1
+          assert 'name="aplica_nom020"' in s and 'name="requiere_pipc"' in s
+          assert 'estudio_laboratorio' not in s and 'estudio_higiene' not in s
+          assert 'applyClientData' not in s
+          assert 'bindPipcConditional' in s
+          b=Path('BACKEND_FIXES.gs').read_text(encoding='utf-8')
+          assert 'CLIENTE_SUCURSAL_YA_REGISTRADO' in b
+          assert 'enviarNotificacionEquipoPaic' in b
+          assert 'enviarConfirmacionPaic' in b
+          PY
+          node --check /tmp/paic-inline.js
