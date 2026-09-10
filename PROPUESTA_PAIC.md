@@ -1,508 +1,394 @@
-# Propuesta — Alineación de PAIC con SEAPD
+# Propuesta — PAIC autónomo, con SEAPD congelado
 
-**Estado:** Análisis y plan para revisión (NO implementado).
-**Flujo previsto:** Eduwin revisa → decide las 4 preguntas de §4 → se abre PR por fases.
+**Estado:** Plan para revisión (NO implementado).
 **Fecha:** 2026-09-10
-**Alcance:** `SEAPD.html`, `PAIC.html`, `BACKEND_FIXES.gs` (ruta de registro), `TESTS_BACKEND.gs`, `MANUAL.md`.
+**Alcance:** `PAIC.html` y ramas aditivas en `BACKEND_FIXES.gs`. **`SEAPD.html` no se toca.**
 
-> **Resumen en una línea:** PAIC y SEAPD son **el mismo formulario bifurcado**: CSS idéntico, JavaScript
-> idéntico salvo una función, y el **mismo endpoint de backend**. Pero la bifurcación nunca se cerró:
-> PAIC **dejó fuera** partes de SEAPD que sí necesita, **agregó** partes que el backend nunca aprendió a
-> recibir, y **heredó** los bugs compartidos sin heredar las correcciones.
-
----
-
-## 0. El punto de partida: dos ramas del mismo árbol
-
-| | SEAPD | PAIC |
-|---|---|---|
-| Archivo | `SEAPD.html` · 1,628 líneas | `PAIC.html` · 1,351 líneas |
-| Acceso | Público · reCAPTCHA Enterprise | Público · reCAPTCHA Enterprise |
-| Acción del backend | `registrarCliente` | `registrarCliente` — **la misma** |
-| Etiqueta de versión | `v3.0 (Multi-Sucursal)` | `PAIC v1.0` |
-| Clases CSS propias | — | 2 (`.paic-badge`, `.study-reminder`) |
-| Funciones JS propias | 1 (`resetPIPCConditionals`) | **0** |
-| Quién llena el formulario | El cliente | El asesor / intermediario |
-
-Las funciones de JavaScript de PAIC son **las mismas 18**, con el mismo cuerpo casi carácter por carácter
-(`clearFileUI`, `showOnRecordIndicators`, `showFileInput`, `clearPrefill`, `searchClientByRFC`,
-`applyClientData`, `confirmAndSend`, `fileToBase64`…). Lo que cambió es el marcado del formulario.
-
-### Secciones del formulario
-
-| SEAPD | PAIC |
-|---|---|
-| Información General | Información General **+ Asesor / Consultor** |
-| Sobre el Informe de Resultados | Sobre el Informe de Resultados |
-| Coordinación de Evaluación | Coordinación de Evaluación |
-| Descripción del Proceso | Descripción del Proceso |
-| Archivos Adjuntos (4 documentos) | Archivos Adjuntos (**2** documentos, numerados 1 y 4) |
-| NOM-020-STPS | INSPECCIÓN — NOM-020-STPS |
-| **Programa Interno de Protección Civil (PIPC)** | — |
-| — | **LABORATORIO** (estudio + hojas de campo, fotos, croquis) |
-| — | **HIGIENE** (NOM STPS + hojas de campo, fotos, croquis) |
-
-### Qué se le modificó a SEAPD desde la bifurcación
-
-| Commit | Cambio | ¿Tocó PAIC? |
-|---|---|---|
-| `3e4ac3b` | **Flujo NOM-020 completo**: campo `jefe_mantenimiento`, testigos y jefe en la hoja de perfil y en el correo, renombrado de INE con el nombre del testigo | No |
-| `2d6262a` + 4 fixes | **Rediseño completo de los correos de registro** (+474 líneas): correo interno y acuse al cliente, chips de servicios, botón de WhatsApp, normalización de teléfonos mexicanos | Backend compartido — llega a PAIC **a medias** (§2, grupo B) |
-| `4789d1c` | reCAPTCHA Classic → Enterprise | **Sí** — única modificación que PAIC recibió |
-| `637fbeb` | Site Key real en SEAPD | No aplicaba |
+> **Decisiones de Eduwin que esta versión incorpora:**
+> 1. **Ninguna modificación a SEAPD.** Ni al archivo ni a su comportamiento.
+> 2. PAIC debe **operar como SEAPD** pero conservando sus distinciones: **sin PIPC**, **un solo
+>    servicio por registro** (hoy no se cumple) y **la notificación al correo del intermediario,
+>    nunca al cliente**.
+> 3. Pregunta abierta que este documento responde en §3: **¿compagina con los registros derivados
+>    en Sheets, Drive y los módulos de abajo?**
 
 ---
 
-## 1. Cómo opera SEAPD (revisión)
+## 1. El principio que hace posible todo lo demás: `portal_origen` es la costura
 
-### 1.1 El recorrido del usuario
-
-```
-  Modal de bienvenida (cookie 30 días)
-        │
-        ▼
-  ¿Cliente recurrente?  ──►  buscarClienteRFC  ──►  elige sucursal existente
-        │  no                                   └─►  o "Registrar Nueva Sucursal"
-        │                                              │
-        │                                              ▼
-        │                                    prellenado + banner +
-        │                                    "Ya tenemos este documento"
-        ▼
-  Formulario (7 secciones, condicionales anidados)
-        │
-        ▼
-  Modal de confirmación  ──►  confirmAndSend  ──►  POST único con archivos en base64
-                                                          │
-                                                          ▼
-                                                 fase1_RegistrarCliente
-```
-
-### 1.2 Los condicionales — donde vive casi toda la lógica
-
-**NOM-020-STPS**: un radio `aplica_nom020` abre la sección legal y marca `required` a todo lo que lleve
-`data-conditional-required="nom020"`: INE de quien atiende, dos testigos con nombre + INE, poder
-notarial, INE del representante, constancia fiscal, licencia, DC-3, dictamen de calibración y —desde
-`3e4ac3b`— el **jefe de mantenimiento**. Un checkbox `sin_calibracion` libera el dictamen y cambia el
-texto de ayuda. Apagar el radio limpia archivos y valores.
-
-**PIPC**: un radio `requiere_pipc` abre **12 documentos obligatorios** y cuatro sub-compuertas, cada una
-con su propio radio y su propio archivo condicional:
-
-| Sub-compuerta | Documento que habilita |
-|---|---|
-| `pipc_tiene_medidas` | Medidas preventivas |
-| `pipc_tiene_gas` | Gas natural |
-| `pipc_tiene_quimicos` | Sustancias químicas |
-| `pipc_tiene_montacargas` | DC-3 de operadores |
-
-`resetPIPCConditionals()` —la única función que PAIC no tiene— reinicia las cuatro.
-
-### 1.3 El envío
-
-`confirmAndSend()` recorre el `FormData`, convierte cada archivo a base64 (`data:...`), acumula el
-tamaño total, corta en **25 MB**, y manda un solo `POST` con `AbortController` a 120 segundos. El límite
-por archivo en el navegador es 10 MB; el backend valida hasta 50 MB. Los errores están tipificados:
-`ARCHIVOS_MUY_GRANDES`, `HTTP_ERROR_nnn`, `RESPUESTA_INVALIDA`, `AbortError`, fallo de red.
-
-### 1.4 Qué hace el backend con eso — `fase1_RegistrarCliente`
-
-```
-1.  Valida razón social y formato de RFC
-2.  Preflight: CLIENTES_MAESTRO debe tener ≥ 22 columnas, si no aborta sin tocar Drive
-3.  Carpeta padre  {RFC} - {EMPRESA}          ← el RFC es la identidad estable
-4.  Carpeta hija   /{Sucursal}
-5.  Perfil         /{Sucursal}/01_Cliente
-6.  guardarArchivos()    → whitelist fija de 29 campos, renombra por etiqueta
-7.  generarPerfilSheet() → hoja "PERFIL DE DATOS" con formato fijo por celda
-8.  Upsert de la fila de 22 columnas, buscando hacia atrás por RFC + Sucursal
-9.  enviarNotificacionRobusta() → correo al equipo + acuse al cliente
-    3 reintentos, y fallback a correo simple si los dos fallan
-10. Log de la ejecución en Drive
-```
-
-### 1.5 Los dos correos (el rediseño de `2d6262a`)
-
-**Al equipo** (`enviarNotificacionEquipo`): botón de WhatsApp con el teléfono utilizable, mensaje de
-seguimiento listo para copiar, **chips de servicios**, contacto, empresa, bloque NOM-020 si aplica,
-fechas preferidas y lista de documentos con enlace directo.
-
-**Al cliente** (`enviarConfirmacionCliente`): acuse a `correo_informe` con los datos registrados, chips
-de servicios, los tres pasos siguientes y la línea de Atención a Clientes.
-
-Los chips de servicios son **exactamente dos**: `NOM-020-STPS` y `PIPC`. Recuérdalo — es la raíz del
-grupo B.
-
----
-
-## 2. Qué le falta a PAIC
-
-Cuatro grupos. No es una sola lista porque no son el mismo tipo de problema: unos son funcionalidad que
-PAIC **dejó fuera**, otros son funcionalidad que PAIC **agregó y nadie recibe**, otro es un **choque de
-modelo de negocio**, y el último es **deuda compartida** que PAIC heredó.
-
----
-
-### GRUPO A — Lo que PAIC dejó fuera de SEAPD
-
-#### 🔴 A1 · La sección PIPC completa, y con ella el campo `requiere_pipc`
-
-PAIC no tiene ni la compuerta ni los 12 documentos ni las 4 sub-compuertas. Consecuencias:
-
-1. **Un asesor no puede registrar un servicio de Protección Civil.** Es una línea de negocio entera
-   cerrada para el canal.
-2. El backend evalúa `data.requiere_pipc === 'si' ? 'SÍ' : 'NO'` — como PAIC nunca manda el campo, la
-   **columna 16 de `CLIENTES_MAESTRO` queda en `'NO'`**, que es una afirmación, no una ausencia.
-3. Peor: como el registro es un **upsert que sobrescribe la fila completa** (`BACKEND_FIXES.gs:783`),
-   si el cliente ya se había registrado por SEAPD declarando `SÍ`, **el registro por PAIC lo pisa a `NO`**.
-4. El correo interno imprime el chip `PIPC · NO REQUIERE` (`BACKEND_FIXES.gs:2337`) — Operaciones lee
-   una negación explícita de algo que nunca se preguntó.
-
-#### 🟠 A2 · `jefe_mantenimiento` — el flujo NOM-020 queda a medias
-
-`3e4ac3b` completó NOM-020 en SEAPD (`SEAPD.html:438`) y adaptó el backend para persistir el dato en la
-hoja de perfil y mostrarlo en el correo. **PAIC tiene toda la sección NOM-020 menos ese campo.** Para un
-registro de PAIC con NOM-020 = sí, la fila 45 de la hoja de perfil sale vacía y el correo interno
-imprime “Jefe de mantenimiento: —”. La mitad de la corrección llegó (el renombrado de INE con el nombre
-del testigo sí funciona, porque PAIC sí manda `testigo1` y `testigo2`); la otra mitad no.
-
-#### 🟡 A3 · Adjuntos 2 y 3 ausentes, numeración rota, llaves muertas
-
-SEAPD pide cuatro documentos generales. PAIC eliminó *2) Programa de mantenimiento* y
-*3) Proceso de producción / Hojas de Seguridad*, pero **dejó la numeración**: el asesor ve “1)” y luego
-“4)” (`PAIC.html:337` y `:350`). Y `showOnRecordIndicators()` (`PAIC.html:1227`) sigue recorriendo las
-cuatro llaves, incluidas las dos que ya no existen en el DOM.
-
----
-
-### GRUPO B — Lo que PAIC agregó y el backend nunca aprendió a recibir
-
-#### 🔴 B1 · Los seis archivos de laboratorio e higiene se descartan en silencio
-
-`guardarArchivos()` (`BACKEND_FIXES.gs:1978`) tiene una whitelist fija. Estos seis campos de PAIC **no
-están en ella**:
-
-```
-hojas_campo_laboratorio   fotografias_laboratorio   croquis_laboratorio
-hojas_campo_higiene       fotografias_higiene       croquis_higiene
-```
-
-El asesor los selecciona, se codifican en base64, viajan por la red, cuentan contra el tope de 25 MB…
-y el backend los ignora. El formulario responde “✓ Información enviada”.
-
-**El síntoma es visible y medible:** el acuse al cliente imprime `Documentos recibidos: N archivos`
-contando **solo los que el backend guardó**. Un asesor que adjuntó planos + hojas de campo + fotos +
-croquis recibe un acuse que dice **“1 archivo”**. Ese contador es la prueba de campo del bug.
-
-#### 🔴 B2 · El estudio solicitado no existe para el sistema
-
-`estudio_laboratorio`, `estudio_higiene` y `otra_nom_higiene` — el corazón de la regla “1 registro =
-1 estudio” — tienen **cero referencias en el backend**. No van a `CLIENTES_MAESTRO`, no van a la hoja de
-perfil, no van a ningún correo.
-
-Como el correo de servicios solo conoce dos chips:
-
-- **Al equipo**: un registro cuyo propósito era NOM-025 de iluminación llega anunciando
-  `NOM-020-STPS · NO APLICA` y `PIPC · NO REQUIERE`. El correo **afirma que no se pidió nada**.
-- **Al cliente**: `chipsServicios` queda vacío (`BACKEND_FIXES.gs:2474`) y la sección
-  “Servicios solicitados” **desaparece del acuse**. El cliente nunca ve confirmado qué se le va a hacer.
-
-La única constancia del estudio es el modal de confirmación que el asesor vio en pantalla antes de
-enviar — y ese no se guarda en ninguna parte.
-
-#### 🟠 B3 · `asesor_consultor` se guarda, pero nadie lo lee y cualquiera lo borra
-
-Es el único campo verdaderamente propio de PAIC (`PAIC.html:206`) y llega a la columna 22 de
-`CLIENTES_MAESTRO`. Pero:
-
-- **No se prellena al actualizar.** `applyClientData()` no lo incluye en su `fieldMap`, aunque
-  `fase2_BuscarClienteRFC` sí lo devuelve. Reregistrar por PAIC lo vacía.
-- **SEAPD tampoco lo repuebla** — no tiene el campo. Un cliente que entró por el canal y luego se
-  actualiza por SEAPD pierde a su asesor.
-- **No aparece en ningún correo.** Ni el interno ni el acuse lo mencionan. El equipo que recibe el
-  registro no sabe quién lo refirió sin abrir la hoja.
-
-#### 🟠 B4 · `portal_origen: 'PAIC'` se envía y se ignora
-
-`PAIC.html:966` lo manda en cada payload. Cero referencias en el backend; `CLIENTES_MAESTRO` no tiene
-columna de origen; ningún correo lo imprime. **Operaciones no puede distinguir un registro de PAIC de
-uno de SEAPD**, ni medir cuánto negocio produce el canal.
-
----
-
-### GRUPO C — El modelo de correo de SEAPD no encaja con el de PAIC
-
-#### 🟠 C1 · El acuse va al cliente, pero está dirigido al asesor
-
-En SEAPD, quien llena el formulario y quien recibe el informe son la misma persona, así que el acuse
-funciona. En PAIC son **dos personas distintas**: `nombre_solicitante` es “Nombre y puesto del asesor /
-intermediario”, y `correo_informe` es el correo del cliente final.
-
-`enviarConfirmacionCliente` construye el saludo así (`BACKEND_FIXES.gs:2453`):
+PAIC y SEAPD comparten el mismo endpoint `registrarCliente` y las mismas funciones de backend. Si
+SEAPD no se puede tocar, **toda diferencia de PAIC tiene que colgar de una condición explícita**:
 
 ```javascript
-const saludo = nombre ? `Estimado(a) <strong>${data.nombre_solicitante || data.responsable}</strong>,` : …
-GmailApp.sendEmail(data.correo_informe, 'Recibimos su información · …', …)
+if (data.portal_origen === 'PAIC') { … }   // rama nueva
+else { …lo que ya hace hoy, intacto… }     // camino de SEAPD
 ```
 
-Es decir: **el cliente final recibe un correo que lo saluda con el nombre del intermediario.** Además de
-verse mal, revela la identidad del asesor al cliente — una decisión de relación comercial que nadie tomó
-explícitamente.
+PAIC ya manda `portal_origen: 'PAIC'` en cada payload (`PAIC.html:966`) y hoy el backend lo ignora.
+Convertirlo en la costura no cuesta nada y da una **regla de revisión verificable**:
 
-Y al revés: **el asesor no recibe ningún acuse**, porque PAIC no captura su correo. El único
-comprobante de que su registro llegó es el mensaje verde en pantalla.
+> **Si borras todas las ramas `portal_origen === 'PAIC'`, el backend debe quedar exactamente como
+> está hoy.** Cualquier PR que no cumpla eso está tocando SEAPD.
+
+SEAPD nunca envía ese campo, así que su camino queda idéntico byte por byte.
+
+### 1.1 Lo que la restricción cuesta — dicho de frente
+
+Congelar SEAPD tiene tres consecuencias que conviene aceptar a ojos abiertos, no descubrirlas después:
+
+| Costo | Detalle |
+|---|---|
+| 🔴 **El dictamen de calibración se seguirá perdiendo en SEAPD** | Hay dos `<input name="calibracion_valvula">` en cada portal: el visible del condicional NOM-020 y otro dentro de `#seccion_archivo_calibracion`, un contenedor `display:none` que **ningún JavaScript muestra jamás**. `display:none` **no** excluye un control del `FormData`, así que el segundo (vacío) sobrescribe el base64 del primero y `guardarArchivos()` lo descarta. Se corrige en PAIC (`PAIC.html:648` y `:664`); en SEAPD (`:546` y `:562`) **queda vivo**. Cuando lo autorices, son 12 líneas borradas. |
+| 🟠 **No habrá núcleo compartido** | Las 18 funciones de JavaScript de PAIC son las mismas de SEAPD, carácter por carácter. Sin un `portal-core.js`, cada corrección futura hay que decidir a mano si se replica. Es el precio de la autonomía. |
+| 🟠 **La columna 22 seguirá siendo frágil** | `fase1_RegistrarCliente` reescribe la fila completa (`BACKEND_FIXES.gs:783`). Una rama por `portal_origen` protege a los envíos de PAIC, pero **un envío de SEAPD sobre ese mismo cliente seguirá vaciando `ASESOR_CONSULTOR`**, y evitarlo exige tocar el camino de SEAPD. → **Por eso el asesor no puede vivir solo en la columna 22.** Ver §3.5: esto convierte la hoja `SOLICITUDES` de recomendable en **necesaria**. |
 
 ---
 
-### GRUPO D — Deuda compartida que PAIC heredó
+## 2. Los tres requisitos, diseñados
 
-#### 🔴 D1 · El dictamen de calibración de NOM-020 se pierde SIEMPRE, en los dos portales
+### 2.1 · Sin PIPC — qué falta además de no portar la sección
 
-Hay **dos inputs con el mismo `name="calibracion_valvula"`**:
+La sección ya no existe en PAIC, así que el requisito está cumplido en el formulario. Lo que **no**
+está resuelto es lo que ese hueco provoca aguas abajo:
 
-| | SEAPD | PAIC |
+- El backend evalúa `data.requiere_pipc === 'si' ? 'SÍ' : 'NO'`. Como PAIC nunca manda el campo, la
+  **columna 16 de `CLIENTES_MAESTRO` se escribe como `'NO'`** — una afirmación, no una ausencia.
+- Y como el registro es un upsert que reescribe la fila completa, si el cliente ya se había
+  registrado por SEAPD declarando `SÍ`, **el registro por PAIC lo pisa a `NO`**.
+- El correo interno imprime el chip `PIPC · NO REQUIERE`: Operaciones lee una negación explícita de
+  algo que en PAIC nunca se preguntó.
+
+**Diseño.** Dos ramas por `portal_origen`, ninguna toca a SEAPD:
+
+1. En el upsert: si la fila ya existe, **conservar el valor previo** de `REQUIERE_PIPC` en vez de
+   escribir `'NO'`.
+2. En el correo interno: **omitir el chip de PIPC** cuando el origen es PAIC. No se niega lo que no
+   se preguntó.
+
+### 2.2 · Un solo servicio por registro — hoy **no** se cumple
+
+La regla “1 registro = 1 estudio” está en el copy del modal de bienvenida y en la insignia del
+encabezado, pero **nada la hace cumplir**. Hoy PAIC tiene tres controles independientes:
+
+| Control | Tipo | Opciones | ¿Obligatorio? |
+|---|---|---|---|
+| `estudio_laboratorio` | `<select>` | 6 NOM | No |
+| `estudio_higiene` | `<select>` | 13 NOM + “otra” | No |
+| `aplica_nom020` | `<radio>` | sí / no | **Sí** |
+
+Un asesor puede enviar **Laboratorio + Higiene + NOM-020 en un mismo registro**. Y como el radio de
+NOM-020 es obligatorio, hoy hay que contestarlo aunque se venga a registrar un estudio de iluminación.
+
+**Diseño: un selector maestro.**
+
+```
+¿Qué servicio va a registrar?  (obligatorio, una sola opción)
+├── Laboratorio        → 6 NOM
+├── Higiene            → 13 NOM + "Otra NOM STPS"
+└── Inspección         → NOM-020-STPS · Recipientes, calderas y generadores de vapor
+```
+
+- Al elegir se abre **un solo** bloque de adjuntos; el resto ni se muestra ni queda `required`.
+- **`aplica_nom020` se deriva del selector** y se sigue enviando con el mismo nombre y los mismos
+  valores (`'si'` / `'no'`). Así la columna 15, la hoja de perfil y los chips del correo **siguen
+  funcionando exactamente igual** — el contrato con el backend no se toca.
+- El modal de confirmación pasa de listar bloques a mostrar **un solo servicio**.
+
+**Hallazgo que hay que resolver al unificar las listas:** cuatro NOM están en ambos selectores con
+valores distintos.
+
+| NOM | Valor en Laboratorio | Valor en Higiene |
 |---|---|---|
-| Input visible (condicional NOM-020) | línea 546 | línea 648 |
-| Input dentro de `#seccion_archivo_calibracion` | línea 562 | línea 664 |
+| Ruido | `NOM-011-STPS` | `NOM-011-STPS-2001` |
+| Condiciones térmicas | `NOM-015-STPS` | `NOM-015-STPS-2001` |
+| Vibraciones | `NOM-024-STPS` | `NOM-024-STPS-2001` |
+| Iluminación | `NOM-025-STPS` | `NOM-025-STPS-2008` |
 
-Ese segundo contenedor está en `display:none` y **ninguna función de JavaScript lo muestra jamás** — es
-marcado muerto en ambos portales. Pero `display:none` **no excluye un control del `FormData`**. En el
-bucle de `confirmAndSend` (`PAIC.html:969`, `SEAPD.html:1291`):
+Al fundirlas en una sola lista hay que **fijar un valor canónico por NOM**, porque ese texto es el que
+el operador vuelve a teclear en SEAOT y termina en `ORDENES_TRABAJO` e `INFORMES` — donde SEADB lo usa
+para calcular renovaciones. **Es la pregunta 4 de §5.**
+
+### 2.3 · La notificación al intermediario, nunca al cliente
+
+Hoy pasa exactamente lo contrario de lo que pides. `enviarConfirmacionCliente` manda el acuse a
+`data.correo_informe` —el correo del **cliente**— y lo saluda con el nombre del **asesor**:
 
 ```javascript
-for (let [key, value] of formData.entries()) {
-  if (value instanceof File && value.size > 0) { data[key] = await fileToBase64(value); … }
-  else { data[key] = value; }          // ← el input vacío entra por aquí
-}
+const saludo = `Estimado(a) <strong>${data.nombre_solicitante || data.responsable}</strong>,`;
+GmailApp.sendEmail(data.correo_informe, 'Recibimos su información · …', …);   // línea 2554
 ```
 
-El primer input deja el base64 en `data.calibracion_valvula`; el segundo, vacío, entra por el `else` y
-**sobrescribe ese base64 con un `File` vacío**. `guardarArchivos()` exige `typeof fileData === 'string'
-&& fileData.startsWith('data:')`, así que descarta el archivo.
+En SEAPD eso funciona porque quien llena el formulario y quien recibe el informe son la misma persona.
+En PAIC son dos, y el resultado es que **el cliente final recibe un correo dirigido al intermediario**,
+mientras **el asesor no recibe nada** — PAIC ni siquiera captura su correo.
 
-**Resultado: el dictamen de calibración nunca se guarda, en ningún registro, desde ningún portal.** Es
-un agujero dentro del mismo flujo NOM-020 que `3e4ac3b` dio por completo.
+**Diseño.**
 
-#### 🟠 D2 · El upsert sobrescribe la fila completa
+1. **Campos nuevos en PAIC**: `correo_asesor` (obligatorio) y `telefono_asesor`.
+2. **Rama en `enviarNotificacionRobusta`**: si `portal_origen === 'PAIC'`, se envía
+   `enviarConfirmacionAsesor(data, …)` a `correo_asesor` y **no se llama a
+   `enviarConfirmacionCliente`**. Es un punto único de corte — la línea 2554 es el **único** lugar de
+   todo el backend que escribe al correo del cliente.
+3. **El correo interno al equipo no cambia de destinatario**: va a `CONFIG.EMAIL_TO`, es interno.
+4. **El fallback ya es seguro**: `enviarEmailSimpleFallback` solo escribe a `CONFIG.EMAIL_TO`. La
+   ruta de error no filtra nada al cliente.
 
-`fase1_RegistrarCliente` no hace merge: al encontrar la fila del RFC + Sucursal la reescribe con los 22
-valores del payload (`BACKEND_FIXES.gs:783`). Cualquier campo que el portal no mande se borra. Es el
-mecanismo detrás de A1 y B3, y afecta a los dos portales.
+**Pero hay una fuga que el correo no cubre.** El correo interno trae un botón *“Contactar por
+WhatsApp”* cuyo destino es `contactoWhatsAppCliente_(data)`, que toma **`telefono_responsable`
+primero** — el contacto del cliente en sitio. Es decir: la acción de un clic que Operaciones
+efectivamente ejecuta va **directo al cliente, saltándose al asesor**. Si la regla es “nunca al
+cliente”, esto pesa más que el correo. **Es la pregunta 1 de §5.**
 
-#### 🟡 D3 · `sucursal` es texto libre y tiene tres normalizaciones distintas
+---
 
-| Consumidor | Normalización |
+## 3. ¿Compagina con lo que se deriva? — el rastreo completo
+
+Esta es la pregunta que faltaba. Seguí un registro de PAIC desde el `POST` hasta los cuatro módulos
+que lo consumen.
+
+### 3.1 Recorrido
+
+```
+PAIC ──POST registrarCliente──► fase1_RegistrarCliente
+                                      │
+        ┌─────────────────────────────┼─────────────────────────────┐
+        ▼                             ▼                             ▼
+  CLIENTES_MAESTRO            Drive: {RFC} - {EMPRESA}/        2 correos
+  fila de 22 columnas           └── {Sucursal}/
+        │                            ├── 01_Cliente/  ← perfil + archivos
+        │                            └── 02_Expediente_…/  ← lo crea SEAINF después
+        │
+        ├──► SEAOT    busca por RFC, exige carpeta exacta, crea la OT
+        ├──► SEAINF   crea el expediente dentro de la carpeta de la sucursal
+        ├──► SEADB    resuelve el asesor en vivo con asesorMap[RFC|Sucursal]
+        └──► PORTAL   autentica al cliente por el correo de la columna 9
+```
+
+### 3.2 Columna por columna
+
+| Col | Campo | Qué escribe PAIC | ¿Compagina? |
+|---|---|---|---|
+| 1–8, 10–14 | Datos generales | Igual que SEAPD | ✅ |
+| 9 | `CORREO` | `correo_informe` = correo del **cliente** | ✅ **y debe seguir así** — ver §3.3 |
+| 15 | `APLICA_NOM020` | Derivado del selector maestro | ✅ contrato intacto |
+| 16 | `REQUIERE_PIPC` | Siempre `'NO'` | ⚠️ pisa el `SÍ` de un registro previo → §2.1 |
+| 17–20 | Responsable y destinatarios | Igual que SEAPD | ✅ |
+| 21 | `LINK_DRIVE` | Carpeta de la sucursal | ✅ |
+| 22 | `ASESOR_CONSULTOR` | El asesor | ⚠️ se borra al re-registrar → §1.1 y §3.5 |
+
+### 3.3 🔴 El hallazgo grave: PORTAL manda el código de acceso a **todos** los correos del RFC
+
+`PORTAL/` autentica a los clientes con un código de un solo uso enviado al correo registrado en
+`CLIENTES_MAESTRO` **columna 9**. Y `portal_resolverCliente_` no toma un correo: **reúne todos los
+correos distintos de todas las filas de ese RFC** y los manda juntos:
+
+```javascript
+correosMap[c.toLowerCase()] = c;          // recorre TODAS las filas del RFC
+GmailApp.sendEmail(cliente.correos.join(','), asunto, …);   // envía a TODOS
+```
+
+Consecuencia directa para este proyecto: **si el correo del asesor llegara alguna vez a la columna 9
+—en cualquier sucursal de ese RFC— el código de acceso del cliente le llegaría también al asesor**, y
+al revés. Sería la violación más grave posible de “la notificación nunca al cliente”, pero en espejo.
+
+> **Regla que sale de aquí: el correo del asesor NO puede vivir en `CLIENTES_MAESTRO`.**
+> Ni en la columna 9 ni en ninguna otra que PORTAL indexe. Tiene que estar en una estructura que
+> PORTAL no lea — y eso apunta a la hoja `SOLICITUDES` de §3.5.
+
+### 3.4 🟠 Los archivos del estudio caen donde nadie los va a buscar
+
+`fase1_RegistrarCliente` deposita todo lo que suba el portal en `{Sucursal}/01_Cliente`. Más tarde
+SEAINF crea un **hermano**, `02_Expediente_{consecutivo}_{OT}_{NOM}`, con sus seis subcarpetas:
+
+```
+{Sucursal}/
+├── 01_Cliente/                       ← aquí caen las hojas de campo de PAIC,
+│                                        mezcladas con INEs y actas constitutivas
+└── 02_Expediente_0001_OT2603-001_NOM-025/
+    ├── 1. ORDEN_TRABAJO/
+    ├── 2. HDC/                       ← aquí es donde deberían estar
+    ├── 3. CROQUIS/                   ← y aquí
+    ├── 4. FOTOS/                     ← y aquí
+    ├── 5. INFORMES Y MEMORIAS/
+    └── 6. INFORME PRELIMINAR/
+```
+
+Las hojas de campo, croquis y fotos que sube el asesor son **exactamente** el material de las
+subcarpetas 2, 3 y 4 del expediente. Pero el expediente **todavía no existe** cuando se registra: nace
+con la OT, después. Así que no se pueden depositar ahí directamente — hay que decidir dónde esperan.
+**Es la pregunta 3 de §5.**
+
+> Hoy ni siquiera llegan a `01_Cliente`: los seis campos de archivo de PAIC no están en la whitelist
+> de `guardarArchivos()` y **se descartan en silencio**. El síntoma comprobable es que el acuse
+> imprime “Documentos recibidos: N archivos” contando solo los guardados — un asesor que subió cuatro
+> archivos recibe un acuse que dice **“1 archivo”**.
+
+### 3.5 🟠 El servicio solicitado se pierde y hay que volver a teclearlo
+
+`estudio_laboratorio`, `estudio_higiene` y `otra_nom_higiene` tienen **cero referencias en el
+backend**. No van a `CLIENTES_MAESTRO`, no van a la hoja de perfil, no van a ningún correo. La única
+constancia es el modal que el asesor vio en pantalla.
+
+Eso rompe la cadena en dos puntos:
+
+- **SEAOT**: la NOM de la OT la vuelve a teclear un operador. No hay forma de auditar “lo que pidió el
+  asesor” contra “lo que se registró”, y ese texto es el que después alimenta las renovaciones de SEADB.
+- **SEADB**: sin vínculo solicitud → OT, no se puede medir cuánto negocio produce el canal.
+
+Súmale que (a) el correo del asesor no puede vivir en `CLIENTES_MAESTRO` (§3.3) y (b) la columna 22
+seguirá siendo frágil mientras SEAPD esté congelado (§1.1), y las tres necesidades convergen en la
+misma solución:
+
+> **Una hoja `SOLICITUDES`, solo append.** Deja de ser “recomendable”: es la única estructura donde
+> caben el servicio solicitado, el asesor y su correo, sin tocar el contrato de 22 columnas, sin que
+> PORTAL los vea y sin depender de que SEAPD respete un campo que no conoce.
+
+Columnas propuestas: `timestamp · folio · portal_origen · asesor · correo_asesor · telefono_asesor ·
+RFC · sucursal · servicio_canonico · fechas_preferidas · link_carpeta · estatus`
+(`RECIBIDA` → `OT_GENERADA` → `DESCARTADA`).
+
+### 3.6 🟠 La hoja de perfil no tiene dónde poner lo de PAIC
+
+`generarPerfilSheet` escribe **por coordenada fija** (`B3`, `D5`, `B45`…). No hay celda para el
+servicio solicitado ni para el asesor, y el bloque NOM-020 de las filas 45–50 —que `3e4ac3b` agregó
+para SEAPD— sale con el jefe de mantenimiento vacío, porque PAIC no captura ese campo.
+
+**Cuidado al tocarla:** cualquier inserción de filas desplaza todo lo de abajo. Si se le agrega un
+bloque a PAIC, tiene que ir **al final** y detrás de la rama `portal_origen`.
+
+### 3.7 Lo que sí compagina sin tocar nada
+
+| Módulo | Estado |
 |---|---|
-| `CLIENTES_MAESTRO` | **ninguna** — `data.sucursal` crudo |
-| Carpeta de Drive | `sanitizeFileName()` + `toLowerCase()` |
-| Búsqueda de cliente | `.trim()`, con `'Matriz'` por defecto |
+| **SEAOT** — búsqueda por RFC y resolución de carpeta | ✅ funciona, siempre que `sucursal` coincida exactamente |
+| **SEAINF** — expediente dentro de la sucursal | ✅ funciona, no depende del portal de origen |
+| **TRAZ** — trazabilidad OT ↔ INFORMES | ✅ no toca el registro |
+| **Renombrado de archivos por etiqueta** | ✅ PAIC sí manda `testigo1` y `testigo2` |
+| **reCAPTCHA Enterprise** | ✅ ya adoptado |
 
-`sanitizeFileName()` reemplaza lo no alfanumérico por `_`, **no hace trim** y corta a 50 caracteres. Un
-espacio al inicio basta para que la carpeta no coincida y para que SEAOT no encuentre al cliente.
-
-#### 🟡 D4 · El prellenado promete dos campos que el backend nunca devuelve
-
-`applyClientData()` mapea `actividad_principal` y `descripcion_proceso`; `fase2_BuscarClienteRFC` no los
-devuelve porque no existen esas columnas. Siempre llegan `undefined`. **Idéntico en los dos archivos** —
-es un bug copiado, no una divergencia.
-
-#### 🟡 D5 · Los teléfonos de los portales ya no coinciden con los del backend
-
-Ambos portales enlazan `wa.me/522791113533`. El backend usa `SUPPORT_WHATSAPP: '56 5282 1561'`, la línea
-móvil de Atención a Clientes que fijó `ebbb70e`. El cliente ve un número en el formulario y otro
-distinto en el correo de confirmación.
-
-#### ⚪ D6 · Escapado, `alert()` y etiquetas de versión
-
-Ninguno de los dos portales escapa `data.razon_social` al pintar el resultado de la búsqueda por RFC
-(`PAIC.html:1121`), pese a que el backend ya tiene `escHtml_()` para sus correos. Ambos usan `alert()`
-para validar la selección de sucursal. Y las etiquetas de versión (`v3.0` / `PAIC v1.0`) no se han
-tocado desde la bifurcación.
-
-#### ⚪ D7 · Pruebas y documentación
-
-El caso E01 de `TESTS_BACKEND.gs` prueba `registrarCliente` etiquetado como “SEAPD”; **no hay ningún
-caso PAIC**, ni con archivos de laboratorio, ni con reregistro. El manual (§6.1) no documenta
-`asesor_consultor`, ni los campos de archivo, ni `portal_origen`. El bloque de correos del backend está
-rotulado “CORREOS DE REGISTRO SEADB” cuando pertenece a la ruta SEAPD/PAIC.
+⚠️ Con una salvedad transversal: **`sucursal` es texto libre** y el sistema la normaliza de tres
+maneras distintas — cruda en la hoja, `sanitizeFileName()` + minúsculas en Drive, `.trim()` en las
+búsquedas. `sanitizeFileName()` **no hace trim**, así que un espacio al inicio basta para que SEAOT no
+encuentre la carpeta y falle con `CARPETA_NO_ENCONTRADA`. Es deuda compartida, pero PAIC la puede
+mitigar por su cuenta (§4, Fase 4).
 
 ---
 
-### Resumen: modificación de SEAPD → estado en PAIC
+## 4. Plan por fases
 
-| Modificación de SEAPD | Estado en PAIC | Brecha |
-|---|---|---|
-| Flujo NOM-020 completo (`3e4ac3b`) | **Parcial** — testigos sí, jefe de mantenimiento no | A2 |
-| Sección PIPC | **Ausente** | A1 |
-| 4 documentos generales | **2 de 4**, numeración rota | A3 |
-| Correo interno rediseñado | **Llega, pero miente** — anuncia NO APLICA / NO REQUIERE | B2, B4 |
-| Acuse al cliente rediseñado | **Llega incompleto** — sin servicios, con el conteo de archivos equivocado, dirigido al asesor | B1, B2, C1 |
-| Renombrado de archivos por etiqueta | Funciona | — |
-| reCAPTCHA Enterprise (`4789d1c`) | **Adoptado** | — |
-| Guardado del dictamen de calibración | **Roto en ambos** | D1 |
+Todas las fases respetan la regla de §1: **borrar las ramas de PAIC devuelve el backend a su estado
+actual.**
+
+### Fase 1 — Abrir la costura `portal_origen` (backend, aditivo)
+
+*Riesgo: bajo · Nada de esto cambia el camino de SEAPD.*
+
+1. **Ampliar la whitelist de `guardarArchivos()`** con los seis campos de PAIC:
+   `hojas_campo_laboratorio`, `fotografias_laboratorio`, `croquis_laboratorio`,
+   `hojas_campo_higiene`, `fotografias_higiene`, `croquis_higiene`. SEAPD no envía esas llaves, así
+   que para él es literalmente un no-op. *(§3.4)*
+2. **Rama de preservación en el upsert**: con `portal_origen === 'PAIC'` y fila existente, conservar
+   `REQUIERE_PIPC` y `ASESOR_CONSULTOR` en vez de sobrescribirlos. Sutileza: hay que distinguir
+   **campo ausente** de **campo en `'no'`**. *(§2.1)*
+3. **Rama de correos**: acuse al asesor, y **no** llamar a `enviarConfirmacionCliente`. *(§2.3)*
+4. **Omitir el chip de PIPC** en el correo interno cuando el origen es PAIC. *(§2.1)*
+
+### Fase 2 — PAIC: un solo servicio y los datos del asesor
+
+*Riesgo: bajo · Solo `PAIC.html`.*
+
+1. **Selector maestro** con los tres grupos, excluyente, obligatorio. *(§2.2)*
+2. **Derivar `aplica_nom020`** del selector, manteniendo nombre y valores.
+3. **Fijar el valor canónico** de las cuatro NOM duplicadas. *(pregunta 4)*
+4. **Campos del asesor**: `correo_asesor` obligatorio y `telefono_asesor`. Y recalibrar la etiqueta de
+   `correo_informe` para que quede claro que ahí **no** llega el acuse: es el destino del informe
+   final y la llave de acceso del cliente al portal. *(§2.3, §3.3)*
+5. **Quitar el input duplicado de `calibracion_valvula`** y su contenedor muerto — **solo en PAIC**.
+   *(§1.1)*
+6. **Modal de confirmación** con un servicio, no una lista de bloques.
+
+### Fase 3 — Que el registro compagine hacia abajo
+
+*Riesgo: medio · Aquí están las decisiones de arquitectura.*
+
+1. **Hoja `SOLICITUDES`** con las columnas de §3.5. Es lo que resuelve a la vez el servicio
+   solicitado, el asesor y su correo fuera del alcance de PORTAL.
+2. **Subcarpeta propia para los archivos del estudio** dentro de la carpeta de la sucursal, en espera
+   de que nazca el expediente. *(pregunta 3)*
+3. **Chips del correo interno construidos desde el servicio real**, no desde dos constantes: que diga
+   “NOM-025-STPS · Iluminación” en vez de “NOM-020 NO APLICA”.
+4. **Imprimir el asesor y el origen** en el correo interno — dos filas en el bloque de contacto. Es el
+   cambio más barato del plan y el que más contexto le da a Operaciones.
+5. **SEAOT prellena la NOM** desde `SOLICITUDES`, cerrando el embudo solicitud → OT.
+
+### Fase 4 — Deuda propia de PAIC
+
+*Riesgo: bajo · Solo `PAIC.html`.*
+
+- Adjuntos 2 y 3 ausentes con la numeración “1) … 4)” a la vista, y las dos llaves muertas que
+  `showOnRecordIndicators()` sigue recorriendo (`PAIC.html:1227`).
+- `escHtml()` en el render del modal de búsqueda por RFC (`PAIC.html:1121`), y `alert()` → aviso en
+  línea.
+- Teléfonos desincronizados: PAIC enlaza `wa.me/522791113533`; el backend usa
+  `SUPPORT_WHATSAPP: '56 5282 1561'` desde `ebbb70e`.
+- Mitigar `sucursal`: selector con las sucursales que `buscarClienteRFC` ya devuelve, más opción
+  “nueva” con normalización en vivo y previsualización del nombre de carpeta.
+- Etiqueta de versión viva.
+- Quitar del prellenado `actividad_principal` y `descripcion_proceso`, que el backend nunca devuelve.
+
+### Fase 5 — Pruebas y documentación
+
+- Casos E2E de PAIC: registro con archivos de estudio; reregistro que **no** borra `REQUIERE_PIPC` ni
+  `ASESOR_CONSULTOR`; acuse que llega **solo** al asesor; dictamen de calibración que sí se guarda.
+- Prueba de regresión de SEAPD: **el mismo payload de hoy debe producir el mismo resultado de hoy.**
+  Es la red de seguridad de la regla de §1.
+- Manual §3.5 y §6.1 con el payload real de PAIC.
 
 ---
 
-## 3. Plan por fases
+## 5. Decisiones que necesito de ti
 
-Principio rector, heredado de `PROPUESTA_TRAZABILIDAD.md`: **no romper contratos.**
-`CLIENTES_MAESTRO` = 22 columnas (guard en `BACKEND_FIXES.gs:694`). Todo lo que sigue lo respeta.
+Las Fases 1 y 2 (salvo el punto 3) **no dependen de estas respuestas**.
+
+1. **¿El botón de WhatsApp del correo interno debe apuntar al asesor en los registros de PAIC?**
+   Hoy apunta al teléfono del cliente en sitio. Si la regla es “nunca al cliente”, el clic que
+   Operaciones sí ejecuta pesa más que el correo. *(§2.3)*
+2. **¿El `correo_informe` del cliente sigue siendo obligatorio?** Es la llave de acceso del cliente a
+   PORTAL y el destino del informe final. Si el asesor no lo tiene al registrar, ¿qué se captura?
+   *(§3.3)*
+3. **¿Dónde esperan los archivos del estudio hasta que exista el expediente?** Dentro de
+   `01_Cliente/` en una subcarpeta por servicio, o en un `00_Solicitudes/` aparte que SEAINF pueda
+   vaciar hacia el expediente cuando lo cree. *(§3.4)*
+4. **¿Qué valor canónico llevan las cuatro NOM duplicadas?** `NOM-025-STPS` o `NOM-025-STPS-2008`, y
+   lo mismo para 011, 015 y 024. Ese texto termina en `ORDENES_TRABAJO` e `INFORMES`. *(§2.2)*
 
 ---
 
-### Fase 0 — Decidir el modelo de convergencia
+## 6. Orden sugerido
 
-Antes de escribir código hay que decidir **cómo dejan de divergir**. Tres caminos:
-
-| | A · Un solo formulario con modo | B · Núcleo compartido | C · Seguir sincronizando a mano |
+| # | Trabajo | Riesgo | Qué desbloquea |
 |---|---|---|---|
-| Forma | Un HTML, `?modo=asesor` activa la capa de PAIC | `portal-core.js` compartido + un HTML por portal | Lo de hoy |
-| Elimina la bifurcación | Sí, de raíz | En el JavaScript (que es el 95% idéntico) | No |
-| Costo inicial | Alto | Medio | Cero |
-| Costo por cada cambio futuro | Nulo | Bajo | **Se paga otra vez, siempre** |
-| Riesgo | Un cambio afecta a los dos portales a la vez | Acotado | Que la próxima corrección vuelva a llegar a uno solo |
-
-**Recomendación: B.** El repo ya tiene el patrón funcionando — `auth.js` y `recaptcha.js` son módulos
-compartidos por varios HTML. Extraer `portal-core.js` (manejo de archivos, condicionales genéricos,
-búsqueda por RFC, prellenado, envío y errores) deja en cada HTML solo su propio marcado y su propia
-configuración. A es el destino ideal, pero PAIC y SEAPD difieren en secciones completas y conviene
-llegar ahí después de la Fase 2, no antes.
+| 1 | Fase 1.1 — whitelist de archivos | bajo | Los estudios dejan de perderse |
+| 2 | Fase 1.2–1.4 — costura `portal_origen` | bajo | PAIC deja de pisar datos y de escribirle al cliente |
+| 3 | Fase 2 — un solo servicio + datos del asesor | bajo | El requisito de negocio queda cumplido |
+| 4 | Fase 5 — prueba de regresión de SEAPD | bajo | Garantiza el congelamiento |
+| 5 | Fase 3.1 — hoja `SOLICITUDES` | medio | Servicio y asesor sobreviven, fuera del alcance de PORTAL |
+| 6 | Fase 3.2 — destino de los archivos | medio | El expediente nace con su material |
+| 7 | Fase 3.3–3.5 — correos y prellenado de SEAOT | medio | Embudo solicitud → OT medible |
+| 8 | Fase 4 — deuda propia | bajo | Calidad del portal |
 
 ---
 
-### Fase 1 — Reparar lo que se pierde
+## 7. Qué NO hacer
 
-*Riesgo: bajo · Solo backend y marcado muerto · Beneficia a los dos portales.*
-
-1. **Quitar el input duplicado de `calibracion_valvula`** y el contenedor muerto
-   `#seccion_archivo_calibracion` de ambos portales. Es la corrección de mayor valor por línea escrita
-   de todo el plan. *(D1)*
-2. **Agregar los 6 campos de laboratorio e higiene** a la whitelist de `guardarArchivos()`, con
-   etiquetas propias. `validarArchivo_` ya cubre tipo y tamaño. *(B1)*
-3. **Merge en vez de sobrescritura** en `fase1_RegistrarCliente`: si el payload no trae un campo y la
-   fila existente sí tiene valor, conservarlo. Aplicar al menos a `ASESOR_CONSULTOR` y `REQUIERE_PIPC`.
-   Sutileza: `requiere_pipc` colapsa hoy a `SÍ`/`NO` y pierde la diferencia entre “dijo que no” y “no se
-   preguntó” — el merge debe distinguir **campo ausente** de **campo en `'no'`**. *(D2)*
-4. **Pruebas**: caso “el dictamen de calibración se guarda”, caso E01 con variante PAIC y archivos de
-   laboratorio, caso “reregistro por PAIC no borra `ASESOR_CONSULTOR` ni `REQUIERE_PIPC`”. *(D7)*
-
----
-
-### Fase 2 — Paridad de captura: completar PAIC contra SEAPD
-
-*Riesgo: bajo · Solo marcado en `PAIC.html`.*
-
-1. **`jefe_mantenimiento`** con el mismo `data-conditional-required="nom020"` de SEAPD. Es un `<input>`;
-   el backend ya lo persiste y ya lo imprime. *(A2)*
-2. **Compuerta `requiere_pipc`.** Mínimo el radio, para que la columna 16 deje de mentir. Si además el
-   asesor puede tramitar PIPC, portar la sección completa con sus 12 documentos, sus 4 sub-compuertas y
-   `resetPIPCConditionals()`. **Esto es la pregunta 2 de §4.** *(A1)*
-3. **Adjuntos 2 y 3**: portarlos o renumerar a “1) 2)”. Y limpiar las dos llaves muertas de
-   `showOnRecordIndicators()`. *(A3)*
-4. **Prellenar `asesor_consultor`** en el `fieldMap`, y quitar los dos campos que el backend nunca
-   devuelve. *(B3, D4)*
-
----
-
-### Fase 3 — Que el sistema entienda a PAIC
-
-*Riesgo: medio · Backend y correos · Aquí hay una decisión de arquitectura.*
-
-1. **Persistir el estudio solicitado.** *(B2)*
-
-   | | Hoja `SOLICITUDES` nueva (append-only) | Columna 23 en `CLIENTES_MAESTRO` |
-   |---|---|---|
-   | Contrato de 22 columnas | intacto | **roto** (guard + índices `CL.*` en 5 funciones) |
-   | Modelo | “1 registro = 1 estudio” es un **evento** | lo trata como atributo del cliente |
-   | Historial | conserva cada solicitud | la última pisa a la anterior |
-   | Beneficio extra | embudo medible **solicitud → OT**, y SEAOT puede prellenar la NOM | ninguno |
-
-   **Recomendación: hoja nueva**, con timestamp, folio, `portal_origen`, asesor, RFC, sucursal, estudio
-   solicitado, fechas preferidas, link de carpeta y estatus de atención.
-
-2. **Chips de servicios que incluyan el estudio de PAIC.** Hoy son dos constantes; deben construirse a
-   partir de lo que el registro realmente pidió. El correo interno debe decir “NOM-025-STPS ·
-   Iluminación”, no “NOM-020 NO APLICA”. *(B2)*
-3. **Imprimir `asesor_consultor` y `portal_origen`** en el correo al equipo — dos filas en el bloque de
-   contacto. Es el cambio más barato del plan y el que más contexto le da a Operaciones. *(B3, B4)*
-4. **Corregir el destinatario del acuse.** Si el registro trae asesor, el saludo al cliente no debe usar
-   el nombre del intermediario, y el asesor debería recibir su propio acuse — lo que implica capturar su
-   correo en PAIC. **Esto es la pregunta 3 de §4.** *(C1)*
-
----
-
-### Fase 4 — Ejecutar la convergencia elegida en Fase 0
-
-*Riesgo: medio · Es refactor, no funcionalidad.*
-
-Extraer `portal-core.js` con lo que hoy está duplicado carácter por carácter, dejar en cada HTML solo su
-marcado y su configuración (`FORM_ID`, `PORTAL_ORIGEN`, `VERSION`), y actualizar las etiquetas de
-versión. A partir de aquí, **una corrección se escribe una vez**. *(D6)*
-
----
-
-### Fase 5 — Normalizar `sucursal`
-
-*Riesgo: medio · Toca coincidencias existentes.*
-
-1. **Diagnóstico primero, solo lectura**: listar por RFC todas las variantes de sucursal en
-   `CLIENTES_MAESTRO`, `ORDENES_TRABAJO` y Drive. Sin ese inventario no se decide nada — dirá si el
-   problema son 3 filas o 300.
-2. **Una sola función** `normalizarSucursal_()`: trim → colapsar espacios → Title Case, aplicada al
-   escribir y al comparar.
-3. **En los portales**: selector con las sucursales que el backend ya devuelve, más opción “nueva” con
-   normalización en vivo y previsualización del nombre de carpeta.
-4. **Sin reescribir históricos en el mismo PR.**
-
----
-
-### Fase 6 — Cerrar la deuda
-
-- Sincronizar los teléfonos de los portales con `CONFIG.SUPPORT_PHONE` / `SUPPORT_WHATSAPP`. *(D5)*
-- `escHtml()` en el render del modal de RFC de ambos portales. *(D6)*
-- Manual §3.5 (PAIC real), §6.1 (payload completo con `asesor_consultor`, archivos y `portal_origen`).
-  Corregir el rótulo “CORREOS DE REGISTRO SEADB”. *(D7)*
-
----
-
-## 4. Decisiones que necesito de ti
-
-Las Fases 1 y 2.1 **no dependen de estas respuestas** — se pueden arrancar ya.
-
-1. **§3 Fase 0 — ¿modelo de convergencia?** A (un formulario con modo), **B (núcleo compartido,
-   recomendado)** o C (seguir sincronizando a mano). Define si esta conversación se repite en seis meses.
-2. **§3 Fase 2.2 — ¿el asesor puede tramitar PIPC?** Si sí, se porta la sección completa (12 documentos
-   + 4 sub-compuertas). Si no, basta el radio para que la columna deje de mentir.
-3. **§3 Fase 3.4 — ¿el acuse al cliente puede revelar al asesor?** Y en paralelo: ¿PAIC debe capturar el
-   correo del asesor para mandarle su propio acuse?
-4. **§3 Fase 3.1 — ¿hoja `SOLICITUDES` nueva (recomendado) o columna 23?** En
-   `PROPUESTA_TRAZABILIDAD.md` decidiste “sin crear hojas nuevas”; aquí la propongo igual porque no es un
-   control operativo interno sino el registro del canal de negocio. Tu llamada.
-
----
-
-## 5. Orden sugerido (de menor a mayor riesgo)
-
-| # | Trabajo | Riesgo | Desbloquea |
-|---|---|---|---|
-| 1 | D1 — quitar el input duplicado de calibración | bajo | El dictamen NOM-020 deja de perderse **en los dos portales** |
-| 2 | Fase 1 completa (B1, D2) + sus pruebas | bajo | Deja de perderse información hoy |
-| 3 | Fase 2 — paridad de captura | bajo | PAIC llena lo mismo que SEAPD |
-| 4 | Fase 3.2–3.3 — correos que digan la verdad | bajo | Operaciones ve el estudio y el asesor |
-| 5 | Fase 3.1 — hoja `SOLICITUDES` | medio | Embudo del canal + prellenado de NOM en SEAOT |
-| 6 | Fase 3.4 — destinatarios del acuse | medio | Relación asesor ↔ cliente bien planteada |
-| 7 | Fase 4 — convergencia | medio | Que la próxima corrección llegue a los dos |
-| 8 | Fase 5 — normalizar sucursal | medio | Carpetas y búsquedas confiables |
-
----
-
-## 6. Qué NO hacer
-
-- **No** ampliar `CLIENTES_MAESTRO` más allá de 22 columnas sin migrar a la vez el guard y los índices
-  `CL.*`; hay lecturas por índice en cinco funciones distintas.
-- **No** corregir un bug solo en un portal. Todo lo del grupo D vive en los dos archivos: si se arregla
-  en uno, la bifurcación se ensancha.
-- **No** portar la sección PIPC a PAIC antes de responder la pregunta 2: son ~340 líneas de marcado que
-  no se deben escribir dos veces ni por gusto.
-- **No** reescribir los datos históricos de sucursal en el mismo PR que introduce la normalización.
-- **No** tocar el orden ni el formato de las celdas de `generarPerfilSheet`: la hoja de perfil se llena
-  por coordenada fija (`B3`, `D5`, `B45`…) y cualquier inserción desplaza todo lo de abajo.
+- **No** tocar `SEAPD.html`. Ni una línea, ni siquiera para corregir el bug del dictamen de
+  calibración: ese arreglo va en un PR aparte, cuando lo autorices.
+- **No** escribir cambios en el backend fuera de una rama `portal_origen === 'PAIC'`. Si al borrar
+  esas ramas el archivo no queda como hoy, el PR está tocando SEAPD.
+- **No** poner el correo del asesor en `CLIENTES_MAESTRO`. PORTAL manda el código de acceso a **todos**
+  los correos del RFC. *(§3.3)*
+- **No** ampliar `CLIENTES_MAESTRO` más allá de 22 columnas: el upsert escribe exactamente 22 y hay
+  lecturas por índice `CL.*` en cinco funciones.
+- **No** insertar filas en medio de `generarPerfilSheet`: se llena por coordenada fija y todo lo de
+  abajo se desplaza.
+- **No** reescribir los datos históricos de sucursal en el mismo PR que introduzca la normalización.
