@@ -396,9 +396,14 @@ misma solución:
 > caben el servicio solicitado, el asesor y su correo, sin tocar el contrato de 22 columnas, sin que
 > PORTAL los vea y sin depender de que SEAPD respete un campo que no conoce.
 
-Columnas propuestas: `timestamp · folio · portal_origen · asesor · correo_acuse · telefono_asesor ·
+Columnas propuestas: `timestamp · folio · submission_id · portal_origen · asesor · correo_acuse · telefono_asesor ·
 RFC · sucursal · servicio_canonico · fechas_preferidas · link_carpeta · estatus · ot_folio`
 (`RECIBIDA` → `OT_RESERVADA` → `OT_GENERADA`; `DESCARTADA` como salida terminal alternativa).
+
+`submission_id` es **único para todo valor no vacío** y pertenece a una sola solicitud lógica. Cuando
+se reutiliza, debe corresponder a la misma terna inmutable `RFC + sucursal + servicio_canonico`; no
+puede reapuntarse a otro cliente, sucursal o servicio. Los registros heredados que lleguen sin esa
+llave se aceptan por la ruta degradada descrita en Fase 1, pero **no participan de la deduplicación**.
 
 #### Por qué `ot_folio` no es opcional
 
@@ -506,25 +511,46 @@ actual.**
      La solución, en la misma entrega:
 
      - **`submission_id`**, generado por la página **una vez por llenado** (no por envío) y mandado en
-       cada intento. Es la llave estable que hoy no existe.
+       cada intento. Es la llave estable que hoy no existe y se persiste en la columna homónima de
+       `SOLICITUDES`, donde todo valor no vacío debe ser único.
      - **El folio queda asociado a esa llave, no al intento.** Antes de crear nada, el backend busca
        `submission_id` en `SOLICITUDES`. Si ya existe, **reutiliza la misma fila y el mismo folio, pero
        no devuelve todavía**; si no existe, genera el folio y agrega la fila. Encontrar la fila solo
        prueba que la solicitud empezó, no que terminó.
-     - **Orden de escritura: fila → carpeta → archivos.** La fila es el punto de commit porque es la
-       escritura más barata y la única imprescindible; si algo muere después, el reintento la
-       encuentra y continúa con el mismo folio.
+     - **La llave no autoriza cambiar de solicitud a mitad del reintento.** Si un `submission_id`
+       existente llega con RFC, sucursal o `servicio_canonico` distintos de los persistidos, el
+       backend devuelve un conflicto explícito y **no crea, mueve ni agrega archivos**. El formulario
+       debe iniciar un registro nuevo —y por tanto una llave nueva— para esos datos modificados.
+     - **Orden de escritura: fila → carpeta → `link_carpeta` → archivos.** La fila es el punto de
+       commit porque es la escritura más barata y la única imprescindible; si algo muere después, el
+       reintento la encuentra y continúa con el mismo folio. Cuando la carpeta se localiza o se crea,
+       su URL se escribe o verifica idempotentemente en `SOLICITUDES.link_carpeta` **antes de responder
+       éxito**, de modo que una fila creada antes que Drive nunca quede terminada sin enlace.
      - **Cada paso se asegura antes de responder éxito**: localizar o crear la carpeta con
        `getFoldersByName(folio…)` y, después, localizar o crear cada archivo esperado con
        `getFilesByName(nombre)`. Si el primer intento murió después de la fila, el segundo crea la
-       carpeta; si murió a media carga, completa únicamente los archivos faltantes.
+       carpeta y completa `link_carpeta`; si murió a media carga, completa únicamente los archivos
+       faltantes.
+     - **La hoja de perfil también se trata como artefacto recuperable, no como creación ciega.** Si
+       `generarPerfilSheet()` forma parte de la ruta PAIC, debe localizar/reutilizar el perfil
+       correspondiente antes de crear otro; un reintento de la misma `submission_id` no debe dejar
+       dos perfiles equivalentes en Drive.
      - **La salida exitosa ocurre al final del “ensure”.** Solo después de verificar fila + carpeta +
-       todos los archivos que venían en ese payload se devuelve el folio al formulario. Así el
-       navegador nunca interpreta una fila parcial como registro terminado ni borra sus archivos
-       locales antes de que el servidor los haya asegurado.
+       `link_carpeta` + perfil + todos los archivos que venían en ese payload se devuelve el folio al
+       formulario. Así el navegador nunca interpreta una fila parcial como registro terminado ni
+       borra sus archivos locales antes de que el servidor los haya asegurado.
 
      > Con esto el endpoint deja de ser “crea todo” y pasa a ser **“asegura que exista”**. La rama
      > `submission_id encontrado` no es una salida temprana: es la entrada al camino de reanudación.
+
+     **Límite deliberado de idempotencia.** La garantía exactamente-una-vez se aplica a los artefactos
+     operativos que no pueden duplicarse ni cruzarse: fila de `SOLICITUDES`, folio, carpeta,
+     `link_carpeta`, perfil, archivos y posteriormente el vínculo solicitud → OT. **Los correos son un
+     efecto secundario `at-least-once`**: si el servidor termina, envía el correo y la respuesta al
+     navegador se pierde, un reintento puede volver a enviar la notificación. Se acepta ese posible
+     duplicado excepcional frente al costo de introducir un outbox/ledger transaccional de correo.
+     La invariante que sí es dura en cada intento permanece intacta: **un acuse de PAIC nunca se manda
+     al cliente**. No se declara ni se busca idempotencia total de efectos externos.
 
      Y si el `submission_id` no llega —una copia en caché de la página anterior—, **se degrada**: folio
      aleatorio y registro normal, aceptando que un reintento desde esa copia podría duplicar. Es
@@ -567,10 +593,13 @@ redefine `correo_informe`, y el backend vigente todavía manda el acuse a ese ca
    del intermediario corporativo. Y recalibrar la etiqueta de `correo_informe` para que quede claro
    que ahí **no** llega el acuse: es el destino del informe final y la llave de acceso del cliente al
    portal. *(§2.3, §3.3)*
-5. **Campo oculto `submission_id`**, generado **una vez por llenado del formulario** —no por envío— y
-   mandado en cada intento. Es la llave de idempotencia de la que cuelga todo el paso 3: sin ella, un
-   reintento crea una solicitud duplicada, y la página *pide* reintentar en dos ramas de su `catch`.
-   *(Fase 1.1)*
+5. **Campo oculto `submission_id`**, generado al iniciar un llenado y conservado durante todos los
+   reintentos de **ese mismo registro**. Tras una respuesta exitosa del servidor, PAIC hace
+   `form.reset()` y **genera inmediatamente una llave nueva antes de permitir otro envío**; el ciclo
+   de vida de la llave no depende de que el reset conserve o borre un input oculto. Así un asesor
+   puede registrar otro estudio sin recargar la página y obtiene otra solicitud y otro folio. Si un
+   reintento reutiliza una llave ya persistida con RFC/sucursal/servicio distintos, el backend lo
+   rechaza como conflicto y la UI debe iniciar un registro nuevo. *(Fase 1.1)*
 6. **Quitar el input duplicado de `calibracion_valvula`** y su contenedor muerto — **solo en PAIC**.
    *(§1.1)*
 7. **Modal de confirmación** con un servicio, no una lista de bloques.
@@ -601,10 +630,11 @@ redefine `correo_informe`, y el backend vigente todavía manda el acuse a ese ca
 4. **Imprimir el asesor y el origen** en el correo interno — dos filas en el bloque de contacto. Es el
    cambio más barato del plan y el que más contexto le da a Operaciones.
 5. **SEAOT elige la solicitud, reserva su folio y después la cierra.** Al crear una OT para un RFC +
-   sucursal, SEAOT lista las solicitudes en `RECIBIDA`; el operador escoge una y de ahí sale la NOM
-   prellenada. **Antes de devolver un número de OT a la interfaz**, el backend reserva el folio para
-   ese `sol_folio`. La reserva es parte de la operación de servidor, no un cálculo read-only en el
-   navegador.
+   sucursal, SEAOT lista tanto las solicitudes `RECIBIDA` como las `OT_RESERVADA` de esa pareja. Una
+   `RECIBIDA` se puede seleccionar para reservar un folio; una `OT_RESERVADA` aparece como **“continuar
+   OT {folio}”** y al seleccionarla recupera la reserva existente, nunca solicita un consecutivo nuevo.
+   **Antes de devolver un número de OT a la interfaz**, el backend reserva el folio para ese
+   `sol_folio`. La reserva es parte de la operación de servidor, no un cálculo read-only en el navegador.
 
    Esto importa porque el `getSiguienteFolioOT_()` vigente **solo lee** `ORDENES_TRABAJO` y devuelve
    el siguiente valor: no lo reserva. Dos operadores que abran SEAOT antes de que alguno guarde pueden
@@ -619,6 +649,10 @@ redefine `correo_informe`, y el backend vigente todavía manda el acuse a ese ca
      presentes en `ORDENES_TRABAJO` y los `ot_folio` no vacíos de `SOLICITUDES` (incluidas reservas
      todavía no materializadas como OT). Después escribe el folio en la solicitud y cambia su estado a
      `OT_RESERVADA` **antes** de devolverlo a la interfaz.
+   - **Las reservas no expiran ni se reciclan automáticamente.** Si el navegador se cierra después de
+     reservar, esa fila sigue visible en SEAOT como `OT_RESERVADA` y se continúa con el mismo folio.
+     Si posteriormente se descarta la solicitud, el folio reservado se considera consumido para no
+     introducir reutilizaciones ambiguas; perder un consecutivo es preferible a cruzar dos solicitudes.
    - Una solicitud distinta nunca puede recibir una reserva ya ocupada. Si por datos históricos se
      detecta el mismo `ot_folio` en dos solicitudes, se bloquea con conflicto explícito; no se
      reconcilia automáticamente.
@@ -667,10 +701,17 @@ redefine `correo_informe`, y el backend vigente todavía manda el acuse a ese ca
   publica.
 - Casos E2E de PAIC: registro con archivos de estudio; reregistro que **no** borra `REQUIERE_PIPC` ni
   `ASESOR_CONSULTOR`; acuse que llega **solo** al asesor; dictamen de calibración que sí se guarda.
-- Casos de recuperación: reintento después de crear solo la fila de `SOLICITUDES`; reintento después
-  de subir solo parte de los archivos; ambos deben terminar la misma solicitud y conservar el folio.
-- Caso de concurrencia SEAOT: dos solicitudes distintas de la misma serie reservadas antes de guardar
-  deben recibir folios distintos; recargar la misma solicitud debe recuperar su misma reserva.
+- Casos de recuperación de solicitud: reintento después de crear solo la fila de `SOLICITUDES` debe
+  crear/reutilizar la carpeta y completar `link_carpeta`; reintento después de subir solo parte de los
+  archivos debe completar únicamente lo faltante; pérdida de respuesta después de terminar debe
+  conservar la misma fila, folio, carpeta, perfil y archivos. En este último caso **se admite que el
+  correo pueda repetirse**, de acuerdo con el límite `at-least-once` de Fase 1.
+- Caso de identidad de solicitud: reutilizar un `submission_id` persistido con RFC, sucursal o servicio
+  distintos debe dar conflicto y no escribir archivos; completar un registro y enviar otro sin
+  recargar la página debe usar un `submission_id` y un folio nuevos.
+- Caso de concurrencia y recuperación SEAOT: dos solicitudes distintas de la misma serie reservadas
+  antes de guardar deben recibir folios distintos; recargar una `OT_RESERVADA` debe volver a mostrarla
+  y recuperar su misma reserva.
 - Manual §3.5 y §6.1 con el payload real de PAIC.
 
 ---
@@ -709,8 +750,8 @@ antes de desplegarlo. En particular, **no se publica el paso 1 ni el paso 3 si e
 |---|---|---|---|
 | 1 | ⛔ **Fase 1.3–1.5 — costura `portal_origen`** (preservación, guard duro de correos, chip de PIPC) | bajo | **Gate SEAPD previo obligatorio.** Después va primero: el guard tiene que estar vivo antes de que la página redefina `correo_informe`; si no, el acuse se le va **al cliente** (§2.3) |
 | 2 | ⛔ **Fase 2 — campos de PAIC** (`correo_acuse`, selector de un servicio, datos del asesor) | bajo | Cierra la ventana del paso 1: el asesor recupera su acuse, ahora por el campo correcto |
-| 3 | ⛔ **Fase 1.1 + 1.2 + 3.1, en una sola entrega**: archivos, folio ligado a `submission_id`, reanudación idempotente, carpeta por solicitud, hoja `SOLICITUDES` y validación de un solo servicio | medio | **Gate SEAPD previo obligatorio.** Los estudios dejan de perderse y quedan atribuibles, descritos y reintentables sin duplicar |
-| 4 | Fase 3.5 — selección de solicitud en SEAOT, **reserva de folio por `sol_folio`** y cierre idempotente de la OT | medio | Embudo solicitud → OT auditable, recuperable y sin cruces entre operadores |
+| 3 | ⛔ **Fase 1.1 + 1.2 + 3.1, en una sola entrega**: archivos, folio ligado a `submission_id` único, reanudación idempotente de artefactos operativos, carpeta + `link_carpeta`, hoja `SOLICITUDES` y validación de un solo servicio | medio | **Gate SEAPD previo obligatorio.** Los estudios dejan de perderse y quedan atribuibles, descritos y reintentables sin duplicar |
+| 4 | Fase 3.5 — selección de solicitud en SEAOT, **recuperación de `OT_RESERVADA`**, reserva de folio por `sol_folio` y cierre idempotente de la OT | medio | Embudo solicitud → OT auditable, recuperable y sin cruces entre operadores |
 | 5 | Fase 3.2 — traspaso al expediente (toca SEAINF) | medio | Ahora sí: el expediente nace con su material |
 | 6 | Fase 3.3–3.4 — correos que dicen la verdad | bajo | Operaciones ve el servicio y el asesor |
 | 7 | Fase 4 — deuda propia | bajo | Calidad del portal |
