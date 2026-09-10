@@ -35,7 +35,9 @@ jobs:
           assert block(current)==block(base), 'generarPerfilSheet() cambió'
           PY
       - name: Validate backend JavaScript syntax
-        run: node --check BACKEND_FIXES.gs
+        run: |
+          cp BACKEND_FIXES.gs /tmp/backend-fixes.js
+          node --check /tmp/backend-fixes.js
       - name: Validate PAIC inline JavaScript and rules
         run: |
           python3 - <<'PY'
