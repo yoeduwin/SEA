@@ -1,4 +1,4 @@
-name: Run guarded PAIC PR104 correction
+name: Restore PAIC email constants
 
 on:
   push:
@@ -14,54 +14,63 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: tmp/paic-pr104-business-fix
+          ref: feat/paic-client-branch-master
           fetch-depth: 0
-      - name: Prepare temporary correction script
+      - name: Restore constants exactly outside protected profile
         run: |
-          cp .github/scripts/tmp_paic_pr104_fix.py /tmp/tmp_paic_pr104_fix.py
           python3 - <<'PY'
           from pathlib import Path
-          p=Path('/tmp/tmp_paic_pr104_fix.py')
+          p=Path('BACKEND_FIXES.gs')
           s=p.read_text()
-          anchor="base_paic = subprocess.check_output(['git','show','origin/claude/zen-mayer-ocbfln:PAIC.html'], text=True)"
-          if s.count(anchor)!=1: raise SystemExit('base_paic anchor inesperado')
-          s=s.replace(anchor,anchor+"\nbase_seapd = subprocess.check_output(['git','show','origin/main:SEAPD.html'], text=True)",1)
-          old="pipc = extract_section(base_paic, 'Programa Interno de Protección Civil (PIPC)')"
-          if s.count(old)!=1: raise SystemExit('PIPC source anchor inesperado')
-          s=s.replace(old,"pipc = extract_section(base_seapd, 'Programa Interno de Protección Civil (PIPC)')",1)
+          if 'const EMAIL_COLORS_' in s or 'const ATENCION_NOMBRE_' in s:
+              raise SystemExit('Las constantes ya existen; abortando para evitar duplicados')
+          anchor='function escHtml_(value) {'
+          if s.count(anchor)!=1: raise SystemExit('Anchor escHtml inesperado')
+          block="""// ─────────────────────────────────────────────────────────────────────────────
+// CORREOS DE REGISTRO SEADB
+// Presentación de los correos que dispara el registro de un servicio.
+// No alteran el flujo de registro: sólo reacomodan datos que el proceso ya
+// produce. No se agregan campos al formulario ni columnas a CLIENTES_MAESTRO.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Firma de quien da seguimiento desde Atención a Clientes.
+const ATENCION_NOMBRE_ = 'Jimmy';
+
+// Paleta corporativa usada en ambos correos.
+const EMAIL_COLORS_ = {
+  verdeOscuro: '#123A28',
+  verde:       '#1E5A3E',
+  verdeClaro:  '#A9CBB8',
+  verdeTenue:  '#7FB89A',
+  whatsapp:    '#1FA855',
+  fondo:       '#F4F6F4',
+  panel:       '#F5F8F5',
+  borde:       '#E6EBE4',
+  bordeSuave:  '#EFF2ED',
+  texto:       '#2B322B',
+  textoFuerte: '#1E2620',
+  textoSuave:  '#6E796E',
+  etiqueta:    '#7A857A',
+  ambar:       '#C79A2E',
+  ambarFondo:  '#FBF7EC',
+  ambarTexto:  '#8A5F0C'
+};
+
+/**
+ * Escapa texto capturado por el usuario antes de inyectarlo en el HTML del
+ * correo, para que un dato con < o & no rompa el maquetado.
+ */
+"""
+          s=s.replace(anchor,block+anchor,1)
           p.write_text(s)
           PY
-      - name: Switch to PR branch
-        run: |
-          git fetch origin feat/paic-client-branch-master claude/zen-mayer-ocbfln main
-          git checkout -B feat/paic-client-branch-master origin/feat/paic-client-branch-master
-      - name: Apply correction
-        run: python3 /tmp/tmp_paic_pr104_fix.py
-      - name: Verify scope and protected profile
-        run: |
           git diff --check
-          test "$(git diff --name-only | sort)" = $'BACKEND_FIXES.gs\nPAIC.html'
-          test -z "$(git diff --name-only -- SEAOT.html SEAINF.html SEAPD.html)"
-          python3 - <<'PY'
-          from pathlib import Path
-          import subprocess
-          b=Path('BACKEND_FIXES.gs').read_text()
-          before=subprocess.check_output(['git','show','HEAD:BACKEND_FIXES.gs'],text=True)
-          def block(t):
-              a=t.index('function generarPerfilSheet(')
-              z=t.index('\nfunction enviarNotificacionRobusta(',a)
-              return t[a:z]
-          assert block(b)==block(before), 'generarPerfilSheet cambió'
-          p=Path('PAIC.html').read_text()
-          assert 'name="aplica_nom020"' in p and 'name="requiere_pipc"' in p
-          assert 'estudio_laboratorio' not in p and 'estudio_higiene' not in p
-          assert 'applyClientData' not in p
-          assert 'CLIENTE_SUCURSAL_YA_REGISTRADO' in b
-          PY
+          test "$(git diff --name-only)" = "BACKEND_FIXES.gs"
+          if git diff -- BACKEND_FIXES.gs | grep -q '^[-+].*function generarPerfilSheet'; then exit 1; fi
       - name: Commit to PR branch
         run: |
           git config user.name 'paic-business-fix'
           git config user.email 'actions@users.noreply.github.com'
-          git add PAIC.html BACKEND_FIXES.gs
-          git commit -m 'fix(paic): align intermediary first-registration flow'
+          git add BACKEND_FIXES.gs
+          git commit -m 'fix(paic): restore shared email constants'
           git push origin HEAD:feat/paic-client-branch-master
