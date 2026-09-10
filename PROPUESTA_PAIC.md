@@ -429,13 +429,42 @@ actual.**
    estudios del mismo RFC y sucursal dejarían dos archivos llamados idénticamente
    `L1) Hojas de campo - Laboratorio.pdf` en `01_Cliente`, **sin forma de saber cuál vino de cuál
    solicitud** — y eso ya no se reconstruye después. Por eso, en el mismo paso:
-   - **Se genera el folio de la solicitud al registrar** (`SOL-aammdd-hhmm`), sin necesidad de que
-     exista todavía la hoja `SOLICITUDES`.
+   - **Se genera el folio de la solicitud al registrar.** No con precisión de minuto: dos registros
+     del mismo minuto compartirían folio, y como el folio es a la vez la llave de la fila y el nombre
+     de la carpeta, eso volvería ambigua la búsqueda y —mismo RFC, sucursal y servicio— **fundiría
+     cargas de dos solicitudes distintas en una sola carpeta**. El formato es
+     **`SOL-aammdd-hhmmss-XXXX`**, con cuatro caracteres aleatorios, verificando que la carpeta no
+     exista antes de usarlo.
+
+     > No es un problema de concurrencia: `doPost` ya toma un `LockService.getScriptLock()` con
+     > `waitLock(15000)` para toda la ruta POST, así que dos registros nunca se ejecutan entrelazados.
+     > Es un problema de **precisión**. Por eso mismo, si prefieres folios legibles y consecutivos, un
+     > contador secuencial también es seguro bajo ese lock; `Utilities.getUuid()` es la alternativa
+     > sin pensarlo.
    - **Los archivos del estudio van a `01_Cliente/{folio}_{servicio}/`**, no a la raíz de
      `01_Cliente`. Cada registro queda con su carpeta y su identidad desde el primer día.
-   - Cuando llegue la hoja (Fase 3), sus filas simplemente **referencian ese mismo folio**; no hay que
-     migrar nada.
-2. **Rama de preservación en el upsert**, con `portal_origen === 'PAIC'` y fila existente. La regla es
+   - **La hoja `SOLICITUDES` y su fila van en esta MISMA entrega.** Es tentador dejarla para la Fase 3
+     —así lo tenía yo— pero eso abre una ventana en la que se generan folios y carpetas **sin fila que
+     los describa**, y esos registros ya no se recuperan: `correo_acuse` no se guarda en ningún lado,
+     el `servicio_canonico` tampoco, y del asesor solo sobrevive el **último** en la columna 22 (§2.5).
+     Las `fechas_preferidas` quedarían únicamente dentro de la hoja de perfil de ese cliente, que no es
+     consultable. Sin fila, SEAOT no puede seleccionar la solicitud y no hay backfill posible.
+     **El folio, la carpeta y la fila son una sola unidad: se entregan juntos o no se entregan.**
+2. **Validar en el servidor que el registro resuelve a exactamente un servicio.** El selector maestro
+   de la Fase 2 impone la regla en pantalla, pero **no es una invariante**: una copia en caché de la
+   página actual —o cualquier petición directa al endpoint público— puede mandar
+   `estudio_laboratorio` + `estudio_higiene` + `aplica_nom020` a la vez, o ninguno, dejando el
+   `servicio_canonico` ambiguo mientras el backend acepta el registro tan campante. Con
+   `portal_origen === 'PAIC'`, el backend resuelve el servicio y **rechaza** si no sale exactamente
+   uno, con un mensaje que invite a recargar la página.
+
+   > **Dónde va el rechazo, y por qué aquí sí se rechaza.** `fase1_RegistrarCliente` tiene un
+   > preflight limpio —razón social, RFC y contrato de la hoja, los tres con `return` **antes** del
+   > primer `createFolder`—. Ahí cabe esta validación sin dejar basura. Es la diferencia con el correo
+   > de acuse (§2.3), donde elegí degradar en vez de rechazar: eso solo se sabe cuando la carpeta ya
+   > existe. **Lo que se puede validar en el preflight se rechaza; lo que no, se degrada.**
+
+3. **Rama de preservación en el upsert**, con `portal_origen === 'PAIC'` y fila existente. La regla es
    **conservar solo cuando el payload no trae el dato**, nunca de forma incondicional:
    - `REQUIERE_PIPC`: PAIC nunca lo manda, así que siempre se conserva el valor previo en vez de
      escribir `'NO'`. Sutileza: hay que distinguir **campo ausente** de **campo en `'no'`**, porque hoy
@@ -443,9 +472,8 @@ actual.**
    - `ASESOR_CONSULTOR`: se conserva **solo si el payload viene vacío**. Si el registro trae asesor, se
      guarda el que trae — de lo contrario un asesor B que registra un servicio nuevo quedaría atribuido
      al asesor A del registro anterior. *(§2.1 y §2.5)*
-3. **Rama de correos**: el acuse se manda a `correo_acuse` en vez de a `correo_informe`. Tres líneas,
-   sin tocar el cuerpo del correo. *(§2.3)*
-4. **Omitir el chip de PIPC** en el correo interno cuando el origen es PAIC. *(§2.1)*
+4. **Rama de correos**: guarda dura, el acuse va a `correo_acuse` o no va. *(§2.3)*
+5. **Omitir el chip de PIPC** en el correo interno cuando el origen es PAIC. *(§2.1)*
 
 ### Fase 2 — PAIC: un solo servicio y los datos del asesor
 
