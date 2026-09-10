@@ -181,10 +181,46 @@ caché o una petición malformada pueden llegar sin el campo. Cuando falte, el r
 igual —no se tira el trabajo del asesor ni sus archivos— pero el acuse se **omite** y el correo
 interno lleva una línea que lo dice, para que Atención a Clientes lo contacte a mano.
 
-> **Y hay que desplegar en el orden correcto.** El campo de PAIC va **primero**, no después: hoy el
-> backend ignora las llaves que no conoce, así que publicar `correo_acuse` en el formulario mientras
-> el backend sigue como está es un no-op perfecto. Si se hiciera al revés —la rama de correos antes
-> que el campo—, **cada registro de PAIC de esa ventana mandaría el acuse al cliente.** Ver §6.
+> **Y hay que desplegar en el orden correcto: el backend va primero, no el campo.**
+>
+> En una versión anterior de este plan yo tenía lo contrario, con este argumento: *“el backend ignora
+> las llaves que no conoce, así que publicar `correo_acuse` en el formulario es un no-op”*. El
+> argumento es cierto sobre la **llave** y falso sobre la **página**, y esa distinción es justo la que
+> importa. La misma publicación que agrega `correo_acuse` **redefine `correo_informe`**: hoy su
+> etiqueta dice *“aquí recibirá su informe”* en segunda persona, dirigida a quien llena el formulario
+> —el asesor—, y por eso las dos filas reales de la validación de campo traen el correo del
+> intermediario en la columna 9. En cuanto la página nueva contrasta los dos campos, el asesor empieza
+> a escribir el correo **real del cliente** en `correo_informe`. Y `enviarConfirmacionCliente` sigue
+> leyendo exactamente ese campo:
+>
+> ```javascript
+> const emailCliente = data.correo_informe;      // BACKEND_FIXES.gs:2448
+> …
+> GmailApp.sendEmail(emailCliente, …);            // BACKEND_FIXES.gs:2554
+> ```
+>
+> Es decir: **cada registro de PAIC de esa ventana mandaría el acuse al cliente**, que es precisamente
+> lo que este requisito prohíbe. Publicar el campo no es un no-op; cambia el significado de un campo
+> que el backend vigente todavía lee.
+>
+> **Y no hay opción atómica.** `PAIC.html` es una página estática que hace `fetch` a una `SCRIPT_URL`
+> fija (`PAIC.html:711`); el backend se publica aparte, como despliegue del proyecto de Apps Script.
+> Son dos superficies y dos publicaciones: no existe el “las dos a la vez”. Hay que elegir orden.
+>
+> **El orden seguro es el backend primero**, y su costo es asimétrico:
+>
+> | Orden | Qué pasa en la ventana |
+> |---|---|
+> | Campo primero | El asesor pone el correo del cliente en `correo_informe` y **el acuse le llega al cliente**. Se rompe la invariante |
+> | **Backend primero** | La página vieja no manda `correo_acuse`, así que el acuse **se omite**. Nadie recibe de más; el asesor recibe de menos |
+>
+> Se paga con un acuse ausente, no con uno mal entregado. Y ni siquiera se pierde el registro: el
+> correo interno sale igual y lleva la línea para que Atención a Clientes contacte al asesor a mano.
+> La ventana dura lo que tarde la segunda publicación.
+>
+> Rechacé la tentación de acortarla haciendo que el guard caiga a `correo_informe` cuando falte
+> `correo_acuse` “solo durante la transición”: eso es exactamente el agujero cerrado más arriba, y una
+> petición fabricada es indistinguible de una página en caché. Ver §6.
 
 | Caso | `correo_acuse` | `correo_informe` | Resultado |
 |---|---|---|---|
@@ -449,7 +485,46 @@ actual.**
      el `servicio_canonico` tampoco, y del asesor solo sobrevive el **último** en la columna 22 (§2.5).
      Las `fechas_preferidas` quedarían únicamente dentro de la hoja de perfil de ese cliente, que no es
      consultable. Sin fila, SEAOT no puede seleccionar la solicitud y no hay backfill posible.
-     **El folio, la carpeta y la fila son una sola unidad: se entregan juntos o no se entregan.**
+     **El folio, la carpeta y la fila son una sola unidad de entrega: se publican juntos o no se
+     publican.**
+   - **Y hace falta una llave de idempotencia, porque “unidad de entrega” no es “unidad
+     transaccional”.** Que las tres cosas se *publiquen* juntas no las vuelve atómicas *en tiempo de
+     ejecución*: Drive y Sheets son dos servicios y no hay commit conjunto. Si la ejecución muere
+     después de crear la carpeta y antes de escribir la fila, o si la respuesta se pierde después de
+     escribirla, el reintento genera un folio nuevo y deja **una carpeta huérfana o una solicitud
+     duplicada**.
+
+     Y el reintento no es un escenario de laboratorio en este portal — es el camino que la propia
+     página invita a tomar:
+
+     | Evidencia en `PAIC.html` | Consecuencia |
+     |---|---|
+     | `setTimeout(() => controller.abort(), 120000)` sobre un endpoint que sube hasta 25 MB | A los 120 s el navegador aborta, pero **Apps Script no cancela**: el registro se completa en el servidor mientras el asesor ve un error |
+     | `showError('… Por favor intente nuevamente.')`, en dos ramas del `catch` | La interfaz **le pide explícitamente** que reintente |
+     | `finally { submitBtn.disabled = false; }` | El botón se rearma; reintentar es un clic |
+
+     La solución, en la misma entrega:
+
+     - **`submission_id`**, generado por la página **una vez por llenado** (no por envío) y mandado en
+       cada intento. Es la llave estable que hoy no existe.
+     - **El folio se deriva de esa llave, no del reloj.** Antes de crear nada, el backend busca
+       `submission_id` en `SOLICITUDES`: si ya está, **devuelve el folio existente y no crea nada**.
+       Como `doPost` ya serializa toda la ruta POST bajo el script lock, ese “buscar y luego crear” es
+       seguro sin candado adicional.
+     - **Orden de escritura: fila → carpeta → archivos.** La fila es el punto de commit porque es la
+       escritura más barata y la única imprescindible; si algo muere después, el reintento la
+       encuentra y **retoma donde se quedó** en vez de empezar de cero.
+     - **Cada paso, verificado antes de ejecutarse**: la carpeta con `getFoldersByName(folio…)`, cada
+       archivo con `getFilesByName(nombre)` en esa carpeta. Así un reintento a media carga completa lo
+       que falta sin duplicar lo que ya subió.
+
+     > Con esto el endpoint deja de ser “crea todo” y pasa a ser **“asegura que exista”**, que es la
+     > única forma honesta de tener idempotencia entre dos servicios que no comparten transacción.
+
+     Y si el `submission_id` no llega —una copia en caché de la página anterior—, **se degrada**: folio
+     aleatorio y registro normal, aceptando que un reintento desde esa copia podría duplicar. Es
+     coherente con el criterio del documento: aquí el peor caso es una fila de más, revisable a mano,
+     no un correo mal entregado ni un archivo perdido. Rechazar costaría el trabajo del asesor.
 2. **Validar en el servidor que el registro resuelve a exactamente un servicio.** El selector maestro
    de la Fase 2 impone la regla en pantalla, pero **no es una invariante**: una copia en caché de la
    página actual —o cualquier petición directa al endpoint público— puede mandar
@@ -477,7 +552,8 @@ actual.**
 
 ### Fase 2 — PAIC: un solo servicio y los datos del asesor
 
-*Riesgo: bajo · Solo `PAIC.html`.*
+*Riesgo: bajo · Solo `PAIC.html`.* ⛔ **Depende de que la Fase 1.3–1.5 ya esté publicada**: esta fase
+redefine `correo_informe`, y el backend vigente todavía manda el acuse a ese campo (§2.3).
 
 1. **Selector maestro** con los tres grupos, excluyente, obligatorio. *(§2.2)*
 2. **Derivar `aplica_nom020`** del selector, manteniendo nombre y valores.
@@ -486,9 +562,13 @@ actual.**
    del intermediario corporativo. Y recalibrar la etiqueta de `correo_informe` para que quede claro
    que ahí **no** llega el acuse: es el destino del informe final y la llave de acceso del cliente al
    portal. *(§2.3, §3.3)*
-5. **Quitar el input duplicado de `calibracion_valvula`** y su contenedor muerto — **solo en PAIC**.
+5. **Campo oculto `submission_id`**, generado **una vez por llenado del formulario** —no por envío— y
+   mandado en cada intento. Es la llave de idempotencia de la que cuelga todo el paso 3: sin ella, un
+   reintento crea una solicitud duplicada, y la página *pide* reintentar en dos ramas de su `catch`.
+   *(Fase 1.1)*
+6. **Quitar el input duplicado de `calibracion_valvula`** y su contenedor muerto — **solo en PAIC**.
    *(§1.1)*
-6. **Modal de confirmación** con un servicio, no una lista de bloques.
+7. **Modal de confirmación** con un servicio, no una lista de bloques.
 
 ### Fase 3 — Que el registro compagine hacia abajo
 
@@ -520,6 +600,31 @@ actual.**
    prellenada. Al registrarse la OT, SEAOT escribe su folio en `ot_folio` de esa fila y la pasa a
    `OT_GENERADA`. Sin ese paso de selección el prellenado es ambiguo en cuanto hay dos solicitudes
    abiertas, que es el caso normal bajo la regla de un servicio por registro. *(§3.5)*
+
+   **Las dos escrituras tienen que ser una sola operación idempotente**, por la misma razón que en la
+   Fase 1: son dos hojas y no hay commit conjunto. Hoy `fase2_RegistrarOT` **no verifica nada** antes
+   de escribir —valida el payload, resuelve la carpeta y hace `sheet.appendRow([…])` directo
+   (`BACKEND_FIXES.gs:901-957`)—, así que llamarla dos veces con el mismo folio deja **dos OT
+   idénticas**. Y si la OT se registra pero falla la actualización de la fila, la solicitud se queda
+   en `RECIBIDA` para siempre; invertir el orden solo cambia de lado el daño (`OT_GENERADA` sin OT).
+
+   El arreglo no necesita llave nueva: **`ot_folio` ya es estable entre reintentos**. Sale del campo
+   `#wo_orderNumber`, que `updateOrderNumber()` llena **una vez** al generar la orden y que queda
+   editable; volver a guardar manda el mismo texto. Entonces `fase2_RegistrarOT` recibe también el
+   `sol_folio` seleccionado y, antes del `appendRow`, hace dos lecturas:
+
+   | Comprobación | Qué caso atrapa | Qué hace |
+   |---|---|---|
+   | ¿`ot_folio` ya está en la columna B de `ORDENES_TRABAJO`? | Reintento del mismo guardado | No inserta; sigue a reconciliar la fila |
+   | ¿La fila de `sol_folio` ya trae un `ot_folio`? | El operador recargó SEAOT y obtuvo un folio nuevo para una solicitud **ya atendida** | No inserta; devuelve la OT existente |
+
+   Después reconcilia: si la fila de `sol_folio` no tiene `ot_folio`, se lo escribe y la pasa a
+   `OT_GENERADA`. Así **cualquiera de los dos estados parciales se completa solo** en la siguiente
+   llamada, en vez de duplicar o quedarse a medias. La segunda comprobación es la que importa de más,
+   porque atrapa el caso que la llave por sí sola no ve: el folio nuevo sobre una solicitud ya servida.
+
+   > No toca el contrato A–Q: se agregan lecturas **antes** del `appendRow`, que sigue escribiendo sus
+   > 17 valores exactamente igual.
 
 ### Fase 4 — Deuda propia de PAIC
 
@@ -568,16 +673,17 @@ Las Fases 1 y 2 (salvo el punto 3) **no dependen de estas respuestas**.
 
 ## 6. Orden sugerido
 
-El orden **no es libre**: dos pasos tienen que ir antes que otros o abren una ventana en la que el
-sistema hace justo lo que queremos evitar. Están marcados con ⛔.
+El orden **no es libre**: los pasos marcados con ⛔ abren, si se hacen fuera de lugar, una ventana en
+la que el sistema hace justo lo que queremos evitar. Los pasos 1 y 2 son un **par ordenado** —backend
+y luego página, nunca al revés— y el 3 es un **paquete** que no se puede partir.
 
 | # | Trabajo | Riesgo | Qué desbloquea |
 |---|---|---|---|
-| 1 | ⛔ **Fase 2 — campos de PAIC** (`correo_acuse`, selector de un servicio, datos del asesor) | bajo | **Va primero**: el backend ignora las llaves que no conoce, así que publicar el campo es un no-op. Al revés, la rama de correos sin el campo mandaría el acuse **al cliente** |
-| 2 | Fase 1.3–1.5 — costura `portal_origen` (preservación, correos, chip de PIPC) | bajo | PAIC deja de pisar datos y de escribirle al cliente |
-| 3 | ⛔ **Fase 1.1 + 1.2 + 3.1, en una sola entrega**: archivos, folio, carpeta por solicitud, hoja `SOLICITUDES` y validación de un solo servicio | medio | Los estudios dejan de perderse **y quedan atribuibles y descritos**. Folio, carpeta y fila son una unidad |
+| 1 | ⛔ **Fase 1.3–1.5 — costura `portal_origen`** (preservación, guard duro de correos, chip de PIPC) | bajo | **Va primero.** El guard tiene que estar vivo *antes* de que la página redefina `correo_informe`; si no, el acuse se le va **al cliente** (§2.3) |
+| 2 | ⛔ **Fase 2 — campos de PAIC** (`correo_acuse`, selector de un servicio, datos del asesor) | bajo | Cierra la ventana del paso 1: el asesor recupera su acuse, ahora por el campo correcto |
+| 3 | ⛔ **Fase 1.1 + 1.2 + 3.1, en una sola entrega**: archivos, folio derivado de `submission_id`, carpeta por solicitud, hoja `SOLICITUDES` y validación de un solo servicio | medio | Los estudios dejan de perderse **y quedan atribuibles, descritos y reintentables sin duplicar** |
 | 4 | Fase 5 — prueba de regresión de SEAPD | bajo | Garantiza el congelamiento |
-| 5 | Fase 3.5 — selección de solicitud en SEAOT | medio | Embudo solicitud → OT auditable |
+| 5 | Fase 3.5 — selección de solicitud en SEAOT, con registro idempotente de la OT | medio | Embudo solicitud → OT auditable y sin OT duplicadas |
 | 6 | Fase 3.2 — traspaso al expediente (toca SEAINF) | medio | Ahora sí: el expediente nace con su material |
 | 7 | Fase 3.3–3.4 — correos que dicen la verdad | bajo | Operaciones ve el servicio y el asesor |
 | 8 | Fase 4 — deuda propia | bajo | Calidad del portal |
@@ -586,6 +692,13 @@ sistema hace justo lo que queremos evitar. Están marcados con ⛔.
 > perderse” era la victoria barata del principio. Ya no lo es: para que esos archivos sirvan de algo
 > tienen que llegar con folio, carpeta y fila, y eso arrastra la hoja `SOLICITUDES` al mismo paquete.
 > Sube de *bajo* a *medio* y crece en tamaño. Es el precio de que el arreglo sea real y no cosmético.
+
+> **Nota honesta sobre los pasos 1 y 2.** Este par estuvo invertido en la versión anterior, con el
+> argumento de que publicar el campo era un no-op. No lo es: la misma publicación redefine
+> `correo_informe`, que el backend vigente todavía lee para mandar el acuse (§2.3). Como `PAIC.html`
+> y el backend viven en superficies distintas, **no existe el despliegue simultáneo**; hay que elegir,
+> y la elección correcta es la que falla omitiendo el acuse en vez de la que falla mandándoselo al
+> cliente.
 
 ---
 
