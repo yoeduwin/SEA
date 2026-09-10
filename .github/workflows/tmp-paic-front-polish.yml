@@ -38,6 +38,7 @@ jobs:
           assert s.count('name="calibracion_valvula"')==1
           assert 'bindPipcConditional' in s
           assert 'estudio_laboratorio' not in s and 'estudio_higiene' not in s
+          assert 'applyClientData' not in s
           PY
           node --check /tmp/paic-inline.js
       - name: Commit and push
