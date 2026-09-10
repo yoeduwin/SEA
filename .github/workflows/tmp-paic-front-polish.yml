@@ -1,0 +1,49 @@
+name: Polish PAIC conditional registration UI
+
+on:
+  push:
+    branches:
+      - 'tmp/paic-pr104-front-polish'
+
+permissions:
+  contents: write
+
+jobs:
+  polish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tmp/paic-pr104-front-polish
+          fetch-depth: 0
+      - name: Save patch script
+        run: cp .github/scripts/tmp_paic_front_polish.py /tmp/tmp_paic_front_polish.py
+      - name: Switch to current PR head
+        run: |
+          git fetch origin feat/paic-client-branch-master
+          git checkout -B feat/paic-client-branch-master origin/feat/paic-client-branch-master
+      - name: Apply frontend correction
+        run: python3 /tmp/tmp_paic_front_polish.py
+      - name: Validate scope and JavaScript syntax
+        run: |
+          git diff --check
+          test "$(git diff --name-only)" = "PAIC.html"
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path('PAIC.html').read_text()
+          blocks=re.findall(r'<script>(.*?)</script>',s,re.S)
+          assert len(blocks)==1, f'inline scripts inesperados: {len(blocks)}'
+          Path('/tmp/paic-inline.js').write_text(blocks[0])
+          assert s.count('name="calibracion_valvula"')==1
+          assert 'bindPipcConditional' in s
+          assert 'estudio_laboratorio' not in s and 'estudio_higiene' not in s
+          PY
+          node --check /tmp/paic-inline.js
+      - name: Commit and push
+        run: |
+          git config user.name 'paic-business-fix'
+          git config user.email 'actions@users.noreply.github.com'
+          git add PAIC.html
+          git commit -m 'fix(paic): complete conditional registration state'
+          git push origin HEAD:feat/paic-client-branch-master
