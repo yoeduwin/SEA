@@ -486,26 +486,7 @@
                 </div>
               </div>
             </div>
-            <div id="seccion_archivo_calibracion" style="display:none; background:#e8f5e9; padding:15px; border-radius:5px; margin-bottom:20px;">
-              <div class="form-group full-width file-upload-group" data-upload-group="calibracion_valvula">
-                <label>Adjuntar dictamen de calibración<span class="required">*</span></label>
-                <input type="file" name="calibracion_valvula" accept=".pdf" data-file-input="calibracion_valvula">
-                <div class="file-preview" data-preview="calibracion_valvula">
-                  <div class="file-preview-content">
-                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
-                    <button type="button" class="file-remove" data-clear="calibracion_valvula">Eliminar</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div id="seccion_mensaje_calibracion" style="display:none; margin-bottom:20px;">
-              <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; border-radius: 5px;">
-                <p style="margin: 0; color: #856404; font-size: 12px;">
-                  <strong>✅ Enterado.</strong> Puede comunicarse con el área comercial o atención a clientes para solicitar informes sobre ese servicio, nosotros lo podemos realizar en sus instalaciones
-                </p>
-              </div>
-            </div>
-            </div>
+                                    </div>
           </div>
         </div>
 
@@ -884,6 +865,17 @@
       preview?.classList.remove('active');
       group?.classList.remove('has-file');
     }
+    function clearConditionalFilesByAttr(attrValue) {
+      document.querySelectorAll(`[data-conditional-required="${attrValue}"]`).forEach(field => {
+        field.required = false;
+        if (field.type === 'file') {
+          const key = field.dataset.fileInput;
+          if (key) clearFileUI(key);
+          else field.value = '';
+        }
+      });
+    }
+
     document.querySelectorAll('input[type="file"]').forEach(input => {
       input.addEventListener('change', function() {
         const key = this.dataset.fileInput;
@@ -905,10 +897,13 @@
     document.querySelectorAll('.file-remove').forEach(btn => btn.addEventListener('click', () => clearFileUI(btn.dataset.clear)));
 
     function resetConditionalRegistrationSections() {
-      document.querySelectorAll('input[name="aplica_nom020"], input[name="requiere_pipc"]').forEach(r => { r.checked=false; });
+      document.querySelectorAll('input[name="aplica_nom020"], input[name="requiere_pipc"], input[name^="pipc_tiene_"]').forEach(r => { r.checked=false; });
       document.getElementById('documentacionLegalSection')?.classList.remove('active');
       document.getElementById('documentacionPIPCSection')?.classList.remove('active');
-      document.querySelectorAll('[data-conditional-required="nom020"], [data-conditional-required="pipc"]').forEach(f => { f.required=false; });
+      ['pipc_medidas_preventivas_section','pipc_gas_natural_section','pipc_sustancias_quimicas_section','pipc_dc3_operadores_section'].forEach(id => {
+        const el=document.getElementById(id); if (el) el.style.display='none';
+      });
+      ['nom020','pipc','pipc_medidas','pipc_gas','pipc_quimicos','pipc_montacargas'].forEach(clearConditionalFilesByAttr);
       const sinCal=document.getElementById('check_sin_calibracion'); if (sinCal) sinCal.checked=false;
       const calib=document.querySelector('[data-file-input="calibracion_valvula"]'); if (calib) { calib.style.display=''; calib.required=false; }
       const ast=document.getElementById('asterisco_calib'); if (ast) ast.style.display='';
@@ -936,10 +931,30 @@
       const on=this.value==='si';
       document.getElementById('documentacionPIPCSection')?.classList.toggle('active',on);
       document.querySelectorAll('[data-conditional-required="pipc"]').forEach(f => { f.required=on; });
-      if (!on) document.querySelectorAll('[data-conditional-required="pipc"]').forEach(f => {
-        if (f.type==='file' && f.dataset.fileInput) clearFileUI(f.dataset.fileInput); else if (f.type!=='radio' && f.type!=='checkbox') f.value='';
-      });
+      if (!on) resetPIPCConditionals();
     }));
+
+    function resetPIPCConditionals() {
+      document.querySelectorAll('input[name^="pipc_tiene_"]').forEach(r => { r.checked=false; });
+      ['pipc_medidas_preventivas_section','pipc_gas_natural_section','pipc_sustancias_quimicas_section','pipc_dc3_operadores_section'].forEach(id => {
+        const el=document.getElementById(id); if (el) el.style.display='none';
+      });
+      ['pipc','pipc_medidas','pipc_gas','pipc_quimicos','pipc_montacargas'].forEach(clearConditionalFilesByAttr);
+    }
+
+    function bindPipcConditional(radioName, sectionId, requiredKey) {
+      document.querySelectorAll(`input[name="${radioName}"]`).forEach(radio => radio.addEventListener('change', function() {
+        const section=document.getElementById(sectionId);
+        const on=this.value==='si';
+        if (section) section.style.display=on ? 'block' : 'none';
+        document.querySelectorAll(`[data-conditional-required="${requiredKey}"]`).forEach(f => { f.required=on; });
+        if (!on) clearConditionalFilesByAttr(requiredKey);
+      }));
+    }
+    bindPipcConditional('pipc_tiene_medidas','pipc_medidas_preventivas_section','pipc_medidas');
+    bindPipcConditional('pipc_tiene_gas','pipc_gas_natural_section','pipc_gas');
+    bindPipcConditional('pipc_tiene_quimicos','pipc_sustancias_quimicas_section','pipc_quimicos');
+    bindPipcConditional('pipc_tiene_montacargas','pipc_dc3_operadores_section','pipc_montacargas');
 
     document.getElementById('check_sin_calibracion')?.addEventListener('change', function() {
       const calib=document.querySelector('[data-file-input="calibracion_valvula"]');
@@ -994,7 +1009,7 @@
           <div class="confirmation-item"><span class="confirmation-label">Informes / portal del cliente:</span><span class="confirmation-value">${escHtml(fd.get('correo_informe'))}</span></div>
         </div>
         <div class="confirmation-section">
-          <h3>Documentación general (${files.length})</h3>
+          <h3>Documentación adjunta (${files.length})</h3>
           ${files.length ? `<ul class="file-list">${files.map(f => `<li>${escHtml(f.label)}<br><strong>${escHtml(f.name)}</strong> (${escHtml(f.size)})</li>`).join('')}</ul>` : '<p>No se adjuntaron archivos.</p>'}
         </div>
         <div class="warning-box"><strong>Importante:</strong> Este envío realiza el alta inicial del cliente/sucursal a través del asesor o intermediario. No genera una orden de trabajo. La OT se gestiona por separado en SEAOT.</div>
