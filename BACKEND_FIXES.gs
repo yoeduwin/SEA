@@ -2114,6 +2114,40 @@ function enviarNotificacionRobusta(data, files, carpetaCliente, sheetUrl, addLog
   } catch (fallbackError) { return { success: false, error: fallbackError.toString() }; }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CORREOS DE REGISTRO SEADB
+// Presentación de los correos que dispara el registro de un servicio.
+// No alteran el flujo de registro: sólo reacomodan datos que el proceso ya
+// produce. No se agregan campos al formulario ni columnas a CLIENTES_MAESTRO.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Firma de quien da seguimiento desde Atención a Clientes.
+const ATENCION_NOMBRE_ = 'Jimmy';
+
+// Paleta corporativa usada en ambos correos.
+const EMAIL_COLORS_ = {
+  verdeOscuro: '#123A28',
+  verde:       '#1E5A3E',
+  verdeClaro:  '#A9CBB8',
+  verdeTenue:  '#7FB89A',
+  whatsapp:    '#1FA855',
+  fondo:       '#F4F6F4',
+  panel:       '#F5F8F5',
+  borde:       '#E6EBE4',
+  bordeSuave:  '#EFF2ED',
+  texto:       '#2B322B',
+  textoFuerte: '#1E2620',
+  textoSuave:  '#6E796E',
+  etiqueta:    '#7A857A',
+  ambar:       '#C79A2E',
+  ambarFondo:  '#FBF7EC',
+  ambarTexto:  '#8A5F0C'
+};
+
+/**
+ * Escapa texto capturado por el usuario antes de inyectarlo en el HTML del
+ * correo, para que un dato con < o & no rompa el maquetado.
+ */
 function escHtml_(value) {
   return String(value == null ? '' : value)
     .replace(/&/g, '&amp;')
