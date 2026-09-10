@@ -161,13 +161,30 @@ va a equivocar**. La salida es no adivinar: que lo diga quien llena el formulari
 `correo_informe` se queda como está (correo del cliente, destino del informe y llave de acceso a
 PORTAL), solo con la etiqueta aclarada para que quede claro que **ahí no llega el acuse**.
 
-**En el backend**, tres líneas detrás de la costura:
+**En el backend**, una guarda detrás de la costura. Ojo con la forma: un ternario con *fallback* a
+`correo_informe` sería una trampa — si por lo que sea el registro llega sin `correo_acuse`, el acuse
+se iría **al cliente**, justo lo que se quiere evitar. La regla tiene que ser dura:
 
 ```javascript
-const destinoAcuse = (data.portal_origen === 'PAIC' && data.correo_acuse)
-  ? data.correo_acuse
-  : data.correo_informe;
+if (data.portal_origen === 'PAIC') {
+  // Invariante: o va al asesor, o no va. Nunca al cliente.
+  if (esCorreoValido_(data.correo_acuse)) enviarConfirmacionAsesor_(data, data.correo_acuse, …);
+  // si no hay correo de acuse, NO se manda nada y se avisa en el correo interno
+} else {
+  enviarConfirmacionCliente(data, …);   // camino de SEAPD, intacto
+}
 ```
+
+Marcar el campo como `required` en el formulario **no** es suficiente: `registrarCliente` es un
+endpoint público protegido con reCAPTCHA, no con validación de esquema, así que una página vieja en
+caché o una petición malformada pueden llegar sin el campo. Cuando falte, el registro se guarda
+igual —no se tira el trabajo del asesor ni sus archivos— pero el acuse se **omite** y el correo
+interno lleva una línea que lo dice, para que Atención a Clientes lo contacte a mano.
+
+> **Y hay que desplegar en el orden correcto.** El campo de PAIC va **primero**, no después: hoy el
+> backend ignora las llaves que no conoce, así que publicar `correo_acuse` en el formulario mientras
+> el backend sigue como está es un no-op perfecto. Si se hiciera al revés —la rama de correos antes
+> que el campo—, **cada registro de PAIC de esa ventana mandaría el acuse al cliente.** Ver §6.
 
 | Caso | `correo_acuse` | `correo_informe` | Resultado |
 |---|---|---|---|
@@ -404,6 +421,20 @@ actual.**
    `hojas_campo_laboratorio`, `fotografias_laboratorio`, `croquis_laboratorio`,
    `hojas_campo_higiene`, `fotografias_higiene`, `croquis_higiene`. SEAPD no envía esas llaves, así
    que para él es literalmente un no-op. *(§3.4)*
+
+   **Pero no puede ir sola: necesita destino propio en el mismo paso.** `guardarArchivos()` nombra
+   cada archivo con la **etiqueta fija del campo** y lo escribe con `carpetaCliente.createFile(blob)`,
+   sin pasar por `storeBlobSafely_()` ni `versionedFileName_()` — ese versionado existe, pero solo lo
+   usa la ruta del expediente. Como Drive **sí permite nombres repetidos en una misma carpeta**, dos
+   estudios del mismo RFC y sucursal dejarían dos archivos llamados idénticamente
+   `L1) Hojas de campo - Laboratorio.pdf` en `01_Cliente`, **sin forma de saber cuál vino de cuál
+   solicitud** — y eso ya no se reconstruye después. Por eso, en el mismo paso:
+   - **Se genera el folio de la solicitud al registrar** (`SOL-aammdd-hhmm`), sin necesidad de que
+     exista todavía la hoja `SOLICITUDES`.
+   - **Los archivos del estudio van a `01_Cliente/{folio}_{servicio}/`**, no a la raíz de
+     `01_Cliente`. Cada registro queda con su carpeta y su identidad desde el primer día.
+   - Cuando llegue la hoja (Fase 3), sus filas simplemente **referencian ese mismo folio**; no hay que
+     migrar nada.
 2. **Rama de preservación en el upsert**, con `portal_origen === 'PAIC'` y fila existente. La regla es
    **conservar solo cuando el payload no trae el dato**, nunca de forma incondicional:
    - `REQUIERE_PIPC`: PAIC nunca lo manda, así que siempre se conserva el valor previo en vez de
@@ -437,8 +468,21 @@ actual.**
 
 1. **Hoja `SOLICITUDES`** con las columnas de §3.5. Es lo que resuelve a la vez el servicio
    solicitado, el asesor y su correo fuera del alcance de PORTAL.
-2. **Subcarpeta propia para los archivos del estudio** dentro de la carpeta de la sucursal, en espera
-   de que nazca el expediente. *(pregunta 3)*
+2. **Traspaso de los archivos en espera al expediente.** La subcarpeta por solicitud ya se creó en la
+   Fase 1, pero **crearla no basta**: `fase3_CrearExpediente` puebla el expediente *únicamente* con
+   los archivos que le manda SEAINF (`validateDriveFiles_(payload.files)` →
+   `uploadValidatedFiles_()`), así que sin un paso explícito el material del asesor **se queda en la
+   carpeta de espera para siempre** y el expediente no nace con nada.
+
+   Hay que agregar un paso **explícito e idempotente** al crear el expediente: resolver la fila de
+   `SOLICITUDES` por `ot_folio`, y mover sus archivos a las subcarpetas que les tocan —
+   hojas de campo → `2. HDC`, croquis → `3. CROQUIS`, fotos → `4. FOTOS`. Se **mueven**, no se copian:
+   el expediente es el artefacto operativo y `01_Cliente` es el perfil del cliente; dejar copias en
+   los dos lados crea dos fuentes de verdad. La fila de `SOLICITUDES` queda apuntando al expediente.
+
+   ⚠️ **Esto mete a SEAINF en el alcance por primera vez.** Hasta aquí el plan solo tocaba PAIC y la
+   ruta de registro; `fase3_CrearExpediente` es código de SEAINF. No está congelado —solo SEAPD lo
+   está— pero conviene saberlo antes de empezar. *(pregunta 3)*
 3. **Chips del correo interno construidos desde el servicio real**, no desde dos constantes: que diga
    “NOM-025-STPS · Iluminación” en vez de “NOM-020 NO APLICA”.
 4. **Imprimir el asesor y el origen** en el correo interno — dos filas en el bloque de contacto. Es el
@@ -496,16 +540,20 @@ Las Fases 1 y 2 (salvo el punto 3) **no dependen de estas respuestas**.
 
 ## 6. Orden sugerido
 
+El orden **no es libre**: dos pasos tienen que ir antes que otros o abren una ventana en la que el
+sistema hace justo lo que queremos evitar. Están marcados con ⛔.
+
 | # | Trabajo | Riesgo | Qué desbloquea |
 |---|---|---|---|
-| 1 | Fase 1.1 — whitelist de archivos | bajo | Los estudios dejan de perderse |
-| 2 | Fase 1.2–1.4 — costura `portal_origen` | bajo | PAIC deja de pisar datos y de escribirle al cliente |
-| 3 | Fase 2 — un solo servicio + datos del asesor | bajo | El requisito de negocio queda cumplido |
+| 1 | ⛔ **Fase 2 — campos de PAIC** (`correo_acuse`, selector de un servicio, datos del asesor) | bajo | **Va primero**: el backend ignora las llaves que no conoce, así que publicar el campo es un no-op. Al revés, la rama de correos sin el campo mandaría el acuse **al cliente** |
+| 2 | Fase 1.2–1.4 — costura `portal_origen` (preservación, correos, chip de PIPC) | bajo | PAIC deja de pisar datos y de escribirle al cliente |
+| 3 | ⛔ **Fase 1.1 — whitelist de archivos *con* su carpeta por solicitud** | bajo | Los estudios dejan de perderse **y quedan atribuibles**. Sin la carpeta, se apilan con nombres idénticos en `01_Cliente` |
 | 4 | Fase 5 — prueba de regresión de SEAPD | bajo | Garantiza el congelamiento |
-| 5 | Fase 3.1 — hoja `SOLICITUDES` | medio | Servicio y asesor sobreviven, fuera del alcance de PORTAL |
-| 6 | Fase 3.2 — destino de los archivos | medio | El expediente nace con su material |
-| 7 | Fase 3.3–3.5 — correos y prellenado de SEAOT | medio | Embudo solicitud → OT medible |
-| 8 | Fase 4 — deuda propia | bajo | Calidad del portal |
+| 5 | Fase 3.1 — hoja `SOLICITUDES` con `ot_folio` | medio | Servicio y asesor sobreviven, fuera del alcance de PORTAL |
+| 6 | Fase 3.5 — selección de solicitud en SEAOT | medio | Embudo solicitud → OT auditable |
+| 7 | Fase 3.2 — traspaso al expediente (toca SEAINF) | medio | Ahora sí: el expediente nace con su material |
+| 8 | Fase 3.3–3.4 — correos que dicen la verdad | bajo | Operaciones ve el servicio y el asesor |
+| 9 | Fase 4 — deuda propia | bajo | Calidad del portal |
 
 ---
 
