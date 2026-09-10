@@ -1,0 +1,54 @@
+name: Run guarded PAIC PR104 correction
+
+on:
+  push:
+    branches:
+      - 'tmp/paic-pr104-business-fix'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tmp/paic-pr104-business-fix
+          fetch-depth: 0
+      - name: Copy temporary correction script
+        run: cp .github/scripts/tmp_paic_pr104_fix.py /tmp/tmp_paic_pr104_fix.py
+      - name: Switch to PR branch
+        run: |
+          git fetch origin feat/paic-client-branch-master claude/zen-mayer-ocbfln
+          git checkout -B feat/paic-client-branch-master origin/feat/paic-client-branch-master
+      - name: Apply correction
+        run: python3 /tmp/tmp_paic_pr104_fix.py
+      - name: Verify scope and protected profile
+        run: |
+          git diff --check
+          test "$(git diff --name-only | sort)" = $'BACKEND_FIXES.gs\nPAIC.html'
+          test -z "$(git diff --name-only -- SEAOT.html SEAINF.html SEAPD.html)"
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          b=Path('BACKEND_FIXES.gs').read_text()
+          before=subprocess.check_output(['git','show','HEAD:BACKEND_FIXES.gs'],text=True)
+          def block(t):
+              a=t.index('function generarPerfilSheet(')
+              z=t.index('\nfunction enviarNotificacionRobusta(',a)
+              return t[a:z]
+          assert block(b)==block(before), 'generarPerfilSheet cambió'
+          p=Path('PAIC.html').read_text()
+          assert 'name="aplica_nom020"' in p and 'name="requiere_pipc"' in p
+          assert 'estudio_laboratorio' not in p and 'estudio_higiene' not in p
+          assert 'applyClientData' not in p
+          assert 'CLIENTE_SUCURSAL_YA_REGISTRADO' in b
+          PY
+      - name: Commit to PR branch
+        run: |
+          git config user.name 'paic-business-fix'
+          git config user.email 'actions@users.noreply.github.com'
+          git add PAIC.html BACKEND_FIXES.gs
+          git commit -m 'fix(paic): align intermediary first-registration flow'
+          git push origin HEAD:feat/paic-client-branch-master
