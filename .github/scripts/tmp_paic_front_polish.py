@@ -20,7 +20,6 @@ def remove_balanced_div(text, marker):
             depth -= 1
             if began and depth == 0:
                 end = m.end()
-                # consume one following newline only
                 if end < len(text) and text[end:end+1] == '\n':
                     end += 1
                 return text[:start] + text[end:], True
@@ -34,8 +33,8 @@ for marker in ['<div id="seccion_archivo_calibracion"', '<div id="seccion_mensaj
 # Improve modal wording: it now includes general + conditional registration documents.
 s = s.replace('<h3>Documentación general (${files.length})</h3>', '<h3>Documentación adjunta (${files.length})</h3>', 1)
 
-# Add a reusable conditional-file reset helper immediately after clearFileUI.
-anchor = """    document.querySelectorAll('input[type=\"file\"]').forEach(input => {"""
+# Add a reusable conditional-file reset helper immediately before the generic file handlers.
+anchor = "    document.querySelectorAll('input[type=\"file\"]').forEach(input => {"
 helper = r'''    function clearConditionalFilesByAttr(attrValue) {
       document.querySelectorAll(`[data-conditional-required="${attrValue}"]`).forEach(field => {
         field.required = false;
@@ -49,7 +48,7 @@ helper = r'''    function clearConditionalFilesByAttr(attrValue) {
 
 '''
 if s.count(anchor) != 1:
-    raise SystemExit('Anchor de file handlers inesperado')
+    raise SystemExit(f'Anchor de file handlers inesperado: {s.count(anchor)}')
 s = s.replace(anchor, helper + anchor, 1)
 
 # Expand reset to clear/hide PIPC subconditionals as well.
@@ -125,7 +124,6 @@ if s.count(old_handler) != 1:
     raise SystemExit('Handler PIPC simple inesperado')
 s = s.replace(old_handler, new_handler, 1)
 
-# Invariants for the frontend only.
 assert s.count('name="calibracion_valvula"') == 1, 'Debe quedar un solo input calibracion_valvula'
 assert 'estudio_laboratorio' not in s and 'estudio_higiene' not in s
 assert 'applyClientData' not in s
