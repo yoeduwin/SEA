@@ -398,7 +398,7 @@ misma solución:
 
 Columnas propuestas: `timestamp · folio · portal_origen · asesor · correo_acuse · telefono_asesor ·
 RFC · sucursal · servicio_canonico · fechas_preferidas · link_carpeta · estatus · ot_folio`
-(`RECIBIDA` → `OT_GENERADA` → `DESCARTADA`).
+(`RECIBIDA` → `OT_RESERVADA` → `OT_GENERADA`; `DESCARTADA` como salida terminal alternativa).
 
 #### Por qué `ot_folio` no es opcional
 
@@ -507,19 +507,24 @@ actual.**
 
      - **`submission_id`**, generado por la página **una vez por llenado** (no por envío) y mandado en
        cada intento. Es la llave estable que hoy no existe.
-     - **El folio se deriva de esa llave, no del reloj.** Antes de crear nada, el backend busca
-       `submission_id` en `SOLICITUDES`: si ya está, **devuelve el folio existente y no crea nada**.
-       Como `doPost` ya serializa toda la ruta POST bajo el script lock, ese “buscar y luego crear” es
-       seguro sin candado adicional.
+     - **El folio queda asociado a esa llave, no al intento.** Antes de crear nada, el backend busca
+       `submission_id` en `SOLICITUDES`. Si ya existe, **reutiliza la misma fila y el mismo folio, pero
+       no devuelve todavía**; si no existe, genera el folio y agrega la fila. Encontrar la fila solo
+       prueba que la solicitud empezó, no que terminó.
      - **Orden de escritura: fila → carpeta → archivos.** La fila es el punto de commit porque es la
        escritura más barata y la única imprescindible; si algo muere después, el reintento la
-       encuentra y **retoma donde se quedó** en vez de empezar de cero.
-     - **Cada paso, verificado antes de ejecutarse**: la carpeta con `getFoldersByName(folio…)`, cada
-       archivo con `getFilesByName(nombre)` en esa carpeta. Así un reintento a media carga completa lo
-       que falta sin duplicar lo que ya subió.
+       encuentra y continúa con el mismo folio.
+     - **Cada paso se asegura antes de responder éxito**: localizar o crear la carpeta con
+       `getFoldersByName(folio…)` y, después, localizar o crear cada archivo esperado con
+       `getFilesByName(nombre)`. Si el primer intento murió después de la fila, el segundo crea la
+       carpeta; si murió a media carga, completa únicamente los archivos faltantes.
+     - **La salida exitosa ocurre al final del “ensure”.** Solo después de verificar fila + carpeta +
+       todos los archivos que venían en ese payload se devuelve el folio al formulario. Así el
+       navegador nunca interpreta una fila parcial como registro terminado ni borra sus archivos
+       locales antes de que el servidor los haya asegurado.
 
-     > Con esto el endpoint deja de ser “crea todo” y pasa a ser **“asegura que exista”**, que es la
-     > única forma honesta de tener idempotencia entre dos servicios que no comparten transacción.
+     > Con esto el endpoint deja de ser “crea todo” y pasa a ser **“asegura que exista”**. La rama
+     > `submission_id encontrado` no es una salida temprana: es la entrada al camino de reanudación.
 
      Y si el `submission_id` no llega —una copia en caché de la página anterior—, **se degrada**: folio
      aleatorio y registro normal, aceptando que un reintento desde esa copia podría duplicar. Es
@@ -595,36 +600,48 @@ redefine `correo_informe`, y el backend vigente todavía manda el acuse a ese ca
    “NOM-025-STPS · Iluminación” en vez de “NOM-020 NO APLICA”.
 4. **Imprimir el asesor y el origen** en el correo interno — dos filas en el bloque de contacto. Es el
    cambio más barato del plan y el que más contexto le da a Operaciones.
-5. **SEAOT elige la solicitud y la cierra.** Al crear una OT para un RFC + sucursal, SEAOT lista las
-   solicitudes en estatus `RECIBIDA` de esa pareja; el operador escoge una y de ahí sale la NOM
-   prellenada. Al registrarse la OT, SEAOT escribe su folio en `ot_folio` de esa fila y la pasa a
-   `OT_GENERADA`. Sin ese paso de selección el prellenado es ambiguo en cuanto hay dos solicitudes
-   abiertas, que es el caso normal bajo la regla de un servicio por registro. *(§3.5)*
+5. **SEAOT elige la solicitud, reserva su folio y después la cierra.** Al crear una OT para un RFC +
+   sucursal, SEAOT lista las solicitudes en `RECIBIDA`; el operador escoge una y de ahí sale la NOM
+   prellenada. **Antes de devolver un número de OT a la interfaz**, el backend reserva el folio para
+   ese `sol_folio`. La reserva es parte de la operación de servidor, no un cálculo read-only en el
+   navegador.
 
-   **Las dos escrituras tienen que ser una sola operación idempotente**, por la misma razón que en la
-   Fase 1: son dos hojas y no hay commit conjunto. Hoy `fase2_RegistrarOT` **no verifica nada** antes
-   de escribir —valida el payload, resuelve la carpeta y hace `sheet.appendRow([…])` directo
-   (`BACKEND_FIXES.gs:901-957`)—, así que llamarla dos veces con el mismo folio deja **dos OT
-   idénticas**. Y si la OT se registra pero falla la actualización de la fila, la solicitud se queda
-   en `RECIBIDA` para siempre; invertir el orden solo cambia de lado el daño (`OT_GENERADA` sin OT).
+   Esto importa porque el `getSiguienteFolioOT_()` vigente **solo lee** `ORDENES_TRABAJO` y devuelve
+   el siguiente valor: no lo reserva. Dos operadores que abran SEAOT antes de que alguno guarde pueden
+   recibir el mismo folio aunque las llamadas estén serializadas; entre una llamada y la siguiente no
+   cambió ninguna hoja.
 
-   El arreglo no necesita llave nueva: **`ot_folio` ya es estable entre reintentos**. Sale del campo
-   `#wo_orderNumber`, que `updateOrderNumber()` llena **una vez** al generar la orden y que queda
-   editable; volver a guardar manda el mismo texto. Entonces `fase2_RegistrarOT` recibe también el
-   `sol_folio` seleccionado y, antes del `appendRow`, hace dos lecturas:
+   La reserva propuesta mantiene intacto el contrato A–Q:
 
-   | Comprobación | Qué caso atrapa | Qué hace |
-   |---|---|---|
-   | ¿`ot_folio` ya está en la columna B de `ORDENES_TRABAJO`? | Reintento del mismo guardado | No inserta; sigue a reconciliar la fila |
-   | ¿La fila de `sol_folio` ya trae un `ot_folio`? | El operador recargó SEAOT y obtuvo un folio nuevo para una solicitud **ya atendida** | No inserta; devuelve la OT existente |
+   - `reservarFolioOTParaSolicitud_(sol_folio, serie)` corre bajo el mismo script lock. Si esa
+     solicitud ya tiene `ot_folio`, devuelve **ese mismo** folio; recargar SEAOT no genera otro.
+   - Si aún no tiene, calcula el siguiente candidato usando **dos conjuntos ocupados**: los folios ya
+     presentes en `ORDENES_TRABAJO` y los `ot_folio` no vacíos de `SOLICITUDES` (incluidas reservas
+     todavía no materializadas como OT). Después escribe el folio en la solicitud y cambia su estado a
+     `OT_RESERVADA` **antes** de devolverlo a la interfaz.
+   - Una solicitud distinta nunca puede recibir una reserva ya ocupada. Si por datos históricos se
+     detecta el mismo `ot_folio` en dos solicitudes, se bloquea con conflicto explícito; no se
+     reconcilia automáticamente.
+   - `fase2_RegistrarOT` recibe `sol_folio` y toma como autoridad el `ot_folio` reservado en
+     `SOLICITUDES`; un `data.ot_folio` distinto se rechaza en vez de usarse para decidir identidad.
 
-   Después reconcilia: si la fila de `sol_folio` no tiene `ot_folio`, se lo escribe y la pasa a
-   `OT_GENERADA`. Así **cualquiera de los dos estados parciales se completa solo** en la siguiente
-   llamada, en vez de duplicar o quedarse a medias. La segunda comprobación es la que importa de más,
-   porque atrapa el caso que la llave por sí sola no ve: el folio nuevo sobre una solicitud ya servida.
+   El guardado final también es **idempotente y recuperable**. Para la reserva de esa solicitud:
 
-   > No toca el contrato A–Q: se agregan lecturas **antes** del `appendRow`, que sigue escribiendo sus
-   > 17 valores exactamente igual.
+   | Estado encontrado | Acción |
+   |---|---|
+   | `OT_RESERVADA` y el folio no existe en `ORDENES_TRABAJO` | Inserta una sola fila A–Q con el folio reservado |
+   | `OT_RESERVADA` y el folio ya existe | Verifica RFC + sucursal + servicio/NOM esperado; si coincide, no duplica |
+   | La OT existe pero la solicitud sigue `OT_RESERVADA` | Completa únicamente el cambio a `OT_GENERADA` |
+   | Solicitud ya `OT_GENERADA` | Devuelve la OT existente; no escribe nada |
+   | El folio existente contradice la solicitud o está reservado por otra fila | Error de conflicto; **nunca** enlaza la segunda solicitud con la primera OT |
+
+   Así se cubren los dos fallos parciales: si muere después de reservar y antes del `appendRow`, el
+   reintento usa la misma reserva y crea la OT; si muere después del `appendRow` y antes de cerrar la
+   solicitud, encuentra la OT correcta y solo marca `OT_GENERADA`.
+
+   > El cambio clave es de identidad: **`sol_folio` identifica el intento lógico; `ot_folio` es un
+   > recurso reservado para ese intento.** Ya no se deduplica “porque el texto del folio coincide”.
+   > Y el generador vigente no puede seguir siendo la fuente autoritativa mientras ignore las reservas.
 
 ### Fase 4 — Deuda propia de PAIC
 
@@ -641,12 +658,19 @@ redefine `correo_informe`, y el backend vigente todavía manda el acuse a ese ca
 - Etiqueta de versión viva.
 - Quitar del prellenado `actividad_principal` y `descripcion_proceso`, que el backend nunca devuelve.
 
-### Fase 5 — Pruebas y documentación
+### Fase 5 — Pruebas, gates y documentación
 
+- **Gate de regresión de SEAPD antes de publicar backend.** Primero se captura el comportamiento base
+  con el payload vigente de SEAPD. Después, **cada entrega que modifique `BACKEND_FIXES.gs` debe pasar
+  esa misma regresión sobre el candidato antes de publicarse**, como mínimo las entregas 1 y 3 del
+  orden de §6. Una prueba posterior al despliegue no sustituye este gate: si falla, el backend no se
+  publica.
 - Casos E2E de PAIC: registro con archivos de estudio; reregistro que **no** borra `REQUIERE_PIPC` ni
   `ASESOR_CONSULTOR`; acuse que llega **solo** al asesor; dictamen de calibración que sí se guarda.
-- Prueba de regresión de SEAPD: **el mismo payload de hoy debe producir el mismo resultado de hoy.**
-  Es la red de seguridad de la regla de §1.
+- Casos de recuperación: reintento después de crear solo la fila de `SOLICITUDES`; reintento después
+  de subir solo parte de los archivos; ambos deben terminar la misma solicitud y conservar el folio.
+- Caso de concurrencia SEAOT: dos solicitudes distintas de la misma serie reservadas antes de guardar
+  deben recibir folios distintos; recargar la misma solicitud debe recuperar su misma reserva.
 - Manual §3.5 y §6.1 con el payload real de PAIC.
 
 ---
@@ -677,16 +701,24 @@ El orden **no es libre**: los pasos marcados con ⛔ abren, si se hacen fuera de
 la que el sistema hace justo lo que queremos evitar. Los pasos 1 y 2 son un **par ordenado** —backend
 y luego página, nunca al revés— y el 3 es un **paquete** que no se puede partir.
 
+La regresión de SEAPD ya no es un paso posterior del cronograma: es un **gate de publicación**. Se
+captura su baseline antes del primer cambio y se vuelve a ejecutar sobre cada candidato de backend
+antes de desplegarlo. En particular, **no se publica el paso 1 ni el paso 3 si ese gate no pasa**.
+
 | # | Trabajo | Riesgo | Qué desbloquea |
 |---|---|---|---|
-| 1 | ⛔ **Fase 1.3–1.5 — costura `portal_origen`** (preservación, guard duro de correos, chip de PIPC) | bajo | **Va primero.** El guard tiene que estar vivo *antes* de que la página redefina `correo_informe`; si no, el acuse se le va **al cliente** (§2.3) |
+| 1 | ⛔ **Fase 1.3–1.5 — costura `portal_origen`** (preservación, guard duro de correos, chip de PIPC) | bajo | **Gate SEAPD previo obligatorio.** Después va primero: el guard tiene que estar vivo antes de que la página redefina `correo_informe`; si no, el acuse se le va **al cliente** (§2.3) |
 | 2 | ⛔ **Fase 2 — campos de PAIC** (`correo_acuse`, selector de un servicio, datos del asesor) | bajo | Cierra la ventana del paso 1: el asesor recupera su acuse, ahora por el campo correcto |
-| 3 | ⛔ **Fase 1.1 + 1.2 + 3.1, en una sola entrega**: archivos, folio derivado de `submission_id`, carpeta por solicitud, hoja `SOLICITUDES` y validación de un solo servicio | medio | Los estudios dejan de perderse **y quedan atribuibles, descritos y reintentables sin duplicar** |
-| 4 | Fase 5 — prueba de regresión de SEAPD | bajo | Garantiza el congelamiento |
-| 5 | Fase 3.5 — selección de solicitud en SEAOT, con registro idempotente de la OT | medio | Embudo solicitud → OT auditable y sin OT duplicadas |
-| 6 | Fase 3.2 — traspaso al expediente (toca SEAINF) | medio | Ahora sí: el expediente nace con su material |
-| 7 | Fase 3.3–3.4 — correos que dicen la verdad | bajo | Operaciones ve el servicio y el asesor |
-| 8 | Fase 4 — deuda propia | bajo | Calidad del portal |
+| 3 | ⛔ **Fase 1.1 + 1.2 + 3.1, en una sola entrega**: archivos, folio ligado a `submission_id`, reanudación idempotente, carpeta por solicitud, hoja `SOLICITUDES` y validación de un solo servicio | medio | **Gate SEAPD previo obligatorio.** Los estudios dejan de perderse y quedan atribuibles, descritos y reintentables sin duplicar |
+| 4 | Fase 3.5 — selección de solicitud en SEAOT, **reserva de folio por `sol_folio`** y cierre idempotente de la OT | medio | Embudo solicitud → OT auditable, recuperable y sin cruces entre operadores |
+| 5 | Fase 3.2 — traspaso al expediente (toca SEAINF) | medio | Ahora sí: el expediente nace con su material |
+| 6 | Fase 3.3–3.4 — correos que dicen la verdad | bajo | Operaciones ve el servicio y el asesor |
+| 7 | Fase 4 — deuda propia | bajo | Calidad del portal |
+| 8 | Fase 5 — E2E de PAIC, recuperación/concurrencia y documentación | bajo | Evidencia final; **no reemplaza los gates previos** de las entregas de backend |
+
+> **Nota sobre cualquier entrega posterior de backend.** Aunque Codex señaló específicamente los
+> pasos 1 y 3, el criterio queda generalizado: si los pasos 4, 5 o 6 terminan modificando el backend
+> compartido, también pasan la regresión SEAPD **antes** de publicarse.
 
 > **Nota honesta sobre el paso 3.** En la versión anterior de este plan, “que los estudios dejen de
 > perderse” era la victoria barata del principio. Ya no lo es: para que esos archivos sirvan de algo
