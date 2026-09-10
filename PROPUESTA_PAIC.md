@@ -119,25 +119,91 @@ GmailApp.sendEmail(data.correo_informe, 'Recibimos su información · …', …)
 ```
 
 En SEAPD eso funciona porque quien llena el formulario y quien recibe el informe son la misma persona.
-En PAIC son dos, y el resultado es que **el cliente final recibe un correo dirigido al intermediario**,
-mientras **el asesor no recibe nada** — PAIC ni siquiera captura su correo.
+En PAIC son dos, y el resultado es que **el cliente final recibe un correo dirigido al intermediario**.
 
-**Diseño.**
+#### Lo que muestran los registros reales
 
-1. **Campos nuevos en PAIC**: `correo_asesor` (obligatorio) y `telefono_asesor`.
-2. **Rama en `enviarNotificacionRobusta`**: si `portal_origen === 'PAIC'`, se envía
-   `enviarConfirmacionAsesor(data, …)` a `correo_asesor` y **no se llama a
-   `enviarConfirmacionCliente`**. Es un punto único de corte — la línea 2554 es el **único** lugar de
-   todo el backend que escribe al correo del cliente.
-3. **El correo interno al equipo no cambia de destinatario**: va a `CONFIG.EMAIL_TO`, es interno.
-4. **El fallback ya es seguro**: `enviarEmailSimpleFallback` solo escribe a `CONFIG.EMAIL_TO`. La
-   ruta de error no filtra nada al cliente.
+Dos filas reales de `CLIENTES_MAESTRO` que entraron por PAIC (se reconocen porque traen asesor en la
+columna 22, que SEAPD no captura):
+
+| | Fila A · CRECYDE | Fila B · Protección Ambiental |
+|---|---|---|
+| Col. 8 · Solicitante | `YOLANDA QUINTO SANCHEZ` | `PRISCILA HERNANDEZ PULIDO` |
+| **Col. 9 · Correo** | `yolandaquinto3@yahoo.com` | `proteccionambiental08@gmail.com` |
+| Col. 17 · Responsable en sitio | `YARIBET ORDUÑO CRUZ` | `LIZETH CINTHIA AGUILAR TORRES` |
+| Col. 22 · Asesor | `CRECYDE` | `PROTECCIÓN AMBIENTAL, CONSULTORÍA…` |
+
+En las dos, **el correo de la columna 9 es el del intermediario, no el del cliente**: en la fila B
+coincide con el despacho asesor, y en la A con la persona que llenó el formulario, que no es la
+responsable en sitio.
+
+> **Conclusión: “no ha habido problemas” porque los intermediarios ya lo resuelven solos**, poniendo su
+> propio correo en el campo del cliente. El sistema no resolvió nada — lo evadieron. El acuse les llega
+> por accidente, no por diseño.
+
+Y deja dos efectos colaterales: el **cliente final no puede entrar a PORTAL** (su correo no está
+registrado), y si mañana se registra otra sucursal del mismo RFC con el correo real del cliente,
+**el código de acceso se manda a los dos a la vez** (§3.3).
+
+#### El caso difícil: el intermediario que también es el cliente
+
+A veces el intermediario está dentro de un corporativo que además es cliente. Ahí “asesor” y “cliente”
+no son dos organizaciones distintas, así que **cualquier regla que intente adivinar quién es quién se
+va a equivocar**. La salida es no adivinar: que lo diga quien llena el formulario.
+
+#### Diseño — un campo y un condicional
+
+**En PAIC**, un campo nuevo obligatorio, junto a los datos del asesor:
+
+> **Correo para la confirmación y el seguimiento** — *aquí te llega el acuse de este registro*
+> ☐ Es el mismo correo del informe
+
+`correo_informe` se queda como está (correo del cliente, destino del informe y llave de acceso a
+PORTAL), solo con la etiqueta aclarada para que quede claro que **ahí no llega el acuse**.
+
+**En el backend**, tres líneas detrás de la costura:
+
+```javascript
+const destinoAcuse = (data.portal_origen === 'PAIC' && data.correo_acuse)
+  ? data.correo_acuse
+  : data.correo_informe;
+```
+
+| Caso | `correo_acuse` | `correo_informe` | Resultado |
+|---|---|---|---|
+| Intermediario externo | del asesor | del cliente | Acuse al asesor; informe y portal al cliente |
+| Intermediario corporativo, que también es el cliente | el suyo | el mismo | Todo al mismo, coherente |
+| Cliente que se registra solo por PAIC | el suyo | el suyo | Igual que hoy |
+
+Tres razones por las que esta es la ruta barata:
+
+1. **SEAPD ni se entera**: nunca manda `portal_origen` ni `correo_acuse`, así que el ternario siempre
+   cae del lado de hoy.
+2. **El saludo se corrige solo.** El acuse ya dice “Estimado(a) {nombre_solicitante}”, que es el
+   intermediario; al cambiar el destinatario, el saludo pasa a ser correcto **sin tocar el correo**.
+3. **No hay que migrar nada.** Lo ya registrado sigue funcionando igual.
+
+Lo demás del despacho ya es seguro: el correo interno va a `CONFIG.EMAIL_TO`, y
+`enviarEmailSimpleFallback` también — la ruta de error no filtra nada al cliente.
 
 **Pero hay una fuga que el correo no cubre.** El correo interno trae un botón *“Contactar por
 WhatsApp”* cuyo destino es `contactoWhatsAppCliente_(data)`, que toma **`telefono_responsable`
 primero** — el contacto del cliente en sitio. Es decir: la acción de un clic que Operaciones
 efectivamente ejecuta va **directo al cliente, saltándose al asesor**. Si la regla es “nunca al
 cliente”, esto pesa más que el correo. **Es la pregunta 1 de §5.**
+
+### 2.4 · Otros hallazgos de la validación de campo
+
+Del mismo par de registros reales, tres cosas que hoy no rompen nada pero conviene atender:
+
+| Hallazgo | Qué pasa | Gravedad |
+|---|---|---|
+| `SUCURSAL = "N/A"` | La carpeta se creó como `N_A` y `folderMatchesClientBranch_` sí la encuentra, así que SEAOT funciona. Pero “N/A” no es una sucursal: el día que se registre una planta real de ese RFC quedarán `N/A` y `Planta X` como hermanas, con el historial colgando de la que no significa nada. Debería ser `Matriz`. | 🟡 |
+| Teléfono de 11 dígitos (`22212246015`) | `normalizarTelefonoWhatsApp_` acepta 10, 12 con `52` o 13 con `521`; con 11 devuelve `null`, así que el botón de WhatsApp **cae silenciosamente al teléfono de la empresa**. Aquí no importó porque era casi el mismo número, pero **PAIC no valida formato de teléfono en ningún campo**. | 🟡 |
+| `… S.A DE C.V` sin todos los puntos | `LEGAL_SUFFIX_REGEX_` busca `S.A. DE C.V.`, ` SA DE CV`, ` S.A.` o ` S.C.`; este texto no coincide con ninguno, así que el sufijo no se limpió y la carpeta quedó `AAC151218QKA - AGUACATES ACUITZIO DEL CANJE S_A DE C_V`. No fragmenta nada —la reutilización por RFC lo cubre—, solo se ve mal. | ⚪ |
+
+Y confirmado en las dos filas: **`REQUIERE_PIPC = NO`**, tal como describe §2.1. Los RFC de ambas
+(`CCO8605231N4`, `AAC151218QKA`) pasan `validarRFC_` sin problema.
 
 ---
 
@@ -290,7 +356,8 @@ actual.**
 2. **Rama de preservación en el upsert**: con `portal_origen === 'PAIC'` y fila existente, conservar
    `REQUIERE_PIPC` y `ASESOR_CONSULTOR` en vez de sobrescribirlos. Sutileza: hay que distinguir
    **campo ausente** de **campo en `'no'`**. *(§2.1)*
-3. **Rama de correos**: acuse al asesor, y **no** llamar a `enviarConfirmacionCliente`. *(§2.3)*
+3. **Rama de correos**: el acuse se manda a `correo_acuse` en vez de a `correo_informe`. Tres líneas,
+   sin tocar el cuerpo del correo. *(§2.3)*
 4. **Omitir el chip de PIPC** en el correo interno cuando el origen es PAIC. *(§2.1)*
 
 ### Fase 2 — PAIC: un solo servicio y los datos del asesor
@@ -300,9 +367,10 @@ actual.**
 1. **Selector maestro** con los tres grupos, excluyente, obligatorio. *(§2.2)*
 2. **Derivar `aplica_nom020`** del selector, manteniendo nombre y valores.
 3. **Fijar el valor canónico** de las cuatro NOM duplicadas. *(pregunta 4)*
-4. **Campos del asesor**: `correo_asesor` obligatorio y `telefono_asesor`. Y recalibrar la etiqueta de
-   `correo_informe` para que quede claro que ahí **no** llega el acuse: es el destino del informe
-   final y la llave de acceso del cliente al portal. *(§2.3, §3.3)*
+4. **Campo `correo_acuse`** obligatorio, con la casilla “Es el mismo correo del informe” para el caso
+   del intermediario corporativo. Y recalibrar la etiqueta de `correo_informe` para que quede claro
+   que ahí **no** llega el acuse: es el destino del informe final y la llave de acceso del cliente al
+   portal. *(§2.3, §3.3)*
 5. **Quitar el input duplicado de `calibracion_valvula`** y su contenedor muerto — **solo en PAIC**.
    *(§1.1)*
 6. **Modal de confirmación** con un servicio, no una lista de bloques.
@@ -353,9 +421,11 @@ Las Fases 1 y 2 (salvo el punto 3) **no dependen de estas respuestas**.
 1. **¿El botón de WhatsApp del correo interno debe apuntar al asesor en los registros de PAIC?**
    Hoy apunta al teléfono del cliente en sitio. Si la regla es “nunca al cliente”, el clic que
    Operaciones sí ejecuta pesa más que el correo. *(§2.3)*
-2. **¿El `correo_informe` del cliente sigue siendo obligatorio?** Es la llave de acceso del cliente a
-   PORTAL y el destino del informe final. Si el asesor no lo tiene al registrar, ¿qué se captura?
-   *(§3.3)*
+2. ~~¿El `correo_informe` del cliente sigue siendo obligatorio?~~ **Resuelta** (§2.3): sí, se queda
+   como está —es la llave de PORTAL y el destino del informe— y el acuse se va por el campo nuevo
+   `correo_acuse`. Queda una tarea manual asociada: en los registros ya cargados la columna 9 tiene
+   el correo del intermediario; si quieres que esos clientes puedan entrar a PORTAL algún día, hay
+   que corregir esas celdas a mano.
 3. **¿Dónde esperan los archivos del estudio hasta que exista el expediente?** Dentro de
    `01_Cliente/` en una subcarpeta por servicio, o en un `00_Solicitudes/` aparte que SEAINF pueda
    vaciar hacia el expediente cuando lo cree. *(§3.4)*
