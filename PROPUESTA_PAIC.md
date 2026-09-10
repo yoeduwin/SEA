@@ -574,14 +574,18 @@ sistema hace justo lo que queremos evitar. Están marcados con ⛔.
 | # | Trabajo | Riesgo | Qué desbloquea |
 |---|---|---|---|
 | 1 | ⛔ **Fase 2 — campos de PAIC** (`correo_acuse`, selector de un servicio, datos del asesor) | bajo | **Va primero**: el backend ignora las llaves que no conoce, así que publicar el campo es un no-op. Al revés, la rama de correos sin el campo mandaría el acuse **al cliente** |
-| 2 | Fase 1.2–1.4 — costura `portal_origen` (preservación, correos, chip de PIPC) | bajo | PAIC deja de pisar datos y de escribirle al cliente |
-| 3 | ⛔ **Fase 1.1 — whitelist de archivos *con* su carpeta por solicitud** | bajo | Los estudios dejan de perderse **y quedan atribuibles**. Sin la carpeta, se apilan con nombres idénticos en `01_Cliente` |
+| 2 | Fase 1.3–1.5 — costura `portal_origen` (preservación, correos, chip de PIPC) | bajo | PAIC deja de pisar datos y de escribirle al cliente |
+| 3 | ⛔ **Fase 1.1 + 1.2 + 3.1, en una sola entrega**: archivos, folio, carpeta por solicitud, hoja `SOLICITUDES` y validación de un solo servicio | medio | Los estudios dejan de perderse **y quedan atribuibles y descritos**. Folio, carpeta y fila son una unidad |
 | 4 | Fase 5 — prueba de regresión de SEAPD | bajo | Garantiza el congelamiento |
-| 5 | Fase 3.1 — hoja `SOLICITUDES` con `ot_folio` | medio | Servicio y asesor sobreviven, fuera del alcance de PORTAL |
-| 6 | Fase 3.5 — selección de solicitud en SEAOT | medio | Embudo solicitud → OT auditable |
-| 7 | Fase 3.2 — traspaso al expediente (toca SEAINF) | medio | Ahora sí: el expediente nace con su material |
-| 8 | Fase 3.3–3.4 — correos que dicen la verdad | bajo | Operaciones ve el servicio y el asesor |
-| 9 | Fase 4 — deuda propia | bajo | Calidad del portal |
+| 5 | Fase 3.5 — selección de solicitud en SEAOT | medio | Embudo solicitud → OT auditable |
+| 6 | Fase 3.2 — traspaso al expediente (toca SEAINF) | medio | Ahora sí: el expediente nace con su material |
+| 7 | Fase 3.3–3.4 — correos que dicen la verdad | bajo | Operaciones ve el servicio y el asesor |
+| 8 | Fase 4 — deuda propia | bajo | Calidad del portal |
+
+> **Nota honesta sobre el paso 3.** En la versión anterior de este plan, “que los estudios dejen de
+> perderse” era la victoria barata del principio. Ya no lo es: para que esos archivos sirvan de algo
+> tienen que llegar con folio, carpeta y fila, y eso arrastra la hoja `SOLICITUDES` al mismo paquete.
+> Sube de *bajo* a *medio* y crece en tamaño. Es el precio de que el arreglo sea real y no cosmético.
 
 ---
 
