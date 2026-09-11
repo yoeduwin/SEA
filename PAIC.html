@@ -296,9 +296,9 @@
           </div>
           <div class="form-grid">
             <div class="form-group full-width">
-              <label>Correo del cliente para informes y portal<span class="required">*</span></label>
+              <label>Correo del cliente para informes<span class="required">*</span></label>
               <input type="email" name="correo_informe" required>
-              <span class="helper-text">Este correo pertenece al cliente final. Aquí se enviarán informes y se utilizará para su acceso al portal; el acuse del PAIC no se enviará aquí.</span>
+              <span class="helper-text">Este correo pertenece al cliente final y es al que se enviarán los informes. El acuse de este registro no se envía aquí, sino al correo del asesor.</span>
             </div>
           </div>
         </div>
@@ -655,7 +655,7 @@
         <div class="confirmation-section">
           <h3>Correos</h3>
           <div class="confirmation-item"><span class="confirmation-label">Acuse al asesor:</span><span class="confirmation-value"><strong>${escHtml(fd.get('correo_acuse'))}</strong></span></div>
-          <div class="confirmation-item"><span class="confirmation-label">Informes / portal del cliente:</span><span class="confirmation-value">${escHtml(fd.get('correo_informe'))}</span></div>
+          <div class="confirmation-item"><span class="confirmation-label">Informes del cliente:</span><span class="confirmation-value">${escHtml(fd.get('correo_informe'))}</span></div>
         </div>
         <div class="confirmation-section">
           <h3>Documentación adjunta (${files.length})</h3>
