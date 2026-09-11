@@ -120,10 +120,6 @@
       <div class="modal-body" style="text-align:center;">
         <p style="font-size:14px;line-height:1.7;"><strong>PORTAL DE ASESORES, INTERMEDIARIOS Y CONSULTORÍAS</strong></p>
         <p style="color:#666;font-size:13px;line-height:1.8;margin-top:12px;">Esta plataforma permite a asesores, intermediarios y consultorías registrar y mantener actualizados los datos del cliente final y de la sucursal con la que Ejecutiva Ambiental trabajará.</p>
-        <div class="warning-box" style="text-align:left;">
-          <strong>Regla de negocio:</strong><br>
-          <strong>1 registro = 1 cliente / sucursal.</strong> PAIC se utiliza cuando existe un asesor, intermediario o consultoría entre el cliente final y Ejecutiva Ambiental. El registro es permanente y reutilizable: si la combinación RFC + sucursal ya existe, puede actualizarla desde aquí cuando cambien sus datos. Las órdenes de trabajo se generan posteriormente y por separado en SEAOT.
-        </div>
         <button type="button" class="btn-modal btn-confirm" style="margin-top:25px;" onclick="closeWelcomeModal()">Continuar al registro</button>
       </div>
     </div>
@@ -296,9 +292,9 @@
           </div>
           <div class="form-grid">
             <div class="form-group full-width">
-              <label>Correo del cliente para informes y portal<span class="required">*</span></label>
+              <label>Correo del cliente para informes<span class="required">*</span></label>
               <input type="email" name="correo_informe" required>
-              <span class="helper-text">Este correo pertenece al cliente final. Aquí se enviarán informes y se utilizará para su acceso al portal; el acuse del PAIC no se enviará aquí.</span>
+              <span class="helper-text">Este correo pertenece al cliente final y es al que se enviarán los informes. El acuse de este registro no se envía aquí, sino al correo del asesor.</span>
             </div>
           </div>
         </div>
@@ -655,7 +651,7 @@
         <div class="confirmation-section">
           <h3>Correos</h3>
           <div class="confirmation-item"><span class="confirmation-label">Acuse al asesor:</span><span class="confirmation-value"><strong>${escHtml(fd.get('correo_acuse'))}</strong></span></div>
-          <div class="confirmation-item"><span class="confirmation-label">Informes / portal del cliente:</span><span class="confirmation-value">${escHtml(fd.get('correo_informe'))}</span></div>
+          <div class="confirmation-item"><span class="confirmation-label">Informes del cliente:</span><span class="confirmation-value">${escHtml(fd.get('correo_informe'))}</span></div>
         </div>
         <div class="confirmation-section">
           <h3>Documentación adjunta (${files.length})</h3>
