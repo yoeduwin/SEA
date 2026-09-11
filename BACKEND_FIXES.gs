@@ -2001,7 +2001,11 @@ function guardarArchivos(data, carpetaCliente, addLog) {
     { key: 'ine_testigo2', label: 'C) INE Testigo 2' }, { key: 'poder_notarial', label: 'D) Poder Notarial (NOM-020)' },
     { key: 'ine_representante', label: 'E) INE Representante (NOM-020)' }, { key: 'situacion_fiscal', label: 'F) Sit. Fiscal (NOM-020)' },
     { key: 'licencia', label: 'G) Licencia/Cédula' }, { key: 'dc3', label: 'H) DC-3 Operador' },
-    { key: 'calibracion_valvula', label: 'I) Calibración Válvula' }, { key: 'pipc_licencia_funcionamiento', label: 'PIPC - 1) Lic. Funcionamiento' },
+    { key: 'calibracion_valvula', label: 'I) Calibración Válvula' },
+    { key: 'hojas_campo_laboratorio', label: 'J) Hojas de campo del servicio' },
+    { key: 'fotografia_laboratorio', label: 'K) Fotografía del servicio' },
+    { key: 'croquis_laboratorio', label: 'L) Croquis de puntos de medición' },
+    { key: 'pipc_licencia_funcionamiento', label: 'PIPC - 1) Lic. Funcionamiento' },
     { key: 'pipc_uso_suelo', label: 'PIPC - 2) Uso de Suelo' }, { key: 'pipc_predial', label: 'PIPC - 3) Predial' },
     { key: 'pipc_poliza_seguro', label: 'PIPC - 4) Póliza Seguro' }, { key: 'pipc_mant_extintores', label: 'PIPC - 5) Mant. Extintores' },
     { key: 'pipc_situacion_fiscal', label: 'PIPC - 6) Sit. Fiscal' }, { key: 'pipc_ine_representante', label: 'PIPC - 7) INE Rep. Legal' },
@@ -2355,7 +2359,8 @@ function enviarNotificacionEquipoPaic(data, files, carpetaCliente, sheetUrl) {
     `RFC: ${data.rfc || '-'}`,
     `Responsable en sitio: ${data.responsable || '-'}`,
     `Correo del cliente para informes: ${data.correo_informe || '-'}`,'',
-    `Indicación NOM-020 en este registro: ${valorSiNoPaic_(data.aplica_nom020)}`,'',
+    `Indicación NOM-020 en este registro: ${valorSiNoPaic_(data.aplica_nom020)}`,
+    `Servicio de medición registrado: ${data.estudio_laboratorio || 'No aplica'}`,'',
     'Documentación recibida:',docs,'',
     `Carpeta Drive: ${carpetaCliente.getUrl()}`,
     `Perfil de datos: ${sheetUrl}`,'',
@@ -2370,7 +2375,7 @@ function enviarNotificacionEquipoPaic(data, files, carpetaCliente, sheetUrl) {
       ${separadorEmail_()}${etiquetaEmail_('Cliente final')}
       <table width="100%" border="0" cellpadding="0" cellspacing="0">${filaEmail_('Sucursal',valorOGuion_(data.sucursal))}${filaEmail_('RFC',valorOGuion_(data.rfc))}${filaEmail_('Responsable en sitio',valorOGuion_(data.responsable))}${filaEmail_('Correo para informes',valorOGuion_(data.correo_informe))}</table>
       ${separadorEmail_()}${etiquetaEmail_('Indicaciones del registro')}
-      <p style="font-size:14px;line-height:1.7;margin:0;">NOM-020: <strong>${valorSiNoPaic_(data.aplica_nom020)}</strong></p>
+      <p style="font-size:14px;line-height:1.7;margin:0;">NOM-020: <strong>${valorSiNoPaic_(data.aplica_nom020)}</strong><br>Servicio de medición: <strong>${escHtml_(data.estudio_laboratorio || 'No aplica')}</strong></p>
       ${separadorEmail_()}<table border="0" cellpadding="0" cellspacing="0"><tr>${botonEmail_('Ver carpeta en Drive',carpetaCliente.getUrl(),'secundario')}${botonEmail_('Ver perfil de datos',sheetUrl,'secundario')}</tr></table>
       <p style="margin:18px 0 0;font-size:12px;color:${EMAIL_COLORS_.textoSuave};">Registro vía PAIC. No implica la creación de una orden de trabajo; SEAOT gestiona las OT por separado.</p>
     </td></tr>` + pieEmail_([`<strong style="color:#5A665A;">${CONFIG.COMPANY_NAME}</strong> · Registro PAIC`,'Mensaje automático para seguimiento interno.'])
