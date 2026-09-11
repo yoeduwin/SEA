@@ -119,10 +119,10 @@
       <div class="modal-header"><h2>Bienvenido al PAIC</h2></div>
       <div class="modal-body" style="text-align:center;">
         <p style="font-size:14px;line-height:1.7;"><strong>PORTAL DE ASESORES, INTERMEDIARIOS Y CONSULTORÍAS</strong></p>
-        <p style="color:#666;font-size:13px;line-height:1.8;margin-top:12px;">Esta plataforma permite a asesores, intermediarios y consultorías registrar por primera vez los datos del cliente final y de la sucursal con la que Ejecutiva Ambiental trabajará.</p>
+        <p style="color:#666;font-size:13px;line-height:1.8;margin-top:12px;">Esta plataforma permite a asesores, intermediarios y consultorías registrar y mantener actualizados los datos del cliente final y de la sucursal con la que Ejecutiva Ambiental trabajará.</p>
         <div class="warning-box" style="text-align:left;">
           <strong>Regla de negocio:</strong><br>
-          <strong>1 registro = 1 alta inicial de cliente / sucursal.</strong> PAIC se utiliza cuando existe un asesor, intermediario o consultoría entre el cliente final y Ejecutiva Ambiental. Si la combinación RFC + sucursal ya está registrada, no debe registrarse nuevamente. Las órdenes de trabajo se generan posteriormente y por separado en SEAOT.
+          <strong>1 registro = 1 cliente / sucursal.</strong> PAIC se utiliza cuando existe un asesor, intermediario o consultoría entre el cliente final y Ejecutiva Ambiental. El registro es permanente y reutilizable: si la combinación RFC + sucursal ya existe, puede actualizarla desde aquí cuando cambien sus datos. Las órdenes de trabajo se generan posteriormente y por separado en SEAOT.
         </div>
         <button type="button" class="btn-modal btn-confirm" style="margin-top:25px;" onclick="closeWelcomeModal()">Continuar al registro</button>
       </div>
@@ -140,7 +140,7 @@
     <div class="modal-content" style="max-width:650px;">
       <div class="modal-header"><h2>Cliente ya registrado</h2></div>
       <div class="modal-body">
-        <p style="color:#555;line-height:1.6;">Busque por RFC para consultar las sucursales ya registradas o dar de alta una nueva sucursal del mismo cliente. Las sucursales existentes no se actualizan desde PAIC.</p>
+        <p style="color:#555;line-height:1.6;">Busque por RFC para actualizar una sucursal ya registrada o dar de alta una nueva sucursal del mismo cliente.</p>
         <div class="modal-search-box">
           <input type="text" id="rfcSearch" maxlength="13" placeholder="RFC del cliente">
           <button type="button" class="btn-search" id="btnSearchRFC" onclick="searchClientByRFC()">Buscar</button>
@@ -195,7 +195,7 @@
         <div class="section">
           <div class="section-header">Cliente / sucursal</div>
           <div id="returningBanner" class="returning-banner">
-            <div class="banner-text"><strong>RFC identificado</strong><br>Capture los datos de la nueva sucursal. Las sucursales ya registradas no se modifican desde PAIC.</div>
+            <div class="banner-text"><strong>RFC identificado</strong><br>Verifique los datos pre-llenados y complete lo que falte.</div>
             <button type="button" class="btn-clear-prefill" onclick="clearPrefill()">Limpiar datos</button>
           </div>
           <div class="form-grid">
@@ -490,328 +490,10 @@
           </div>
         </div>
 
-        <div class="section">
-          <div class="section-header">Programa Interno de Protección Civil (PIPC)</div>
-          <div class="form-grid">
-            <div class="form-group full-width">
-              <label style="font-size: 13px; text-transform: none;">¿Este registro requiere incluir la indicación y documentación para Programa Interno de Protección Civil?<span class="required">*</span></label>
-              <div class="radio-group">
-                <div class="radio-option">
-                  <input type="radio" id="pipc_si" name="requiere_pipc" value="si" required>
-                  <label for="pipc_si">Sí, incluir PIPC en este registro</label>
-                </div>
-                <div class="radio-option">
-                  <input type="radio" id="pipc_no" name="requiere_pipc" value="no">
-                  <label for="pipc_no">No, no se requiere en este registro</label>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div id="documentacionPIPCSection" class="conditional-section">
-            <div class="conditional-header">📋 DOCUMENTACIÓN REQUERIDA PARA PIPC</div>
-            <div style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 15px; border-radius: 5px; margin-bottom: 25px;">
-              <p style="margin: 0; color: #1565c0; font-size: 12px; line-height: 1.6;">
-                <strong>ℹ️ NOTA IMPORTANTE:</strong> Los requisitos presentados a continuación son la <strong>base mínima</strong> para el Programa Interno de Protección Civil.
-                Sin embargo, <strong>algunos municipios de Puebla pueden solicitar documentación adicional</strong> según sus normativas locales.
-                En caso de que su municipio requiera requisitos extra, <strong>Atención a Clientes se comunicará con usted</strong> para informarle qué documentos adicionales son necesarios.
-              </p>
-            </div>
-            <h4 style="color: #1e5a3e; margin: 0 0 15px 0; font-size: 13px; text-transform: uppercase; border-bottom: 2px solid #1e5a3e; padding-bottom: 8px;">
-              📄 Documentos Base (Siempre Obligatorios)
-            </h4>
-            <div class="form-grid">
-              <div class="form-group full-width file-upload-group" data-upload-group="pipc_licencia_funcionamiento">
-                <label>1) Licencia de funcionamiento (Tesorería Municipal)<span class="required">*</span></label>
-                <input type="file" name="pipc_licencia_funcionamiento" accept=".pdf,.jpg,.jpeg,.png" data-file-input="pipc_licencia_funcionamiento" data-conditional-required="pipc">
-                <div class="file-preview" data-preview="pipc_licencia_funcionamiento">
-                  <div class="file-preview-content">
-                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
-                    <button type="button" class="file-remove" data-clear="pipc_licencia_funcionamiento">Eliminar</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="form-grid">
-              <div class="form-group full-width file-upload-group" data-upload-group="pipc_uso_suelo">
-                <label>2) Licencia de uso de suelo específico (posterior a 1997)<span class="required">*</span></label>
-                <input type="file" name="pipc_uso_suelo" accept=".pdf,.jpg,.jpeg,.png" data-file-input="pipc_uso_suelo" data-conditional-required="pipc">
-                <span class="helper-text">Expedida por Dirección de Desarrollo Urbano</span>
-                <div class="file-preview" data-preview="pipc_uso_suelo">
-                  <div class="file-preview-content">
-                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
-                    <button type="button" class="file-remove" data-clear="pipc_uso_suelo">Eliminar</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="form-grid">
-              <div class="form-group full-width file-upload-group" data-upload-group="pipc_predial">
-                <label>3) Predial<span class="required">*</span></label>
-                <input type="file" name="pipc_predial" accept=".pdf,.jpg,.jpeg,.png" data-file-input="pipc_predial" data-conditional-required="pipc">
-                <div class="file-preview" data-preview="pipc_predial">
-                  <div class="file-preview-content">
-                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
-                    <button type="button" class="file-remove" data-clear="pipc_predial">Eliminar</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="form-grid">
-              <div class="form-group full-width file-upload-group" data-upload-group="pipc_poliza_seguro">
-                <label>4) Póliza de seguro de responsabilidad civil (Vigente)<span class="required">*</span></label>
-                <input type="file" name="pipc_poliza_seguro" accept=".pdf" data-file-input="pipc_poliza_seguro" data-conditional-required="pipc">
-                <div class="file-preview" data-preview="pipc_poliza_seguro">
-                  <div class="file-preview-content">
-                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
-                    <button type="button" class="file-remove" data-clear="pipc_poliza_seguro">Eliminar</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="form-grid">
-              <div class="form-group full-width file-upload-group" data-upload-group="pipc_mant_extintores">
-                <label>5) Comprobante de mantenimiento a extintores<span class="required">*</span></label>
-                <input type="file" name="pipc_mant_extintores" accept=".pdf,.jpg,.jpeg,.png" data-file-input="pipc_mant_extintores" data-conditional-required="pipc">
-                <span class="helper-text">Factura, carta garantía o dictamen</span>
-                <div class="file-preview" data-preview="pipc_mant_extintores">
-                  <div class="file-preview-content">
-                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
-                    <button type="button" class="file-remove" data-clear="pipc_mant_extintores">Eliminar</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="form-grid">
-              <div class="form-group full-width file-upload-group" data-upload-group="pipc_situacion_fiscal">
-                <label>6) Constancia de Situación Fiscal (Actualizada)<span class="required">*</span></label>
-                <input type="file" name="pipc_situacion_fiscal" accept=".pdf" data-file-input="pipc_situacion_fiscal" data-conditional-required="pipc">
-                <div class="file-preview" data-preview="pipc_situacion_fiscal">
-                  <div class="file-preview-content">
-                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
-                    <button type="button" class="file-remove" data-clear="pipc_situacion_fiscal">Eliminar</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="form-grid">
-              <div class="form-group full-width file-upload-group" data-upload-group="pipc_ine_representante">
-                <label>7) INE del representante legal o propietario<span class="required">*</span></label>
-                <input type="file" name="pipc_ine_representante" accept=".pdf,.jpg,.jpeg,.png" data-file-input="pipc_ine_representante" data-conditional-required="pipc">
-                <div class="file-preview" data-preview="pipc_ine_representante">
-                  <div class="file-preview-content">
-                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
-                    <button type="button" class="file-remove" data-clear="pipc_ine_representante">Eliminar</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="form-grid">
-              <div class="form-group full-width file-upload-group" data-upload-group="pipc_acta_constitutiva">
-                <label>8) Acta Constitutiva<span class="required">*</span></label>
-                <input type="file" name="pipc_acta_constitutiva" accept=".pdf" data-file-input="pipc_acta_constitutiva" data-conditional-required="pipc">
-                <span class="helper-text">Solo si el establecimiento está registrado como persona moral</span>
-                <div class="file-preview" data-preview="pipc_acta_constitutiva">
-                  <div class="file-preview-content">
-                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
-                    <button type="button" class="file-remove" data-clear="pipc_acta_constitutiva">Eliminar</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="form-grid">
-              <div class="form-group full-width file-upload-group" data-upload-group="pipc_poder_notarial">
-                <label>9) Poder Notarial<span class="required">*</span></label>
-                <input type="file" name="pipc_poder_notarial" accept=".pdf" data-file-input="pipc_poder_notarial" data-conditional-required="pipc">
-                <div class="file-preview" data-preview="pipc_poder_notarial">
-                  <div class="file-preview-content">
-                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
-                    <button type="button" class="file-remove" data-clear="pipc_poder_notarial">Eliminar</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="form-grid">
-              <div class="form-group full-width file-upload-group" data-upload-group="pipc_evidencia_simulacros">
-                <label>10) Evidencia fotográfica de simulacros<span class="required">*</span></label>
-                <input type="file" name="pipc_evidencia_simulacros" accept=".pdf,.jpg,.jpeg,.png,.zip" data-file-input="pipc_evidencia_simulacros" data-conditional-required="pipc">
-                <span class="helper-text">Evidencia fotográfica de los últimos simulacros realizados</span>
-                <div class="file-preview" data-preview="pipc_evidencia_simulacros">
-                  <div class="file-preview-content">
-                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
-                    <button type="button" class="file-remove" data-clear="pipc_evidencia_simulacros">Eliminar</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="form-grid">
-              <div class="form-group full-width file-upload-group" data-upload-group="pipc_organigrama_brigadas">
-                <label>11) Organigrama de Brigadas<span class="required">*</span></label>
-                <input type="file" name="pipc_organigrama_brigadas" accept=".pdf" data-file-input="pipc_organigrama_brigadas" data-conditional-required="pipc">
-                <span class="helper-text">PDF con cronograma de personal que pertenece al equipo de brigadas (nombre completo y puesto)</span>
-                <div class="file-preview" data-preview="pipc_organigrama_brigadas">
-                  <div class="file-preview-content">
-                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
-                    <button type="button" class="file-remove" data-clear="pipc_organigrama_brigadas">Eliminar</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="form-grid">
-              <div class="form-group full-width file-upload-group" data-upload-group="pipc_detectores_humo">
-                <label>12) Mantenimiento de detectores de humo<span class="required">*</span></label>
-                <input type="file" name="pipc_detectores_humo" accept=".pdf,.xls,.xlsx" data-file-input="pipc_detectores_humo" data-conditional-required="pipc">
-                <span class="helper-text">Bitácora de limpieza y reemplazo de baterías</span>
-                <div class="file-preview" data-preview="pipc_detectores_humo">
-                  <div class="file-preview-content">
-                    <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
-                    <button type="button" class="file-remove" data-clear="pipc_detectores_humo">Eliminar</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <hr style="border: none; border-top: 2px solid #1e5a3e; margin: 30px 0;">
-            <h4 style="color: #856404; margin: 0 0 15px 0; font-size: 13px; text-transform: uppercase; border-bottom: 2px solid #ffc107; padding-bottom: 8px;">
-              ⚠️ Documentos Adicionales (Según Aplique)
-            </h4>
-            <div class="form-grid">
-              <div class="form-group full-width">
-                <label style="font-size: 12px; text-transform: none; margin-bottom: 10px;">13) ¿Cuenta con constancia de medidas preventivas contra incendios?</label>
-                <div class="radio-group">
-                  <div class="radio-option">
-                    <input type="radio" id="pipc_tiene_medidas_si" name="pipc_tiene_medidas" value="si">
-                    <label for="pipc_tiene_medidas_si">Sí, cuento con ella</label>
-                  </div>
-                  <div class="radio-option">
-                    <input type="radio" id="pipc_tiene_medidas_no" name="pipc_tiene_medidas" value="no">
-                    <label for="pipc_tiene_medidas_no">No cuento con ella (debe tramitarse)</label>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div id="pipc_medidas_preventivas_section" class="conditional-section" style="display: none; background: #fff9e6; border-left-color: #ff9800;">
-              <div class="form-grid">
-                <div class="form-group full-width file-upload-group" data-upload-group="pipc_medidas_preventivas">
-                  <label>Adjuntar constancia de medidas preventivas<span class="required">*</span></label>
-                  <input type="file" name="pipc_medidas_preventivas" accept=".pdf,.jpg,.jpeg,.png" data-file-input="pipc_medidas_preventivas" data-conditional-required="pipc_medidas">
-                  <span class="helper-text">Solo si cuenta con ella</span>
-                  <div class="file-preview" data-preview="pipc_medidas_preventivas">
-                    <div class="file-preview-content">
-                      <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
-                      <button type="button" class="file-remove" data-clear="pipc_medidas_preventivas">Eliminar</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="form-grid" style="margin-top: 20px;">
-              <div class="form-group full-width">
-                <label style="font-size: 12px; text-transform: none; margin-bottom: 10px;">14) ¿La instalación cuenta con suministro de Gas Natural?</label>
-                <div class="radio-group">
-                  <div class="radio-option">
-                    <input type="radio" id="pipc_tiene_gas_si" name="pipc_tiene_gas" value="si">
-                    <label for="pipc_tiene_gas_si">Sí, contamos con Gas Natural</label>
-                  </div>
-                  <div class="radio-option">
-                    <input type="radio" id="pipc_tiene_gas_no" name="pipc_tiene_gas" value="no">
-                    <label for="pipc_tiene_gas_no">No contamos con Gas Natural</label>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div id="pipc_gas_natural_section" class="conditional-section" style="display: none; background: #fff9e6; border-left-color: #ff9800;">
-              <div class="form-grid">
-                <div class="form-group full-width file-upload-group" data-upload-group="pipc_gas_natural">
-                  <label>Contrato y 3 últimos comprobantes de pago de Gas Natural<span class="required">*</span></label>
-                  <input type="file" name="pipc_gas_natural" accept=".pdf,.zip" data-file-input="pipc_gas_natural" data-conditional-required="pipc_gas">
-                  <span class="helper-text">Puede adjuntar un PDF con todos los documentos o un archivo ZIP</span>
-                  <div class="file-preview" data-preview="pipc_gas_natural">
-                    <div class="file-preview-content">
-                      <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
-                      <button type="button" class="file-remove" data-clear="pipc_gas_natural">Eliminar</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="form-grid" style="margin-top: 20px;">
-              <div class="form-group full-width">
-                <label style="font-size: 12px; text-transform: none; margin-bottom: 10px;">15) ¿Manejan sustancias químicas peligrosas?</label>
-                <div class="radio-group">
-                  <div class="radio-option">
-                    <input type="radio" id="pipc_tiene_quimicos_si" name="pipc_tiene_quimicos" value="si">
-                    <label for="pipc_tiene_quimicos_si">Sí, manejamos sustancias químicas</label>
-                  </div>
-                  <div class="radio-option">
-                    <input type="radio" id="pipc_tiene_quimicos_no" name="pipc_tiene_quimicos" value="no">
-                    <label for="pipc_tiene_quimicos_no">No manejamos sustancias químicas</label>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div id="pipc_sustancias_quimicas_section" class="conditional-section" style="display: none; background: #fff9e6; border-left-color: #ff9800;">
-              <div class="form-grid">
-                <div class="form-group full-width file-upload-group" data-upload-group="pipc_sustancias_quimicas">
-                  <label>Evidencia de cumplimiento NOM-005-STPS-1998<span class="required">*</span></label>
-                  <input type="file" name="pipc_sustancias_quimicas" accept=".pdf,.jpg,.jpeg,.png" data-file-input="pipc_sustancias_quimicas" data-conditional-required="pipc_quimicos">
-                  <span class="helper-text">Almacenamiento de sustancias químicas peligrosas</span>
-                  <div class="file-preview" data-preview="pipc_sustancias_quimicas">
-                    <div class="file-preview-content">
-                      <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
-                      <button type="button" class="file-remove" data-clear="pipc_sustancias_quimicas">Eliminar</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="form-grid" style="margin-top: 20px;">
-              <div class="form-group full-width">
-                <label style="font-size: 12px; text-transform: none; margin-bottom: 10px;">16) ¿Cuentan con montacargas u operadores de maquinaria especializada?</label>
-                <div class="radio-group">
-                  <div class="radio-option">
-                    <input type="radio" id="pipc_tiene_montacargas_si" name="pipc_tiene_montacargas" value="si">
-                    <label for="pipc_tiene_montacargas_si">Sí, contamos con ellos</label>
-                  </div>
-                  <div class="radio-option">
-                    <input type="radio" id="pipc_tiene_montacargas_no" name="pipc_tiene_montacargas" value="no">
-                    <label for="pipc_tiene_montacargas_no">No contamos con este equipo</label>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div id="pipc_dc3_operadores_section" class="conditional-section" style="display: none; background: #fff9e6; border-left-color: #ff9800;">
-              <div class="form-grid">
-                <div class="form-group full-width file-upload-group" data-upload-group="pipc_dc3_operadores">
-                  <label>DC-3 de operadores especializados<span class="required">*</span></label>
-                  <input type="file" name="pipc_dc3_operadores" accept=".pdf" data-file-input="pipc_dc3_operadores" data-conditional-required="pipc_montacargas">
-                  <span class="helper-text">Constancias de competencias de montacargas u otros operadores</span>
-                  <div class="file-preview" data-preview="pipc_dc3_operadores">
-                    <div class="file-preview-content">
-                      <div class="file-info"><span class="file-icon">📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div>
-                      <button type="button" class="file-remove" data-clear="pipc_dc3_operadores">Eliminar</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div style="background: #e8f5e9; border: 1px solid #4caf50; padding: 15px; border-radius: 5px; margin-top: 30px;">
-              <h4 style="color: #2e7d32; margin: 0 0 10px 0; font-size: 13px;">📌 Verificación en sitio (no requiere documentos):</h4>
-              <ul style="margin: 0; padding-left: 20px; color: #333; font-size: 11px; line-height: 1.8;">
-                <li><strong>Punto de reunión:</strong> Señalética colocada o pintada</li>
-                <li><strong>Alarma:</strong> Señalética que identifique el medio de alertamiento</li>
-                <li><strong>Delimitación de áreas:</strong> Áreas productivas y de almacén claramente delimitadas</li>
-                <li><strong>Señaléticas de estiba máxima:</strong> En cada área correspondiente</li>
-              </ul>
-              <p style="margin: 10px 0 0 0; color: #666; font-size: 10px; font-style: italic;">
-                Estos puntos se verificarán durante el levantamiento del servicio en su instalación
-              </p>
-            </div>
-          </div>
-        </div>
-
         <div class="submit-section">
           <button type="submit" class="btn-submit" id="submitBtn">Revisar y enviar información</button>
           <div class="loading" id="loading"><div class="loading-spinner"></div><p class="loading-text">Guardando información del cliente...</p></div>
-          <div class="message success-message" id="successMsg"><strong>Cliente/sucursal registrado correctamente.</strong><br>El alta inicial quedó registrada. La orden de trabajo se gestiona por separado en SEAOT.</div>
+          <div class="message success-message" id="successMsg"><strong>Cliente/sucursal guardado correctamente.</strong><br>El registro quedó guardado o actualizado. La orden de trabajo se gestiona por separado en SEAOT.</div>
           <div class="message error-message" id="errorMsg">✗ <span id="errorMsgText">Error al enviar la información.</span></div>
         </div>
       </form>
@@ -897,13 +579,9 @@
     document.querySelectorAll('.file-remove').forEach(btn => btn.addEventListener('click', () => clearFileUI(btn.dataset.clear)));
 
     function resetConditionalRegistrationSections() {
-      document.querySelectorAll('input[name="aplica_nom020"], input[name="requiere_pipc"], input[name^="pipc_tiene_"]').forEach(r => { r.checked=false; });
+      document.querySelectorAll('input[name="aplica_nom020"]').forEach(r => { r.checked=false; });
       document.getElementById('documentacionLegalSection')?.classList.remove('active');
-      document.getElementById('documentacionPIPCSection')?.classList.remove('active');
-      ['pipc_medidas_preventivas_section','pipc_gas_natural_section','pipc_sustancias_quimicas_section','pipc_dc3_operadores_section'].forEach(id => {
-        const el=document.getElementById(id); if (el) el.style.display='none';
-      });
-      ['nom020','pipc','pipc_medidas','pipc_gas','pipc_quimicos','pipc_montacargas'].forEach(clearConditionalFilesByAttr);
+      clearConditionalFilesByAttr('nom020');
       const sinCal=document.getElementById('check_sin_calibracion'); if (sinCal) sinCal.checked=false;
       const calib=document.querySelector('[data-file-input="calibracion_valvula"]'); if (calib) { calib.style.display=''; calib.required=false; }
       const ast=document.getElementById('asterisco_calib'); if (ast) ast.style.display='';
@@ -926,35 +604,6 @@
         if (f.type==='file' && f.dataset.fileInput) clearFileUI(f.dataset.fileInput); else if (f.type!=='radio' && f.type!=='checkbox') f.value='';
       });
     }));
-
-    document.querySelectorAll('input[name="requiere_pipc"]').forEach(r => r.addEventListener('change', function() {
-      const on=this.value==='si';
-      document.getElementById('documentacionPIPCSection')?.classList.toggle('active',on);
-      document.querySelectorAll('[data-conditional-required="pipc"]').forEach(f => { f.required=on; });
-      if (!on) resetPIPCConditionals();
-    }));
-
-    function resetPIPCConditionals() {
-      document.querySelectorAll('input[name^="pipc_tiene_"]').forEach(r => { r.checked=false; });
-      ['pipc_medidas_preventivas_section','pipc_gas_natural_section','pipc_sustancias_quimicas_section','pipc_dc3_operadores_section'].forEach(id => {
-        const el=document.getElementById(id); if (el) el.style.display='none';
-      });
-      ['pipc','pipc_medidas','pipc_gas','pipc_quimicos','pipc_montacargas'].forEach(clearConditionalFilesByAttr);
-    }
-
-    function bindPipcConditional(radioName, sectionId, requiredKey) {
-      document.querySelectorAll(`input[name="${radioName}"]`).forEach(radio => radio.addEventListener('change', function() {
-        const section=document.getElementById(sectionId);
-        const on=this.value==='si';
-        if (section) section.style.display=on ? 'block' : 'none';
-        document.querySelectorAll(`[data-conditional-required="${requiredKey}"]`).forEach(f => { f.required=on; });
-        if (!on) clearConditionalFilesByAttr(requiredKey);
-      }));
-    }
-    bindPipcConditional('pipc_tiene_medidas','pipc_medidas_preventivas_section','pipc_medidas');
-    bindPipcConditional('pipc_tiene_gas','pipc_gas_natural_section','pipc_gas');
-    bindPipcConditional('pipc_tiene_quimicos','pipc_sustancias_quimicas_section','pipc_quimicos');
-    bindPipcConditional('pipc_tiene_montacargas','pipc_dc3_operadores_section','pipc_montacargas');
 
     document.getElementById('check_sin_calibracion')?.addEventListener('change', function() {
       const calib=document.querySelector('[data-file-input="calibracion_valvula"]');
@@ -1012,7 +661,7 @@
           <h3>Documentación adjunta (${files.length})</h3>
           ${files.length ? `<ul class="file-list">${files.map(f => `<li>${escHtml(f.label)}<br><strong>${escHtml(f.name)}</strong> (${escHtml(f.size)})</li>`).join('')}</ul>` : '<p>No se adjuntaron archivos.</p>'}
         </div>
-        <div class="warning-box"><strong>Importante:</strong> Este envío realiza el alta inicial del cliente/sucursal a través del asesor o intermediario. No genera una orden de trabajo. La OT se gestiona por separado en SEAOT.</div>
+        <div class="warning-box"><strong>Importante:</strong> Este envío registra o actualiza los datos del cliente/sucursal a través del asesor o intermediario. No genera una orden de trabajo. La OT se gestiona por separado en SEAOT.</div>
         <div class="modal-buttons">
           <button type="button" class="btn-modal btn-confirm" onclick="confirmAndSend()">Confirmar y enviar</button>
           <button type="button" class="btn-modal btn-cancel" onclick="closeConfirmationModal()">Corregir datos</button>
@@ -1120,9 +769,11 @@
         const data=await response.json();
         if (data.found && Array.isArray(data.sucursales) && data.sucursales.length) {
           window._returningClientBranches=data.sucursales; window._returningRazonSocial=data.razon_social; window._returningRfc=rfc;
-          const branches=data.sucursales.map(s => `<li>${escHtml(s.sucursal || 'Matriz')} — ya registrada</li>`).join('');
+          const opciones=data.sucursales
+            .map((s,i) => `<option value="${i}">Actualizar ${escHtml(s.sucursal || 'Matriz')}</option>`)
+            .join('') + '<option value="new">Registrar nueva sucursal</option>';
           resultDiv.className='rfc-search-result found'; resultDiv.style.display='block';
-          resultDiv.innerHTML=`<strong>Cliente encontrado:</strong> ${escHtml(data.razon_social)}<br><br><strong>Sucursales ya registradas:</strong><ul style="margin:8px 0 15px 20px;">${branches}</ul><p style="margin-bottom:12px;">PAIC no modifica sucursales existentes. Si necesita dar de alta otra ubicación del mismo RFC, continúe con una nueva sucursal.</p><button type="button" class="btn-search" style="width:100%;" onclick="applyNewBranchData()">Registrar nueva sucursal</button>`;
+          resultDiv.innerHTML=`<strong>Cliente encontrado:</strong> ${escHtml(data.razon_social)}<br><br><label style="font-size:11px;font-weight:bold;color:#1e5a3e;">¿Qué desea hacer?</label><select id="branchSelectModal" style="width:100%;padding:8px;margin:5px 0 15px;border:1px solid #ccc;border-radius:4px;"><option value="">-- Seleccione una opción --</option>${opciones}</select><button type="button" class="btn-search" style="width:100%;" onclick="applyClientData()">Continuar con esta selección</button>`;
         } else {
           window._returningClientBranches=[]; window._returningRazonSocial=''; window._returningRfc=rfc;
           resultDiv.className='rfc-search-result not-found'; resultDiv.style.display='block';
@@ -1138,19 +789,74 @@
       const el=document.querySelector(`[name="${name}"]`); if (el) el.value=value == null ? '' : value;
     }
 
-    function applyNewBranchData() {
+    // Documentación general reutilizable: si la sucursal ya está en expediente,
+    // estos archivos no se vuelven a pedir salvo que el asesor quiera reemplazarlos.
+    const GENERAL_FILE_KEYS = ['planos','requisitos_ingreso'];
+
+    function showOnRecordIndicators() {
+      GENERAL_FILE_KEYS.forEach(key => {
+        const group=document.querySelector(`[data-upload-group="${key}"]`);
+        if (!group || group.querySelector('.file-on-record')) return;
+        const fileInput=group.querySelector('input[type="file"]');
+        if (!fileInput) return;
+        const indicator=document.createElement('div');
+        indicator.className='file-on-record active';
+        indicator.dataset.onRecordFor=key;
+        indicator.innerHTML='<span class="on-record-text">Ya tenemos este documento en expediente</span>'
+          + `<button type="button" class="btn-upload-new" onclick="showFileInput('${key}')">Subir nuevo</button>`;
+        fileInput.style.display='none';
+        fileInput.required=false;
+        group.insertBefore(indicator,fileInput);
+        const helper=group.querySelector('.helper-text');
+        if (helper) helper.style.display='none';
+      });
+    }
+
+    function showFileInput(key) {
+      const group=document.querySelector(`[data-upload-group="${key}"]`);
+      if (!group) return;
+      group.querySelector('.file-on-record')?.classList.remove('active');
+      const fileInput=group.querySelector('input[type="file"]');
+      if (fileInput) { fileInput.style.display=''; if (key==='planos') fileInput.required=true; }
+      const helper=group.querySelector('.helper-text');
+      if (helper) helper.style.display='';
+    }
+    window.showFileInput=showFileInput;
+
+    const CAMPOS_SUCURSAL = ['sucursal','direccion_evaluacion','telefono_empresa','representante_legal','responsable','telefono_responsable','correo_informe','nombre_dirigido','puesto_dirigido','giro','actividad_principal','descripcion_proceso','registro_patronal','capacidad_instalada','capacidad_operacion','dias_turnos_horarios'];
+
+    function applyClientData() {
+      const select=document.getElementById('branchSelectModal');
+      if (!select || select.value === '') { alert('Seleccione una sucursal o elija "Registrar nueva sucursal".'); return; }
+      const val=select.value;
       const base=window._returningClientBranches?.[0] || {};
-      const razon=base.razon_social || window._returningRazonSocial || '';
       const rfc=base.rfc || window._returningRfc || '';
-      ['sucursal','direccion_evaluacion','telefono_empresa','representante_legal','responsable','telefono_responsable','correo_informe','nombre_dirigido','puesto_dirigido','giro','actividad_principal','descripcion_proceso','registro_patronal','capacidad_instalada','capacidad_operacion','dias_turnos_horarios'].forEach(k => setField(k,''));
+      const razon=base.razon_social || window._returningRazonSocial || '';
+
+      isReturningClient=true;
       resetUploadState();
+      CAMPOS_SUCURSAL.forEach(k => setField(k,''));
       setField('razon_social',razon); setField('rfc',rfc);
+
       const banner=document.getElementById('returningBanner');
-      if (banner) { banner.classList.add('active'); banner.querySelector('.banner-text').innerHTML='<strong>RFC identificado</strong><br>Capture los datos completos de la nueva sucursal. Las sucursales ya registradas no se modifican desde PAIC.'; }
+      if (val === 'new') {
+        // Alta de otra ubicación del mismo RFC: sólo se heredan los datos fiscales.
+        setField('representante_legal',base.representante_legal || '');
+        if (banner) { banner.classList.add('active'); banner.querySelector('.banner-text').innerHTML='<strong>Cliente identificado</strong><br>Datos fiscales autocompletados. Capture los datos de la <strong>nueva sucursal</strong>.'; }
+      } else {
+        // Actualización de una sucursal existente: se pre-llena todo el maestro.
+        const suc=window._returningClientBranches?.[val] || {};
+        ['razon_social','rfc','nombre_solicitante'].concat(CAMPOS_SUCURSAL).forEach(k => {
+          if (suc[k]) setField(k,suc[k]);
+        });
+        showOnRecordIndicators();
+        if (banner) { banner.classList.add('active'); banner.querySelector('.banner-text').innerHTML='<strong>Sucursal identificada</strong><br>Pre-llenamos los datos vigentes. Verifique, corrija lo que cambió y envíe para actualizar el registro.'; }
+      }
+
       if (rfcInput) { rfcInput.value=rfc; rfcInput.dispatchEvent(new Event('input')); }
       closeReturningModal(); document.querySelector('.form-content')?.scrollIntoView({behavior:'smooth'});
     }
-    window.applyNewBranchData=applyNewBranchData;
+    window.applyClientData=applyClientData;
 
 
     function clearPrefill() {

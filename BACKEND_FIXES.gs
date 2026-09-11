@@ -700,20 +700,14 @@ function fase1_RegistrarCliente(data) {
     const timestamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'yyMMdd');
     const esPaic = String((data && data.portal_origen) || '').toUpperCase() === 'PAIC';
 
+    // PAIC es el mismo alta/actualización de cliente-sucursal que SEAPD; lo único
+    // propio del portal es que el acuse va al asesor, no al cliente final.
     if (esPaic) {
-      const correoAcuse = String(data.correo_acuse || '').trim();
-      if (!correoAcuse) return { success: false, error: 'El correo del asesor/intermediario es obligatorio en PAIC.' };
-      if (['si','no'].indexOf(String(data.aplica_nom020 || '').toLowerCase()) === -1 ||
-          ['si','no'].indexOf(String(data.requiere_pipc || '').toLowerCase()) === -1) {
-        return { success: false, error: 'Indique si este registro requiere NOM-020 y PIPC.' };
+      if (!String(data.correo_acuse || '').trim()) {
+        return { success: false, error: 'El correo del asesor/intermediario es obligatorio en PAIC.' };
       }
-      const existingRows = sheet.getDataRange().getValues();
-      for (let i = existingRows.length - 1; i >= 1; i--) {
-        const sameRfc = String(existingRows[i][CL.RFC] || '').toUpperCase().trim() === rfcClean;
-        const sameBranch = sanitizeFileName(String(existingRows[i][CL.SUCURSAL] || 'Matriz')).toLowerCase() === branchClean.toLowerCase();
-        if (sameRfc && sameBranch) {
-          return { success: false, code: 'CLIENTE_SUCURSAL_YA_REGISTRADO', error: 'Este cliente y sucursal ya están registrados. PAIC solo permite el alta inicial; no vuelva a registrar ni actualizar esta sucursal desde este portal.' };
-        }
+      if (['si','no'].indexOf(String(data.aplica_nom020 || '').toLowerCase()) === -1) {
+        return { success: false, error: 'Indique si este registro requiere NOM-020.' };
       }
     }
 
@@ -797,6 +791,12 @@ function fase1_RegistrarCliente(data) {
         rowIndex = i + 1;
         break;
       }
+    }
+    // PAIC no captura la indicación de PIPC. Al actualizar una sucursal existente
+    // conservamos el valor que ya tiene la fila para no degradar a "NO" un dato
+    // que el asesor no ve ni declara (p. ej. capturado antes desde SEAPD).
+    if (esPaic && rowIndex > -1) {
+      rowData[CL.REQUIERE_PIPC] = allData[rowIndex - 1][CL.REQUIERE_PIPC] || 'NO';
     }
     if (rowIndex > -1) {
       sheet.getRange(rowIndex, 1, 1, rowData.length).setValues([rowData]);
@@ -2344,9 +2344,9 @@ function valorSiNoPaic_(value) {
 function enviarNotificacionEquipoPaic(data, files, carpetaCliente, sheetUrl) {
   const timestamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'dd/MM/yyyy HH:mm');
   const docs = (files || []).map(f => `• ${f.label || f.name || 'Documento'}`).join('\n') || '• Sin archivos adjuntos';
-  const subject = `Alta PAIC · ${data.razon_social || 'Cliente'} — ${data.sucursal || 'Sucursal'}`;
+  const subject = `Registro PAIC · ${data.razon_social || 'Cliente'} — ${data.sucursal || 'Sucursal'}`;
   const plain = [
-    'NUEVA ALTA DE CLIENTE VÍA PAIC','',
+    'REGISTRO DE CLIENTE / SUCURSAL VÍA PAIC','',
     `Asesor / intermediario: ${data.nombre_solicitante || '-'}`,
     `Consultoría / despacho: ${data.asesor_consultor || '-'}`,
     `Correo de acuse del asesor: ${data.correo_acuse || '-'}`,'',
@@ -2355,25 +2355,24 @@ function enviarNotificacionEquipoPaic(data, files, carpetaCliente, sheetUrl) {
     `RFC: ${data.rfc || '-'}`,
     `Responsable en sitio: ${data.responsable || '-'}`,
     `Correo del cliente para informes: ${data.correo_informe || '-'}`,'',
-    `Indicación NOM-020 en este registro: ${valorSiNoPaic_(data.aplica_nom020)}`,
-    `Indicación PIPC en este registro: ${valorSiNoPaic_(data.requiere_pipc)}`,'',
+    `Indicación NOM-020 en este registro: ${valorSiNoPaic_(data.aplica_nom020)}`,'',
     'Documentación recibida:',docs,'',
     `Carpeta Drive: ${carpetaCliente.getUrl()}`,
     `Perfil de datos: ${sheetUrl}`,'',
-    'Este mensaje confirma un alta de cliente/sucursal vía asesor. No significa que exista una OT; las órdenes de trabajo se generan por separado en SEAOT.'
+    'Este mensaje confirma el registro o la actualización de un cliente/sucursal vía asesor. No significa que exista una OT; las órdenes de trabajo se generan por separado en SEAOT.'
   ].join('\n');
   const html = envolturaEmail_(
-    `Alta PAIC · ${escHtml_(data.razon_social || '')} · ${escHtml_(data.sucursal || '')}`,
-    encabezadoEmail_({ kicker:'Alta vía PAIC', titulo:escHtml_(data.razon_social || 'Cliente final'), subtitulo:`Sucursal: ${valorOGuion_(data.sucursal)}`, metas:[{etiqueta:'Recibido',valor:timestamp},{etiqueta:'RFC',valor:valorOGuion_(data.rfc)}] }) +
+    `Registro PAIC · ${escHtml_(data.razon_social || '')} · ${escHtml_(data.sucursal || '')}`,
+    encabezadoEmail_({ kicker:'Registro vía PAIC', titulo:escHtml_(data.razon_social || 'Cliente final'), subtitulo:`Sucursal: ${valorOGuion_(data.sucursal)}`, metas:[{etiqueta:'Recibido',valor:timestamp},{etiqueta:'RFC',valor:valorOGuion_(data.rfc)}] }) +
     `<tr><td style="padding:26px 30px;">
       ${etiquetaEmail_('Asesor / intermediario')}
       <table width="100%" border="0" cellpadding="0" cellspacing="0">${filaEmail_('Nombre',valorOGuion_(data.nombre_solicitante))}${filaEmail_('Consultoría / despacho',valorOGuion_(data.asesor_consultor))}${filaEmail_('Correo de acuse',valorOGuion_(data.correo_acuse))}</table>
       ${separadorEmail_()}${etiquetaEmail_('Cliente final')}
       <table width="100%" border="0" cellpadding="0" cellspacing="0">${filaEmail_('Sucursal',valorOGuion_(data.sucursal))}${filaEmail_('RFC',valorOGuion_(data.rfc))}${filaEmail_('Responsable en sitio',valorOGuion_(data.responsable))}${filaEmail_('Correo para informes',valorOGuion_(data.correo_informe))}</table>
       ${separadorEmail_()}${etiquetaEmail_('Indicaciones del registro')}
-      <p style="font-size:14px;line-height:1.7;margin:0;">NOM-020: <strong>${valorSiNoPaic_(data.aplica_nom020)}</strong><br>PIPC: <strong>${valorSiNoPaic_(data.requiere_pipc)}</strong></p>
+      <p style="font-size:14px;line-height:1.7;margin:0;">NOM-020: <strong>${valorSiNoPaic_(data.aplica_nom020)}</strong></p>
       ${separadorEmail_()}<table border="0" cellpadding="0" cellspacing="0"><tr>${botonEmail_('Ver carpeta en Drive',carpetaCliente.getUrl(),'secundario')}${botonEmail_('Ver perfil de datos',sheetUrl,'secundario')}</tr></table>
-      <p style="margin:18px 0 0;font-size:12px;color:${EMAIL_COLORS_.textoSuave};">Alta vía PAIC. No implica la creación de una orden de trabajo; SEAOT gestiona las OT por separado.</p>
+      <p style="margin:18px 0 0;font-size:12px;color:${EMAIL_COLORS_.textoSuave};">Registro vía PAIC. No implica la creación de una orden de trabajo; SEAOT gestiona las OT por separado.</p>
     </td></tr>` + pieEmail_([`<strong style="color:#5A665A;">${CONFIG.COMPANY_NAME}</strong> · Registro PAIC`,'Mensaje automático para seguimiento interno.'])
   );
   GmailApp.sendEmail(CONFIG.EMAIL_TO.join(','), subject, plain, { htmlBody:html, name:CONFIG.COMPANY_NAME });
@@ -2385,28 +2384,28 @@ function enviarConfirmacionPaic(data, carpetaCliente, files) {
   const timestamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'dd/MM/yyyy HH:mm');
   const docsCount = (files || []).length;
   const plain = [
-    'Recibimos el registro del cliente.','',
+    'Recibimos los datos del cliente.','',
     `Cliente final: ${data.razon_social || '-'}`,`Sucursal: ${data.sucursal || '-'}`,`RFC: ${data.rfc || '-'}`,
     `Fecha de recepción: ${timestamp}`,`Documentos recibidos: ${docsCount}`,
-    `Indicación NOM-020: ${valorSiNoPaic_(data.aplica_nom020)}`,`Indicación PIPC: ${valorSiNoPaic_(data.requiere_pipc)}`,'',
-    'Este acuse confirma el alta de datos y documentación realizada a través de PAIC. No confirma ni genera una orden de trabajo; las OT se gestionan por separado con Ejecutiva Ambiental.','',
+    `Indicación NOM-020: ${valorSiNoPaic_(data.aplica_nom020)}`,'',
+    'Este acuse confirma la recepción de los datos y la documentación enviados a través de PAIC. No confirma ni genera una orden de trabajo; las OT se gestionan por separado con Ejecutiva Ambiental.','',
     `Atención a Clientes: ${CONFIG.SUPPORT_EMAIL} · ${CONFIG.SUPPORT_PHONE}`
   ].join('\n');
   const html = envolturaEmail_(
-    `Recibimos el alta PAIC · ${escHtml_(data.razon_social || '')}`,
+    `Recibimos su registro PAIC · ${escHtml_(data.razon_social || '')}`,
     encabezadoEmail_({ kicker:'Acuse PAIC', titulo:'Registro recibido', subtitulo:'Recibimos los datos del cliente final y de la sucursal.', metas:[{etiqueta:'Fecha de recepción',valor:timestamp}] }) +
-    `<tr><td style="padding:26px 30px;"><p style="margin:0 0 18px;font-size:15px;line-height:1.7;color:${EMAIL_COLORS_.texto};">Este mensaje confirma la recepción del alta realizada por usted como asesor/intermediario.</p><table width="100%" border="0" cellpadding="0" cellspacing="0">${filaEmail_('Cliente final',valorOGuion_(data.razon_social))}${filaEmail_('Sucursal',valorOGuion_(data.sucursal))}${filaEmail_('RFC',valorOGuion_(data.rfc))}${filaEmail_('Documentos recibidos',String(docsCount))}${filaEmail_('Indicación NOM-020',valorSiNoPaic_(data.aplica_nom020))}${filaEmail_('Indicación PIPC',valorSiNoPaic_(data.requiere_pipc))}</table>${separadorEmail_()}<div style="background-color:${EMAIL_COLORS_.panel};border:1px solid ${EMAIL_COLORS_.borde};border-radius:8px;padding:16px;font-size:13px;line-height:1.6;color:${EMAIL_COLORS_.textoSuave};">El alta PAIC no genera una orden de trabajo. Las OT se gestionan posteriormente y por separado con Ejecutiva Ambiental.</div></td></tr>` +
+    `<tr><td style="padding:26px 30px;"><p style="margin:0 0 18px;font-size:15px;line-height:1.7;color:${EMAIL_COLORS_.texto};">Este mensaje confirma la recepción del registro realizado por usted como asesor/intermediario.</p><table width="100%" border="0" cellpadding="0" cellspacing="0">${filaEmail_('Cliente final',valorOGuion_(data.razon_social))}${filaEmail_('Sucursal',valorOGuion_(data.sucursal))}${filaEmail_('RFC',valorOGuion_(data.rfc))}${filaEmail_('Documentos recibidos',String(docsCount))}${filaEmail_('Indicación NOM-020',valorSiNoPaic_(data.aplica_nom020))}</table>${separadorEmail_()}<div style="background-color:${EMAIL_COLORS_.panel};border:1px solid ${EMAIL_COLORS_.borde};border-radius:8px;padding:16px;font-size:13px;line-height:1.6;color:${EMAIL_COLORS_.textoSuave};">El registro PAIC no genera una orden de trabajo. Las OT se gestionan posteriormente y por separado con Ejecutiva Ambiental.</div></td></tr>` +
     pieEmail_([`<strong style="color:#5A665A;">${CONFIG.COMPANY_NAME}</strong> · Portal de Asesores, Intermediarios y Consultorías`,`Para aclaraciones: ${escHtml_(CONFIG.SUPPORT_EMAIL)}`])
   );
   GmailApp.sendEmail(emailAsesor, `Registro PAIC recibido · ${data.razon_social || 'Cliente'} — ${data.sucursal || 'Sucursal'}`, plain, { htmlBody:html, name:CONFIG.COMPANY_NAME });
 }
 
 function enviarEmailSimpleFallbackPaic(data, carpetaCliente, sheetUrl) {
-  const subject=`Alta PAIC · ${data.razon_social || 'Cliente'} — ${data.sucursal || 'Sucursal'}`;
-  const body=`Alta de cliente/sucursal vía PAIC.\nCliente: ${data.razon_social || '-'}\nSucursal: ${data.sucursal || '-'}\nRFC: ${data.rfc || '-'}\nAsesor: ${data.nombre_solicitante || '-'}\nCorreo asesor: ${data.correo_acuse || '-'}\nCarpeta: ${carpetaCliente.getUrl()}\nPerfil: ${sheetUrl}\n\nNo implica creación de OT.`;
+  const subject=`Registro PAIC · ${data.razon_social || 'Cliente'} — ${data.sucursal || 'Sucursal'}`;
+  const body=`Registro de cliente/sucursal vía PAIC.\nCliente: ${data.razon_social || '-'}\nSucursal: ${data.sucursal || '-'}\nRFC: ${data.rfc || '-'}\nAsesor: ${data.nombre_solicitante || '-'}\nCorreo asesor: ${data.correo_acuse || '-'}\nCarpeta: ${carpetaCliente.getUrl()}\nPerfil: ${sheetUrl}\n\nNo implica creación de OT.`;
   GmailApp.sendEmail(CONFIG.EMAIL_TO.join(','),subject,body);
   const asesor=String(data.correo_acuse || '').trim();
-  if (asesor) GmailApp.sendEmail(asesor,`Registro PAIC recibido · ${data.razon_social || 'Cliente'}`,`Recibimos el alta del cliente ${data.razon_social || '-'} / ${data.sucursal || '-'}. Este acuse no genera una OT; la OT se gestiona por separado.`);
+  if (asesor) GmailApp.sendEmail(asesor,`Registro PAIC recibido · ${data.razon_social || 'Cliente'}`,`Recibimos el registro del cliente ${data.razon_social || '-'} / ${data.sucursal || '-'}. Este acuse no genera una OT; la OT se gestiona por separado.`);
 }
 
 function enviarNotificacionEquipo(data, files, carpetaCliente, sheetUrl) {
