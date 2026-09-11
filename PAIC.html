@@ -328,6 +328,48 @@
               <div class="file-preview" data-preview="requisitos_ingreso"><div class="file-preview-content"><div class="file-info"><span>📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div><button type="button" class="file-remove" data-clear="requisitos_ingreso">Eliminar</button></div></div>
             </div>
           </div>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>3) Servicio de medición a registrar</label>
+              <select name="estudio_laboratorio" id="estudio_laboratorio">
+                <option value="">-- No aplica / Seleccione --</option>
+                <option value="NOM-081-SEMARNAT-1994">NOM-081-SEMARNAT-1994 &mdash; L&iacute;mites m&aacute;ximos de ruido</option>
+                <option value="NOM-022-STPS">NOM-022-STPS &mdash; Electricidad est&aacute;tica</option>
+                <option value="NOM-025-STPS">NOM-025-STPS &mdash; Condiciones de iluminaci&oacute;n</option>
+                <option value="NOM-011-STPS">NOM-011-STPS &mdash; Ruido</option>
+                <option value="NOM-024-STPS">NOM-024-STPS &mdash; Vibraciones</option>
+                <option value="NOM-015-STPS">NOM-015-STPS &mdash; Condiciones t&eacute;rmicas</option>
+              </select>
+              <span class="helper-text">Si selecciona un servicio, puede adjuntar su documentaci&oacute;n de medici&oacute;n.</span>
+            </div>
+          </div>
+          <div id="documentacionServicioSection" class="conditional-section">
+            <div class="conditional-header">Documentaci&oacute;n del servicio seleccionado</div>
+            <div class="form-grid">
+              <div class="form-group full-width file-upload-group" data-upload-group="hojas_campo_laboratorio">
+                <label>Hojas de campo del servicio</label>
+                <input type="file" name="hojas_campo_laboratorio" accept=".pdf,.xls,.xlsx,.doc,.docx,.zip" data-file-input="hojas_campo_laboratorio">
+                <span class="helper-text">PDF, Excel, Word o ZIP.</span>
+                <div class="file-preview" data-preview="hojas_campo_laboratorio"><div class="file-preview-content"><div class="file-info"><span>📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div><button type="button" class="file-remove" data-clear="hojas_campo_laboratorio">Eliminar</button></div></div>
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="form-group full-width file-upload-group" data-upload-group="fotografia_laboratorio">
+                <label>Fotograf&iacute;a</label>
+                <input type="file" name="fotografia_laboratorio" accept=".jpg,.jpeg,.png,.heic,.heif" data-file-input="fotografia_laboratorio">
+                <span class="helper-text">Una sola imagen. JPG, PNG o HEIC.</span>
+                <div class="file-preview" data-preview="fotografia_laboratorio"><div class="file-preview-content"><div class="file-info"><span>📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div><button type="button" class="file-remove" data-clear="fotografia_laboratorio">Eliminar</button></div></div>
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="form-group full-width file-upload-group" data-upload-group="croquis_laboratorio">
+                <label>Croquis de los puntos de medici&oacute;n</label>
+                <input type="file" name="croquis_laboratorio" accept=".pdf,.jpg,.jpeg,.png,.dwg" data-file-input="croquis_laboratorio">
+                <span class="helper-text">Ubicaci&oacute;n de los puntos donde se realiz&oacute; la medici&oacute;n.</span>
+                <div class="file-preview" data-preview="croquis_laboratorio"><div class="file-preview-content"><div class="file-info"><span>📄</span><div><div class="file-name"></div><div class="file-size"></div></div></div><button type="button" class="file-remove" data-clear="croquis_laboratorio">Eliminar</button></div></div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="section">
@@ -578,6 +620,9 @@
       document.querySelectorAll('input[name="aplica_nom020"]').forEach(r => { r.checked=false; });
       document.getElementById('documentacionLegalSection')?.classList.remove('active');
       clearConditionalFilesByAttr('nom020');
+      const selServicio=document.getElementById('estudio_laboratorio'); if (selServicio) selServicio.value='';
+      document.getElementById('documentacionServicioSection')?.classList.remove('active');
+      ['hojas_campo_laboratorio','fotografia_laboratorio','croquis_laboratorio'].forEach(clearFileUI);
       const sinCal=document.getElementById('check_sin_calibracion'); if (sinCal) sinCal.checked=false;
       const calib=document.querySelector('[data-file-input="calibracion_valvula"]'); if (calib) { calib.style.display=''; calib.required=false; }
       const ast=document.getElementById('asterisco_calib'); if (ast) ast.style.display='';
@@ -600,6 +645,13 @@
         if (f.type==='file' && f.dataset.fileInput) clearFileUI(f.dataset.fileInput); else if (f.type!=='radio' && f.type!=='checkbox') f.value='';
       });
     }));
+
+    // La documentacion de medicion solo se pide cuando hay un servicio elegido.
+    document.getElementById('estudio_laboratorio')?.addEventListener('change', function() {
+      const on = this.value !== '';
+      document.getElementById('documentacionServicioSection')?.classList.toggle('active', on);
+      if (!on) ['hojas_campo_laboratorio','fotografia_laboratorio','croquis_laboratorio'].forEach(clearFileUI);
+    });
 
     document.getElementById('check_sin_calibracion')?.addEventListener('change', function() {
       const calib=document.querySelector('[data-file-input="calibracion_valvula"]');
@@ -652,6 +704,10 @@
           <h3>Correos</h3>
           <div class="confirmation-item"><span class="confirmation-label">Acuse al asesor:</span><span class="confirmation-value"><strong>${escHtml(fd.get('correo_acuse'))}</strong></span></div>
           <div class="confirmation-item"><span class="confirmation-label">Informes del cliente:</span><span class="confirmation-value">${escHtml(fd.get('correo_informe'))}</span></div>
+        </div>
+        <div class="confirmation-section">
+          <h3>Servicio de medición</h3>
+          <div class="confirmation-item"><span class="confirmation-label">Servicio seleccionado:</span><span class="confirmation-value">${fd.get('estudio_laboratorio') ? `<strong>${escHtml(fd.get('estudio_laboratorio'))}</strong>` : 'No aplica'}</span></div>
         </div>
         <div class="confirmation-section">
           <h3>Documentación adjunta (${files.length})</h3>
