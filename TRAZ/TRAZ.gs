@@ -33,6 +33,7 @@ var TRAZ_CONFIG = {
   SHEET_OT:        'ORDENES_TRABAJO',
   SHEET_INFORMES:  'INFORMES',
   SHEET_AUDITORIA: 'AUDITORIA',
+  TIMEZONE:         'GMT-6',
 
   // Índices de columna (0-based), idénticos a CONFIG.COLUMNS del SEA.
   COL_OT: {
@@ -94,30 +95,51 @@ function trazNormOt_(ot) {
 }
 
 /**
- * Convierte las fechas visibles del SEA a Date sin depender de un único formato.
- * Admite principalmente YYYY-MM-DD y DD/MM/YYYY.
+ * Normaliza una fecha visible del SEA a una clave YYYYMMDD.
+ * Se comparan días de calendario, no timestamps, para evitar desplazamientos
+ * por la zona horaria del proyecto Apps Script independiente.
  */
-function trazParseFecha_(valor) {
+function trazFechaClave_(valor) {
   var s = String(valor == null ? '' : valor).trim();
   if (!s) return null;
 
   var m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (m) return Number(m[1]) * 10000 + Number(m[2]) * 100 + Number(m[3]);
 
   m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+  if (m) return Number(m[3]) * 10000 + Number(m[2]) * 100 + Number(m[1]);
 
-  var d = new Date(s);
-  return isNaN(d.getTime()) ? null : d;
+  return null;
+}
+
+function trazHoyClave_() {
+  var hoySea = Utilities.formatDate(new Date(), TRAZ_CONFIG.TIMEZONE, 'yyyy-MM-dd');
+  return trazFechaClave_(hoySea);
 }
 
 function trazFechaNoFutura_(valor) {
-  var d = trazParseFecha_(valor);
-  if (!d) return false;
-  d.setHours(0, 0, 0, 0);
-  var hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
-  return d.getTime() <= hoy.getTime();
+  var fecha = trazFechaClave_(valor);
+  var hoy = trazHoyClave_();
+  return fecha !== null && hoy !== null && fecha <= hoy;
+}
+
+/**
+ * Devuelve la mejor evidencia disponible de ejecución real.
+ * Se prioriza INFORMES.FECHA_SERVICIO porque puede ser ajustada al crear
+ * el expediente; si no existe una fecha de servicio no futura, se usa la
+ * fecha de visita de la OT cuando ya ocurrió.
+ */
+function trazFechaEjecucion_(ot, informes) {
+  informes = informes || [];
+
+  for (var i = informes.length - 1; i >= 0; i--) {
+    if (trazFechaNoFutura_(informes[i].fecha_servicio)) {
+      return informes[i].fecha_servicio;
+    }
+  }
+
+  if (ot && trazFechaNoFutura_(ot.fecha_visita)) return ot.fecha_visita;
+  return '';
 }
 
 /**
@@ -316,10 +338,11 @@ function trazLineaTiempo_(ot, informes) {
   });
 
   var pasos = [];
-  var servicioEjecutado = trazFechaNoFutura_(ot.fecha_visita);
+  var fechaEjecucion = trazFechaEjecucion_(ot, informes);
+  var servicioEjecutado = !!fechaEjecucion;
 
   pasos.push(nodo('ot', 'Orden de Trabajo', ot.fecha_alta, !!ot.folio, ot.folio));
-  pasos.push(nodo('ejecucion', 'Servicio ejecutado', ot.fecha_visita, servicioEjecutado));
+  pasos.push(nodo('ejecucion', 'Servicio ejecutado', fechaEjecucion || ot.fecha_visita, servicioEjecutado));
   pasos.push(nodo('expediente', 'Expediente', '', tieneExp, tieneExp ? 'Carpeta de trabajo disponible' : 'Sin carpeta relacionada'));
   pasos.push(nodo('informe', 'Informe', '', foliosInf.length > 0, foliosInf.join(', ')));
   pasos.push(nodo('entrega', 'Entrega', ot.fecha_real_entrega, !!String(ot.fecha_real_entrega || '').trim()));
