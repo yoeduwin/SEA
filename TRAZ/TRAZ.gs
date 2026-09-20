@@ -33,7 +33,9 @@ var TRAZ_CONFIG = {
   SHEET_OT:        'ORDENES_TRABAJO',
   SHEET_INFORMES:  'INFORMES',
   SHEET_AUDITORIA: 'AUDITORIA',
+  SHEET_USUARIOS:  'USUARIOS_AUTORIZADOS',
   TIMEZONE:         'GMT-6',
+  GOOGLE_CLIENT_ID: '407541868250-5pbtl3me85quu1nl38b1c57ebi3nn9a6.apps.googleusercontent.com',
 
   // Índices de columna (0-based), idénticos a CONFIG.COLUMNS del SEA.
   COL_OT: {
@@ -56,6 +58,107 @@ var TRAZ_CONFIG = {
 var TRAZ_ESTATUS_TERMINALES = ['ENTREGADO', 'FINALIZADO', 'CANCELADO'];
 
 // =========================================================================
+// AUTENTICACIÓN — mismo Google OAuth de los módulos internos SEA
+// =========================================================================
+// TRAZ sigue siendo de solo lectura: esta sección únicamente valida identidad
+// y permisos contra USUARIOS_AUTORIZADOS antes de permitir cualquier consulta.
+var TRAZ_MODULO_AUTH = 'SEATRAZ';
+
+function trazAuthError_(detalle) {
+  return {
+    success: false,
+    error: 'AUTH_REQUIRED',
+    message: detalle || 'Autenticación requerida. Por favor inicia sesión.'
+  };
+}
+
+function trazVerificarIdToken_(idToken) {
+  if (!idToken || typeof idToken !== 'string' || idToken.length < 100) return null;
+
+  var cacheKey = 'traz_idtok_' + idToken.slice(-32);
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get(cacheKey);
+  if (cached) {
+    try { return JSON.parse(cached); } catch (_) {}
+  }
+
+  try {
+    var url = 'https://www.googleapis.com/oauth2/v3/tokeninfo?id_token=' + encodeURIComponent(idToken);
+    var resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    if (resp.getResponseCode() !== 200) return null;
+
+    var data = JSON.parse(resp.getContentText());
+    if (data.error_description) return null;
+    if (data.aud !== TRAZ_CONFIG.GOOGLE_CLIENT_ID) return null;
+
+    var usuario = {
+      email: data.email || '',
+      name: data.name || '',
+      sub: data.sub || ''
+    };
+
+    var ttl = Math.min(600, Math.max(5, Number(data.exp) - Math.floor(Date.now() / 1000) - 60));
+    cache.put(cacheKey, JSON.stringify(usuario), ttl);
+    return usuario;
+  } catch (e) {
+    Logger.log('TRAZ auth token error: ' + e.message);
+    return null;
+  }
+}
+
+function trazUsuarioAutorizado_(email) {
+  if (!email) return false;
+
+  try {
+    var sheet = SpreadsheetApp.openById(TRAZ_CONFIG.SPREADSHEET_ID)
+      .getSheetByName(TRAZ_CONFIG.SHEET_USUARIOS);
+    if (!sheet) return false;
+
+    var data = sheet.getDataRange().getValues();
+    if (data.length < 2) return false;
+
+    var headers = data[0].map(function(h) {
+      return String(h || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    });
+    var moduloCol = headers.indexOf(TRAZ_MODULO_AUTH);
+    if (moduloCol < 0) return false;
+
+    var emailNorm = String(email).toLowerCase().trim();
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0] || '').toLowerCase().trim() !== emailNorm) continue;
+
+      var activo = data[i][3] === true || String(data[i][3]).toUpperCase() === 'TRUE';
+      var permitido = data[i][moduloCol] === true || String(data[i][moduloCol]).toUpperCase() === 'TRUE';
+      return activo && permitido;
+    }
+    return false;
+  } catch (e) {
+    Logger.log('TRAZ auth usuarios error: ' + e.message);
+    return false;
+  }
+}
+
+function trazAutorizar_(action, idToken) {
+  var acciones = {
+    verificarAcceso: true,
+    trazResumen: true,
+    trazDetalle: true
+  };
+  if (!acciones[action]) return { ok: false, error: trazAuthError_('Acción no autorizada.') };
+
+  var usuario = trazVerificarIdToken_(idToken);
+  if (!usuario) return { ok: false, error: trazAuthError_('Token de sesión inválido o expirado.') };
+
+  if (!trazUsuarioAutorizado_(usuario.email)) {
+    return {
+      ok: false,
+      error: trazAuthError_('Tu cuenta (' + usuario.email + ') no tiene acceso a SEATRAZ.')
+    };
+  }
+  return { ok: true, usuario: usuario };
+}
+
+// =========================================================================
 // ENDPOINTS
 // =========================================================================
 function doGet(e) {
@@ -72,14 +175,23 @@ function doPost(e) {
 }
 
 /**
- * Router único. Despacha las acciones (todas de SOLO LECTURA).
- * Sin control de acceso: la app web se publica abierta (ver README).
+ * Router único. Todas las acciones de datos requieren Google OAuth y permiso
+ * SEATRAZ en USUARIOS_AUTORIZADOS.
  */
 function trazRouter_(params) {
+  params = params || {};
+  var auth = trazAutorizar_(params.action, params.id_token || '');
+  if (!auth.ok) return trazOut_(auth.error);
+
   switch (params.action) {
-    case 'trazResumen': return trazOut_(trazResumen_());
-    case 'trazDetalle': return trazOut_(trazDetalle_(params.ot));
-    default:            return trazOut_({ success: false, error: 'Acción no reconocida.' });
+    case 'verificarAcceso':
+      return trazOut_({ success: true, email: auth.usuario.email });
+    case 'trazResumen':
+      return trazOut_(trazResumen_());
+    case 'trazDetalle':
+      return trazOut_(trazDetalle_(params.ot));
+    default:
+      return trazOut_({ success: false, error: 'Acción no reconocida.' });
   }
 }
 
