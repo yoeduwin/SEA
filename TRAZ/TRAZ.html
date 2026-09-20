@@ -335,6 +335,13 @@
 
   function filtrar(){ pintarLista(filtrados()); }
 
+  document.getElementById('lista').addEventListener('click', ev => {
+    const item = ev.target.closest('.ot-item');
+    if(!item) return;
+    const ot = item.getAttribute('data-ot');
+    if(ot) abrir(ot);
+  });
+
   function pintarLista(items){
     const cont = document.getElementById('lista');
     if(!items.length){
@@ -343,8 +350,7 @@
     }
     cont.innerHTML = items.map(o => {
       const st = o.estado_traz || o.estatus_ot || 'SIN ESTADO';
-      const otJs = JSON.stringify(String(o.ot || ''));
-      return '<div class="ot-item ' + (seleccion === o.ot ? 'active' : '') + '" onclick=\'abrir(' + otJs.replace(/'/g,"&#39;") + ')\'>' +
+      return '<div class="ot-item ' + (seleccion === o.ot ? 'active' : '') + '" data-ot="' + esc(o.ot || '') + '">' +
         '<div class="ot-row"><span class="folio">' + esc(o.ot) + '</span>' +
         '<span class="state-mini ' + estadoClase(st) + '">' + esc(st) + '</span></div>' +
         '<div class="client">' + esc(o.cliente || '—') + '</div>' +
@@ -359,9 +365,11 @@
     if(!silencioso) document.getElementById('detalle').innerHTML = '<div class="loading">Reconstruyendo trazabilidad…</div>';
     try{
       const r = await api({action:'trazDetalle',ot:ot});
+      if(ot !== seleccion) return;
       if(!r.success) throw new Error(r.error || 'No se pudo cargar la OT.');
       pintarDetalle(r);
     }catch(e){
+      if(ot !== seleccion) return;
       document.getElementById('detalle').innerHTML = '<div class="empty">' + esc(e.message || 'No se pudo cargar el detalle.') + '</div>';
     }
   }
@@ -458,6 +466,14 @@
     const exp = safeUrl(r.expediente);
     const cliente = safeUrl(ot.link_drive);
     const informes = r.informes || [];
+    let fechaServicio = '';
+    for(let i = informes.length - 1; i >= 0; i--){
+      if(String(informes[i].fecha_servicio || '').trim()){
+        fechaServicio = informes[i].fecha_servicio;
+        break;
+      }
+    }
+    if(!fechaServicio) fechaServicio = ot.fecha_visita || '';
 
     let html = '<div class="actions">';
     html += exp
@@ -479,7 +495,7 @@
 
     html += '<div class="facts">' +
       '<div class="fact"><span>Responsable</span><span>' + esc(ot.personal || '—') + '</span></div>' +
-      '<div class="fact"><span>Fecha servicio</span><span>' + esc((informes[0] && informes[0].fecha_servicio) || ot.fecha_visita || '—') + '</span></div>' +
+      '<div class="fact"><span>Fecha servicio</span><span>' + esc(fechaServicio || '—') + '</span></div>' +
       '<div class="fact"><span>RFC</span><span>' + esc(ot.rfc || '—') + '</span></div>' +
       '<div class="fact"><span>Serie</span><span>' + esc(ot.tipo || '—') + '</span></div>' +
     '</div>';
