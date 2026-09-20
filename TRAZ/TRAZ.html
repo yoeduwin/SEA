@@ -452,10 +452,14 @@
   function pintarRuta(r){
     return '<div class="steps">' + (r.linea_tiempo || []).map(p => {
       const ok = p.estado === 'ok';
-      let fecha = p.fecha || p.extra || '';
+      const fecha = p.fecha || p.extra || '';
+      let titulo = p.titulo || '';
+      if(p.clave === 'ejecucion' && !ok){
+        titulo = fecha ? 'Servicio programado' : 'Servicio pendiente';
+      }
       return '<div class="step ' + (ok ? 'ok' : 'pending') + '">' +
         '<div class="dot">' + (ok ? '✓' : '•') + '</div>' +
-        '<div class="step-title">' + esc(p.titulo) + '</div>' +
+        '<div class="step-title">' + esc(titulo) + '</div>' +
         '<div class="step-date">' + esc(fecha) + '</div>' +
       '</div>';
     }).join('') + '</div>';
