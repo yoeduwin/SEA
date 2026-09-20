@@ -17,21 +17,19 @@ archivo ni dato del sistema SEA existente**. Solo **lee** las hojas que ya exist
 
 - **Solo lectura, intocable.** `TRAZ.gs` nunca usa `setValue`, `appendRow`, `insertSheet` ni
   escribe en Drive. Solo llama `getDataRange().getDisplayValues()`.
-- **Sin cambios de esquema.** No agrega columnas, hojas ni campos. Se alimenta únicamente de lo
-  que ya capturan `SEAOT` y `SEAINF`.
+- **Solo un control de acceso adicional.** TRAZ no modifica el esquema operativo de OT/INFORMES;
+  utiliza la columna `SEATRAZ` en `USUARIOS_AUTORIZADOS` para controlar quién puede consultar el módulo.
 - **`AUDITORIA` es la bitácora real.** Se muestran los eventos **realmente registrados**; no se
   infieren acciones que no estén en el log (revisión/emisión solo aparecen si fueron auditadas).
 - **El expediente es `INFORMES.LINK_DRIVE`.** No se crea otro repositorio documental. El botón
   **ABRIR EXPEDIENTE** abre esa carpeta de Drive.
 - **Relación OT ↔ Informe por folio de OT** (texto). Un id interno estable queda como mejora futura.
 - **No incluye** memoria de cálculo ni equipos (no existen como dato estructurado en el sistema).
-- **Sin autenticación (v1).** Se quitó el acceso con Google OAuth. La app web se publica abierta
-  (ver aviso de seguridad abajo).
-
-> ⚠️ **Aviso de seguridad.** Al no tener control de acceso, **cualquier persona que conozca la URL
-> del despliegue puede ver los datos de trazabilidad** (clientes, RFC, folios, fechas). Como
-> mitigación básica: no compartas la URL públicamente y regenera el despliegue si se filtra. Si más
-> adelante quieres proteger el acceso sin OAuth, la opción más simple es un código/PIN compartido.
+- **Autenticación Google OAuth.** Usa el mismo `auth.js` de los módulos internos SEA.
+- **Autorización por módulo.** El backend valida que el usuario esté activo y tenga `SEATRAZ = TRUE`
+  en `USUARIOS_AUTORIZADOS`.
+- **Protección real del endpoint.** `trazResumen` y `trazDetalle` requieren un `id_token` válido;
+  no es únicamente un bloqueo visual del frontend.
 
 ---
 
@@ -44,6 +42,7 @@ Mismo Spreadsheet del SEA (`SPREADSHEET_ID` en `TRAZ.gs`), hojas:
 | `ORDENES_TRABAJO` | OT: folio, cliente, NOM, personal, fechas, estatus, link Drive |
 | `INFORMES` | Informe(s) de la OT: folio, estatus, responsable, fechas, **link del expediente** |
 | `AUDITORIA` | Bitácora real de cambios (timestamp, usuario, acción, campo, antes/después) |
+| `USUARIOS_AUTORIZADOS` | Autorización de acceso mediante la columna `SEATRAZ` |
 
 ---
 
@@ -51,8 +50,8 @@ Mismo Spreadsheet del SEA (`SPREADSHEET_ID` en `TRAZ.gs`), hojas:
 
 | Archivo | Rol |
 |---|---|
-| `TRAZ.gs` | Backend de solo lectura (app web de Apps Script **independiente**). Acciones: `trazResumen`, `trazDetalle`. |
-| `TRAZ.html` | Frontend estático (línea de tiempo, informes, ABRIR EXPEDIENTE, bitácora, advertencias). Sin dependencias externas. |
+| `TRAZ.gs` | Backend de solo lectura (app web de Apps Script **independiente**). Valida Google OAuth y expone `verificarAcceso`, `trazResumen`, `trazDetalle`. |
+| `TRAZ.html` | Frontend estático protegido con el `auth.js` compartido de SEA. |
 
 ---
 
@@ -68,7 +67,8 @@ TRAZ se despliega como un **proyecto de Apps Script separado**, para no tocar el
 3. **Desplegar como app web.** *Implementar* → *Nueva implementación* → *Aplicación web*:
    - Ejecutar como: **Yo** (dueño con acceso al Spreadsheet).
    - Quién tiene acceso: **Cualquier usuario**.
-   - Autoriza los permisos que pida (lectura de Sheets) y copia la URL `.../exec`.
+   - La URL puede ser pública a nivel técnico, pero **los datos no se entregan sin un token Google válido y permiso SEATRAZ**.
+   - Autoriza los permisos solicitados (Sheets y verificación de token mediante UrlFetch) y copia la URL `.../exec`.
 4. **Conectar el frontend.** En `TRAZ.html`, reemplaza:
    ```js
    const API_URL = 'REEMPLAZAR_CON_URL_DEL_DESPLIEGUE_TRAZ';
@@ -77,8 +77,8 @@ TRAZ se despliega como un **proyecto de Apps Script separado**, para no tocar el
 5. **Publicar el frontend.** `TRAZ.html` se sirve junto al resto (GitHub Pages). Abre
    `…/TRAZ/TRAZ.html`.
 
-> No requiere configurar OAuth ni `USUARIOS_AUTORIZADOS`: la v1 no tiene control de acceso
-> (ver aviso de seguridad arriba).
+> El OAuth usa el mismo Client ID que `auth.js`. En `USUARIOS_AUTORIZADOS`, agrega o administra
+> la columna `SEATRAZ`; solo usuarios activos con valor `TRUE` pueden consultar el módulo.
 
 ---
 
