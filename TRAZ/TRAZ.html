@@ -3,255 +3,593 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TRAZABILIDAD — Ejecutiva Ambiental</title>
+<title>SEATRAZ — Ejecutiva Ambiental</title>
 <style>
   :root{
-    --verde:#005600; --verde-osc:#003810; --verde-cl:#e3efe4;
-    --gris:#5f6368; --gris-cl:#f4f6f4; --linea:#dadfda;
-    --ok:#1e8e3e; --warn:#c77700; --pend:#9aa0a6; --rojo:#c5221f;
+    --verde:#005600; --verde2:#007836; --verde3:#12844a; --verde-suave:#edf7f0;
+    --texto:#18211b; --muted:#69736c; --linea:#dfe6e1; --fondo:#f5f7f5; --blanco:#fff;
+    --ok:#08783a; --warn:#a56500; --warn-bg:#fff4d9; --rojo:#a7352a; --rojo-bg:#fdecea;
+    --gris-bg:#f3f5f3; --shadow:0 10px 28px rgba(22,50,31,.06);
   }
   *{box-sizing:border-box}
-  body{margin:0;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#202124;background:#fafbfa}
+  body{margin:0;font-family:Inter,Montserrat,"Segoe UI",Arial,sans-serif;background:var(--fondo);color:var(--texto)}
+  button,input{font:inherit}
+  a{color:inherit}
   header{
-    background:var(--verde);color:#fff;padding:14px 22px;
-    display:flex;align-items:center;justify-content:space-between;gap:16px;
+    height:66px;background:linear-gradient(115deg,#004a17,var(--verde2));color:#fff;
+    display:flex;align-items:center;justify-content:space-between;padding:0 24px;gap:20px;
+    box-shadow:0 2px 8px rgba(0,0,0,.08)
   }
-  header h1{font-size:18px;margin:0;letter-spacing:2px;font-weight:600}
-  header .sub{font-size:11px;opacity:.85;letter-spacing:1px}
-  #sea-user-info{font-size:13px}
-  .wrap{display:grid;grid-template-columns:340px 1fr;gap:0;min-height:calc(100vh - 56px)}
-  /* Lista */
-  .side{border-right:1px solid var(--linea);background:#fff;overflow-y:auto;max-height:calc(100vh - 56px)}
-  .side .search{padding:12px}
-  .side input{width:100%;padding:9px 12px;border:1px solid var(--linea);border-radius:8px;font-size:14px}
-  .ot-item{padding:11px 14px;border-bottom:1px solid var(--gris-cl);cursor:pointer}
-  .ot-item:hover{background:var(--verde-cl)}
-  .ot-item.active{background:var(--verde-cl);border-left:4px solid var(--verde)}
-  .ot-item .folio{font-weight:600;font-size:14px;color:var(--verde-osc)}
-  .ot-item .meta{font-size:12px;color:var(--gris);margin-top:2px}
-  .chip{display:inline-block;font-size:10px;padding:1px 7px;border-radius:20px;background:var(--gris-cl);color:var(--gris);margin-top:4px}
-  .chip.warn{background:#fff3e0;color:var(--warn)}
-  .chip.ok{background:#e6f4ea;color:var(--ok)}
-  /* Detalle */
-  .main{padding:22px 26px;overflow-y:auto;max-height:calc(100vh - 56px)}
-  .empty{color:var(--gris);text-align:center;margin-top:80px;font-size:15px}
-  .card{background:#fff;border:1px solid var(--linea);border-radius:12px;padding:18px 20px;margin-bottom:18px}
-  .ot-title{font-size:20px;font-weight:700;color:var(--verde-osc);margin:0 0 2px}
-  .ot-sub{color:var(--gris);font-size:13px}
-  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px 20px;margin-top:12px;font-size:13px}
-  .grid2 b{color:var(--gris);font-weight:600;display:block;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
-  h3{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--verde);margin:0 0 14px}
-  /* Timeline */
-  .tl{position:relative;padding-left:30px}
-  .tl::before{content:'';position:absolute;left:9px;top:6px;bottom:6px;width:2px;background:var(--linea)}
-  .tl .step{position:relative;padding:0 0 18px 8px}
-  .tl .step:last-child{padding-bottom:0}
-  .tl .dot{position:absolute;left:-29px;top:1px;width:20px;height:20px;border-radius:50%;
-    display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff;background:var(--pend)}
-  .tl .step.ok .dot{background:var(--ok)}
-  .tl .step.pendiente .dot{background:var(--pend)}
-  .tl .t{font-weight:600;font-size:14px}
-  .tl .d{font-size:12px;color:var(--gris)}
-  .tl .x{font-size:12px;color:#3c4043;margin-top:1px}
-  .tl .step.pendiente .t::after{content:' · Pendiente';color:var(--warn);font-weight:400;font-size:12px}
-  /* Botón expediente */
-  .btn{display:inline-flex;align-items:center;gap:8px;background:var(--verde);color:#fff;border:0;
-    padding:10px 18px;border-radius:8px;font-size:14px;cursor:pointer;text-decoration:none;font-weight:600}
-  .btn:hover{background:var(--verde-osc)}
-  .btn.dis{background:var(--gris-cl);color:var(--pend);cursor:not-allowed}
-  /* Informes */
-  .inf{border:1px solid var(--linea);border-radius:10px;padding:12px 14px;margin-bottom:10px}
-  .inf .folio{font-weight:700;color:var(--verde-osc)}
-  .inf .st{font-size:11px;padding:2px 9px;border-radius:20px;background:var(--gris-cl);color:var(--gris);float:right}
-  /* Bitácora */
-  table{width:100%;border-collapse:collapse;font-size:12.5px}
-  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--gris-cl);vertical-align:top}
-  th{color:var(--gris);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
-  /* Advertencias */
-  .warns{list-style:none;padding:0;margin:0}
-  .warns li{background:#fff8e1;border-left:3px solid var(--warn);padding:9px 12px;border-radius:6px;margin-bottom:7px;font-size:13px}
-  .noticia{color:var(--ok);font-size:13px}
-  .loading{color:var(--gris);padding:20px;text-align:center}
-  @media(max-width:820px){.wrap{grid-template-columns:1fr}.side{max-height:none}}
+  .brand{display:flex;align-items:center;gap:12px;min-width:0}
+  .brandmark{
+    width:38px;height:38px;background:#fff;color:var(--verde);border-radius:10px;
+    display:grid;place-items:center;font-weight:900;font-size:17px;flex:0 0 auto
+  }
+  .brand h1{margin:0;font-size:16px;letter-spacing:.09em}
+  .brand .sub{font-size:10.5px;opacity:.82;margin-top:2px;white-space:nowrap}
+  .head-actions{display:flex;align-items:center;gap:11px}
+  #contador{font-size:11px;opacity:.85;white-space:nowrap}
+  .refresh{
+    border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.08);color:#fff;
+    border-radius:9px;padding:8px 11px;cursor:pointer
+  }
+
+  .app{display:grid;grid-template-columns:325px minmax(0,1fr);min-height:calc(100vh - 66px)}
+  .side{
+    background:#fff;border-right:1px solid var(--linea);overflow-y:auto;
+    max-height:calc(100vh - 66px)
+  }
+  .search-wrap{padding:16px 14px 10px;position:sticky;top:0;background:#fff;z-index:3}
+  .search{
+    width:100%;border:1px solid var(--linea);border-radius:10px;padding:10px 12px;
+    outline:none;background:#fafbfa;color:var(--texto)
+  }
+  .side-label{
+    font-size:9.5px;text-transform:uppercase;letter-spacing:.12em;font-weight:800;
+    color:#8b948e;padding:4px 18px 8px
+  }
+  .ot-list{padding:0 8px 18px}
+  .ot-item{
+    position:relative;border:1px solid transparent;border-radius:11px;padding:12px 12px 11px;
+    margin-bottom:5px;cursor:pointer;transition:.15s;background:#fff
+  }
+  .ot-item:hover{background:#f8faf8;border-color:#e8eee9}
+  .ot-item.active{background:var(--verde-suave);border-color:#cbe3d2}
+  .ot-item.active:before{
+    content:"";position:absolute;left:-1px;top:9px;bottom:9px;width:4px;
+    border-radius:0 4px 4px 0;background:var(--verde2)
+  }
+  .ot-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .folio{font-size:12.5px;font-weight:850;color:#15351e}
+  .state-mini{
+    font-size:8.5px;font-weight:850;letter-spacing:.02em;padding:4px 6px;border-radius:999px;
+    background:var(--gris-bg);color:#5d665f;white-space:nowrap
+  }
+  .state-mini.ok{background:var(--verde-suave);color:var(--ok)}
+  .state-mini.warn{background:var(--warn-bg);color:var(--warn)}
+  .state-mini.bad{background:var(--rojo-bg);color:var(--rojo)}
+  .client{font-size:11.5px;font-weight:650;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .service{font-size:10.5px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  .main{padding:24px 28px 42px;overflow-y:auto;max-height:calc(100vh - 66px)}
+  .container{max-width:1240px;margin:0 auto}
+  .loading,.empty{text-align:center;color:var(--muted);padding:55px 20px;font-size:13px}
+  .kicker-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+  .kicker{font-size:10px;text-transform:uppercase;letter-spacing:.13em;font-weight:850;color:var(--verde2)}
+  .updated{font-size:10px;color:#89918c}
+  .hero{
+    display:flex;align-items:flex-start;justify-content:space-between;gap:24px;
+    padding:5px 0 21px;border-bottom:1px solid var(--linea)
+  }
+  .hero h2{font-size:27px;line-height:1.1;margin:3px 0 6px;letter-spacing:-.02em;color:#102718}
+  .hero .hero-client{font-size:15px;font-weight:750}
+  .hero .hero-sub{font-size:12px;color:var(--muted);margin-top:5px}
+  .status-box{text-align:right;min-width:160px}
+  .status-pill{
+    display:inline-flex;align-items:center;gap:7px;border-radius:999px;padding:8px 11px;
+    font-size:11px;font-weight:900;background:var(--verde-suave);color:var(--ok)
+  }
+  .status-pill:before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+  .status-pill.warn{background:var(--warn-bg);color:var(--warn)}
+  .status-pill.bad{background:var(--rojo-bg);color:var(--rojo)}
+  .status-pill.neutral{background:var(--gris-bg);color:#5d665f}
+  .sea-status{font-size:10px;color:var(--muted);margin-top:7px}
+
+  .route{
+    margin:20px 0;background:#fff;border:1px solid var(--linea);border-radius:15px;
+    padding:19px 20px 17px;box-shadow:var(--shadow)
+  }
+  .route-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:17px}
+  .route-head strong{font-size:12.5px}
+  .route-head span{font-size:10px;color:var(--muted)}
+  .steps{display:grid;grid-template-columns:repeat(5,1fr);position:relative;gap:5px}
+  .steps:before{
+    content:"";position:absolute;left:7%;right:7%;top:15px;height:2px;background:#e0e6e2;z-index:0
+  }
+  .step{position:relative;z-index:1;text-align:center}
+  .dot{
+    width:32px;height:32px;border-radius:50%;margin:0 auto 8px;background:#fff;border:2px solid #ccd5cf;
+    display:grid;place-items:center;color:#909892;font-size:11px;font-weight:900
+  }
+  .step.ok .dot{background:var(--verde2);border-color:var(--verde2);color:#fff}
+  .step.pending .dot{background:#fff}
+  .step-title{font-size:10.5px;font-weight:800}
+  .step-date{font-size:9.5px;color:var(--muted);margin-top:3px;min-height:12px}
+
+  .workspace{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(290px,.72fr);gap:18px}
+  .card{background:#fff;border:1px solid var(--linea);border-radius:15px;box-shadow:var(--shadow)}
+  .card-head{
+    padding:16px 18px 13px;border-bottom:1px solid #eef2ef;
+    display:flex;align-items:center;justify-content:space-between;gap:12px
+  }
+  .card-head h3{font-size:13px;margin:0;color:#1c2c21}
+  .card-head span{font-size:9.5px;color:var(--muted)}
+  .history{padding:6px 18px 17px}
+  .event{display:grid;grid-template-columns:90px 16px 1fr;gap:9px;min-height:64px}
+  .event-time{text-align:right;font-size:9.5px;color:var(--muted);padding-top:16px;line-height:1.45}
+  .rail{position:relative}
+  .rail:before{content:"";position:absolute;left:7px;top:0;bottom:0;width:1px;background:#dfe6e1}
+  .event:first-child .rail:before{top:18px}
+  .event:last-child .rail:before{bottom:42px}
+  .mark{position:absolute;top:17px;left:3px;width:9px;height:9px;border-radius:50%;background:#fff;border:2px solid var(--verde2)}
+  .event.audit .mark{border-color:#707b73}
+  .event-body{padding:12px 0 11px;min-width:0}
+  .event-title{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .event-title strong{font-size:11.5px}
+  .source{
+    font-size:8px;text-transform:uppercase;letter-spacing:.08em;font-weight:850;
+    padding:3px 5px;border-radius:5px;background:var(--verde-suave);color:var(--verde2)
+  }
+  .source.audit{background:var(--gris-bg);color:#626c65}
+  .event-body p{font-size:10.5px;line-height:1.45;color:var(--muted);margin:4px 0 0}
+  .event-body .change{color:#354039}
+  .no-history{padding:24px;color:var(--muted);font-size:11px;text-align:center}
+
+  .actions{padding:14px 16px 16px}
+  .action-primary,.action-secondary{
+    width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;
+    border-radius:10px;padding:11px 12px;margin-bottom:8px;text-decoration:none;font-size:11.5px;font-weight:800
+  }
+  .action-primary{background:var(--verde2);color:#fff}
+  .action-secondary{background:#f7f9f7;border:1px solid var(--linea);color:var(--texto)}
+  .action-secondary.disabled{color:#99a19b;cursor:default}
+  .action-meta{font-size:9px;font-weight:500;opacity:.72;margin-top:2px}
+  .facts{padding:0 16px 15px}
+  .fact{display:flex;justify-content:space-between;gap:14px;padding:9px 0;border-top:1px solid #eef2ef;font-size:10.5px}
+  .fact span:first-child{color:var(--muted)}
+  .fact span:last-child{text-align:right;font-weight:750;max-width:66%}
+
+  .warning{
+    margin-top:14px;border-left:3px solid var(--warn);background:var(--warn-bg);
+    border-radius:8px;padding:10px 11px;color:#6d4b15;font-size:10.5px;line-height:1.4
+  }
+  .warning + .warning{margin-top:7px}
+  .good{
+    margin-top:14px;border-left:3px solid var(--verde2);background:var(--verde-suave);
+    border-radius:8px;padding:10px 11px;color:#235a34;font-size:10.5px
+  }
+
+  .tabs{display:flex;gap:3px;border-bottom:1px solid var(--linea);margin-top:22px}
+  .tab{
+    border:0;background:transparent;color:#768079;padding:9px 11px;font-size:10.5px;font-weight:850;
+    cursor:pointer;border-bottom:2px solid transparent
+  }
+  .tab.active{color:var(--verde2);border-bottom-color:var(--verde2)}
+  .panel{display:none;padding-top:14px}
+  .panel.active{display:block}
+  .data-card{
+    background:#fff;border:1px solid var(--linea);border-radius:13px;padding:16px;
+    display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:15px
+  }
+  .data-item small{
+    display:block;font-size:8.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px
+  }
+  .data-item strong{font-size:10.5px;word-break:break-word}
+  .report-list{display:flex;flex-direction:column;gap:8px}
+  .report{
+    background:#fff;border:1px solid var(--linea);border-radius:12px;padding:13px 14px;
+    display:flex;justify-content:space-between;align-items:center;gap:14px
+  }
+  .report strong{display:block;font-size:11.5px}
+  .report small{display:block;color:var(--muted);font-size:9.5px;margin-top:4px}
+  .report a{font-size:10px;color:var(--verde2);font-weight:800;text-decoration:none;white-space:nowrap}
+  table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--linea);font-size:10px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid #eef2ef;vertical-align:top}
+  th{background:#f8faf8;color:#67716a;font-size:8.5px;text-transform:uppercase;letter-spacing:.06em}
+  tr:last-child td{border-bottom:0}
+  .audit-empty{background:#fff;border:1px solid var(--linea);border-radius:12px;padding:22px;color:var(--muted);text-align:center;font-size:10.5px}
+
+  @media(max-width:980px){
+    .app{grid-template-columns:285px minmax(0,1fr)}
+    .workspace{grid-template-columns:1fr}
+    .data-card{grid-template-columns:repeat(2,minmax(0,1fr))}
+  }
+  @media(max-width:760px){
+    header{height:auto;min-height:62px;padding:11px 14px}
+    .brand .sub,#contador{display:none}
+    .app{grid-template-columns:1fr;min-height:auto}
+    .side{max-height:330px;border-right:0;border-bottom:1px solid var(--linea)}
+    .main{max-height:none;padding:18px 13px 32px}
+    .hero{flex-direction:column}
+    .status-box{text-align:left}
+    .steps{grid-template-columns:repeat(3,1fr);row-gap:16px}
+    .steps:before{display:none}
+    .event{grid-template-columns:75px 14px 1fr}
+    .data-card{grid-template-columns:1fr 1fr}
+  }
 </style>
 </head>
 <body>
 <header>
-  <div>
-    <h1>TRAZABILIDAD</h1>
-    <div class="sub">EJECUTIVA AMBIENTAL · ORDEN DE TRABAJO → EXPEDIENTE → INFORME</div>
+  <div class="brand">
+    <div class="brandmark">EA</div>
+    <div>
+      <h1>SEATRAZ</h1>
+      <div class="sub">TRAZABILIDAD OPERATIVA · EXPEDIENTE VIVO DEL SERVICIO</div>
+    </div>
+  </div>
+  <div class="head-actions">
+    <span id="contador">Cargando…</span>
+    <button class="refresh" id="btnRefresh" onclick="cargarResumen(true)">Actualizar</button>
   </div>
 </header>
 
-<div class="wrap">
+<div class="app">
   <aside class="side">
-    <div class="search"><input id="buscar" type="text" placeholder="Buscar OT, cliente o folio de informe…" oninput="filtrar()"></div>
-    <div id="lista"><div class="loading">Cargando…</div></div>
+    <div class="search-wrap">
+      <input class="search" id="buscar" type="text" placeholder="Buscar OT, cliente o informe…" oninput="filtrar()">
+    </div>
+    <div class="side-label">Órdenes de trabajo</div>
+    <div class="ot-list" id="lista"><div class="loading">Cargando…</div></div>
   </aside>
+
   <main class="main">
-    <div id="detalle"><div class="empty">Selecciona una Orden de Trabajo para ver su trazabilidad.</div></div>
+    <div class="container" id="detalle">
+      <div class="empty">Selecciona una Orden de Trabajo para reconstruir su trazabilidad.</div>
+    </div>
   </main>
 </div>
 
 <script>
-  // ── URL del despliegue de TRAZ (app web de Apps Script INDEPENDIENTE) ─────
-  // Reemplazar tras desplegar TRAZ.gs. Ver TRAZ/README.md.
   const API_URL = 'https://script.google.com/macros/s/AKfycbw9A7lgw0zI4f3V7YLVnuplLoShTS-5Qfprtw-E-iKTTMNd-F9Sh6_u3y2d3Xg0o3s/exec';
 
   let RESUMEN = [];
-  let HUERFANOS = [];
   let seleccion = null;
+  let ultimaActualizacion = null;
 
-  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-  function safeDriveUrl(u){ return (typeof u==='string' && u.startsWith('https://')) ? u : ''; }
-
-  async function cargarResumen(){
+  function esc(s){
+    return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'
+    }[c]));
+  }
+  function safeUrl(u){
+    return (typeof u === 'string' && /^https:\/\//i.test(u)) ? u : '';
+  }
+  function estadoClase(s){
+    s = String(s || '').toUpperCase();
+    if(s === 'CANCELADO') return 'bad';
+    if(s === 'EN PAUSA' || s === 'PROGRAMADO' || s.indexOf('PEND') >= 0) return 'warn';
+    if(['ENTREGADO','FINALIZADO','PARA REVISION','PARA REVISIÓN','PARA IMPRESION','PARA IMPRESIÓN','EN PROCESO','SERVICIO EJECUTADO'].includes(s)) return 'ok';
+    return '';
+  }
+  function formatNow(){
     try{
-      const resp = await fetch(`${API_URL}?action=trazResumen`);
-      const r = await resp.json();
-      if(!r.success){ document.getElementById('lista').innerHTML = `<div class="loading">${esc(r.message||'Error al cargar.')}</div>`; return; }
-      RESUMEN = r.data || [];
-      HUERFANOS = r.huerfanos || [];
-      pintarLista(RESUMEN);
+      return new Intl.DateTimeFormat('es-MX',{hour:'2-digit',minute:'2-digit'}).format(new Date());
+    }catch(_){ return ''; }
+  }
+  function fechaMs(v){
+    const s = String(v || '').trim();
+    if(!s) return null;
+    let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+    if(m) return new Date(+m[3],+m[2]-1,+m[1],+(m[4]||0),+(m[5]||0),+(m[6]||0)).getTime();
+    m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+    if(m) return new Date(+m[1],+m[2]-1,+m[3],+(m[4]||0),+(m[5]||0),+(m[6]||0)).getTime();
+    const d = Date.parse(s);
+    return Number.isFinite(d) ? d : null;
+  }
+
+  async function api(params){
+    const qs = new URLSearchParams(params);
+    const resp = await fetch(API_URL + '?' + qs.toString(), {cache:'no-store'});
+    if(!resp.ok) throw new Error('HTTP ' + resp.status);
+    return resp.json();
+  }
+
+  async function cargarResumen(refrescarDetalle){
+    const b = document.getElementById('btnRefresh');
+    if(b) b.disabled = true;
+    try{
+      const r = await api({action:'trazResumen'});
+      if(!r.success) throw new Error(r.error || r.message || 'No fue posible cargar TRAZ.');
+      RESUMEN = (r.data || []).slice().reverse();
+      ultimaActualizacion = formatNow();
+      actualizarContador();
+      filtrar();
+
+      if(refrescarDetalle && seleccion){
+        await abrir(seleccion, true);
+      }else if(!seleccion && RESUMEN.length){
+        await abrir(RESUMEN[0].ot, true);
+      }
     }catch(e){
-      document.getElementById('lista').innerHTML = `<div class="loading">No se pudo conectar con el servidor.</div>`;
+      document.getElementById('lista').innerHTML = '<div class="loading">No se pudo conectar con TRAZ.</div>';
+      if(!seleccion) document.getElementById('detalle').innerHTML = '<div class="empty">No se pudo cargar la trazabilidad.</div>';
+    }finally{
+      if(b) b.disabled = false;
     }
   }
+
+  function actualizarContador(){
+    const total = RESUMEN.length;
+    const pendientes = RESUMEN.filter(o => !o.entregado && String(o.estado_traz || '').toUpperCase() !== 'CANCELADO').length;
+    document.getElementById('contador').textContent = total + ' OT · ' + pendientes + ' abiertas';
+  }
+
+  function filtrados(){
+    const q = document.getElementById('buscar').value.toLowerCase().trim();
+    if(!q) return RESUMEN;
+    return RESUMEN.filter(o => [
+      o.ot,o.cliente,o.sucursal,o.nom,o.estado_traz,o.estatus_ot,(o.folios_informe || []).join(' ')
+    ].join(' ').toLowerCase().includes(q));
+  }
+
+  function filtrar(){ pintarLista(filtrados()); }
+
+  document.getElementById('lista').addEventListener('click', ev => {
+    const item = ev.target.closest('.ot-item');
+    if(!item) return;
+    const ot = item.getAttribute('data-ot');
+    if(ot) abrir(ot);
+  });
 
   function pintarLista(items){
     const cont = document.getElementById('lista');
-    if(!items.length){ cont.innerHTML = `<div class="loading">Sin resultados.</div>`; return; }
-    cont.innerHTML = items.map(o=>{
-      const chipCarpeta = o.tiene_carpeta ? '' : '<span class="chip warn">sin expediente</span>';
-      const chipInf = o.num_informes>0 ? `<span class="chip ok">${o.num_informes} informe(s)</span>` : '<span class="chip warn">sin informe</span>';
-      return `<div class="ot-item ${seleccion===o.ot?'active':''}" onclick="abrir('${esc(o.ot).replace(/'/g,"\\'")}')">
-        <div class="folio">${esc(o.ot)}</div>
-        <div class="meta">${esc(o.cliente||'')} ${o.sucursal?('· '+esc(o.sucursal)):''}</div>
-        <div class="meta">${esc(o.nom||'')} · ${esc(o.estado_traz||o.estatus_ot||'')}</div>
-        <div>${chipInf} ${chipCarpeta}</div>
-      </div>`;
+    if(!items.length){
+      cont.innerHTML = '<div class="loading">Sin resultados.</div>';
+      return;
+    }
+    cont.innerHTML = items.map(o => {
+      const st = o.estado_traz || o.estatus_ot || 'SIN ESTADO';
+      return '<div class="ot-item ' + (seleccion === o.ot ? 'active' : '') + '" data-ot="' + esc(o.ot || '') + '">' +
+        '<div class="ot-row"><span class="folio">' + esc(o.ot) + '</span>' +
+        '<span class="state-mini ' + estadoClase(st) + '">' + esc(st) + '</span></div>' +
+        '<div class="client">' + esc(o.cliente || '—') + '</div>' +
+        '<div class="service">' + esc(o.nom || '—') + (o.sucursal ? ' · ' + esc(o.sucursal) : '') + '</div>' +
+      '</div>';
     }).join('');
   }
 
-  function filtrar(){
-    const q = document.getElementById('buscar').value.toLowerCase().trim();
-    if(!q){ pintarLista(RESUMEN); return; }
-    pintarLista(RESUMEN.filter(o=>{
-      const hay = [o.ot,o.cliente,o.sucursal,o.nom,o.estado_traz,o.estatus_ot,(o.folios_informe||[]).join(' ')].join(' ').toLowerCase();
-      return hay.indexOf(q)>=0;
-    }));
-  }
-
-  async function abrir(ot){
+  async function abrir(ot, silencioso){
     seleccion = ot;
-    pintarLista(RESUMEN.filter(matchFiltro));
-    document.getElementById('detalle').innerHTML = `<div class="loading">Cargando trazabilidad…</div>`;
+    pintarLista(filtrados());
+    if(!silencioso) document.getElementById('detalle').innerHTML = '<div class="loading">Reconstruyendo trazabilidad…</div>';
     try{
-      const resp = await fetch(`${API_URL}?action=trazDetalle&ot=${encodeURIComponent(ot)}`);
-      const r = await resp.json();
-      if(!r.success){ document.getElementById('detalle').innerHTML = `<div class="empty">${esc(r.error||'Error')}</div>`; return; }
+      const r = await api({action:'trazDetalle',ot:ot});
+      if(ot !== seleccion) return;
+      if(!r.success) throw new Error(r.error || 'No se pudo cargar la OT.');
       pintarDetalle(r);
     }catch(e){
-      document.getElementById('detalle').innerHTML = `<div class="empty">No se pudo cargar el detalle.</div>`;
+      if(ot !== seleccion) return;
+      document.getElementById('detalle').innerHTML = '<div class="empty">' + esc(e.message || 'No se pudo cargar el detalle.') + '</div>';
     }
   }
-  function matchFiltro(o){
-    const q = document.getElementById('buscar').value.toLowerCase().trim();
-    if(!q) return true;
-    return [o.ot,o.cliente,o.sucursal,o.nom,o.estado_traz,o.estatus_ot].join(' ').toLowerCase().indexOf(q)>=0;
+
+  function evento(fecha,titulo,detalle,fuente,ordenExtra){
+    const ms = fechaMs(fecha);
+    return {
+      fecha: fecha || '',
+      titulo: titulo || '',
+      detalle: detalle || '',
+      fuente: fuente || 'DATO',
+      ms: ms,
+      ordenExtra: ordenExtra || 0
+    };
+  }
+
+  function construirHistoria(r){
+    const ot = r.ot || {};
+    const informes = r.informes || [];
+    const bitacora = r.bitacora || [];
+    const eventos = [];
+
+    if(ot.fecha_alta){
+      eventos.push(evento(ot.fecha_alta,'Orden de trabajo registrada',
+        [ot.folio,ot.nom].filter(Boolean).join(' · '),'OT',1));
+    }
+
+    informes.forEach((inf,idx) => {
+      if(inf.timestamp){
+        eventos.push(evento(inf.timestamp,'Expediente / informe registrado',
+          [inf.num_informe,inf.responsable ? 'Responsable: ' + inf.responsable : ''].filter(Boolean).join(' · '),'INFORMES',10+idx));
+      }
+    });
+
+    const ejec = (r.linea_tiempo || []).find(x => x.clave === 'ejecucion');
+    if(ejec && ejec.fecha){
+      eventos.push(evento(ejec.fecha,
+        ejec.estado === 'ok' ? 'Servicio ejecutado' : 'Servicio programado',
+        ejec.estado === 'ok' ? 'Fecha de servicio reconocida por TRAZ.' : 'La fecha registrada aún no se considera ejecutada.',
+        'TRAZ',30));
+    }
+
+    bitacora.forEach((b,idx) => {
+      let det = [b.accion,b.campo].filter(Boolean).join(' · ');
+      if(b.valor_anterior || b.valor_nuevo){
+        det += (det ? ' · ' : '') + (b.valor_anterior || '—') + ' → ' + (b.valor_nuevo || '—');
+      }
+      eventos.push(evento(b.timestamp,'Cambio registrado en AUDITORIA',det,'AUDITORIA',40+idx));
+    });
+
+    if(ot.fecha_real_entrega){
+      eventos.push(evento(ot.fecha_real_entrega,'Entrega registrada',
+        'La OT cuenta con fecha real de entrega.','OT',90));
+    }
+
+    eventos.sort((a,b) => {
+      if(a.ms !== null && b.ms !== null && a.ms !== b.ms) return a.ms - b.ms;
+      if(a.ms !== null && b.ms === null) return -1;
+      if(a.ms === null && b.ms !== null) return 1;
+      return a.ordenExtra - b.ordenExtra;
+    });
+    return eventos;
+  }
+
+  function pintarHistoria(r){
+    const eventos = construirHistoria(r);
+    if(!eventos.length) return '<div class="no-history">No hay hitos suficientes para reconstruir la historia de esta OT.</div>';
+    return '<div class="history">' + eventos.map(e => {
+      const audit = e.fuente === 'AUDITORIA';
+      return '<div class="event ' + (audit ? 'audit' : '') + '">' +
+        '<div class="event-time">' + esc(e.fecha || '—') + '</div>' +
+        '<div class="rail"><span class="mark"></span></div>' +
+        '<div class="event-body"><div class="event-title"><strong>' + esc(e.titulo) + '</strong>' +
+        '<span class="source ' + (audit ? 'audit' : '') + '">' + esc(e.fuente) + '</span></div>' +
+        (e.detalle ? '<p class="' + (audit ? 'change' : '') + '">' + esc(e.detalle) + '</p>' : '') +
+        '</div></div>';
+    }).join('') + '</div>';
+  }
+
+  function pintarRuta(r){
+    return '<div class="steps">' + (r.linea_tiempo || []).map(p => {
+      const ok = p.estado === 'ok';
+      const fecha = p.fecha || p.extra || '';
+      let titulo = p.titulo || '';
+      if(p.clave === 'ejecucion' && !ok){
+        titulo = fecha ? 'Servicio programado' : 'Servicio pendiente';
+      }
+      return '<div class="step ' + (ok ? 'ok' : 'pending') + '">' +
+        '<div class="dot">' + (ok ? '✓' : '•') + '</div>' +
+        '<div class="step-title">' + esc(titulo) + '</div>' +
+        '<div class="step-date">' + esc(fecha) + '</div>' +
+      '</div>';
+    }).join('') + '</div>';
+  }
+
+  function pintarAcciones(r){
+    const ot = r.ot || {};
+    const exp = safeUrl(r.expediente);
+    const cliente = safeUrl(ot.link_drive);
+    const informes = r.informes || [];
+    let fechaServicio = '';
+    for(let i = informes.length - 1; i >= 0; i--){
+      if(String(informes[i].fecha_servicio || '').trim()){
+        fechaServicio = informes[i].fecha_servicio;
+        break;
+      }
+    }
+    if(!fechaServicio) fechaServicio = ot.fecha_visita || '';
+
+    let html = '<div class="actions">';
+    html += exp
+      ? '<a class="action-primary" href="' + esc(exp) + '" target="_blank" rel="noopener"><span>Abrir expediente</span><span>↗</span></a>'
+      : '<div class="action-secondary disabled"><span>Sin expediente disponible</span><span>—</span></div>';
+
+    if(cliente){
+      html += '<a class="action-secondary" href="' + esc(cliente) + '" target="_blank" rel="noopener"><span>Carpeta del cliente</span><span>↗</span></a>';
+    }
+
+    informes.forEach(inf => {
+      const u = safeUrl(inf.link_drive);
+      if(!u) return;
+      html += '<a class="action-secondary" href="' + esc(u) + '" target="_blank" rel="noopener"><span>' +
+        esc(inf.num_informe || 'Informe') +
+        '<div class="action-meta">' + esc(inf.estatus || 'Sin estado') + '</div></span><span>↗</span></a>';
+    });
+    html += '</div>';
+
+    html += '<div class="facts">' +
+      '<div class="fact"><span>Responsable</span><span>' + esc(ot.personal || '—') + '</span></div>' +
+      '<div class="fact"><span>Fecha servicio</span><span>' + esc(fechaServicio || '—') + '</span></div>' +
+      '<div class="fact"><span>RFC</span><span>' + esc(ot.rfc || '—') + '</span></div>' +
+      '<div class="fact"><span>Serie</span><span>' + esc(ot.tipo || '—') + '</span></div>' +
+    '</div>';
+    return html;
+  }
+
+  function pintarAdvertencias(r){
+    const w = r.advertencias || [];
+    if(!w.length) return '<div class="good">Sin inconsistencias detectadas con los datos disponibles.</div>';
+    return w.map(x => '<div class="warning">' + esc(x) + '</div>').join('');
+  }
+
+  function pintarInformes(informes){
+    if(!informes.length) return '<div class="audit-empty">No hay informes relacionados con esta OT.</div>';
+    return '<div class="report-list">' + informes.map(inf => {
+      const u = safeUrl(inf.link_drive);
+      return '<div class="report"><div><strong>' + esc(inf.num_informe || '(sin folio)') + '</strong>' +
+        '<small>' + esc(inf.estatus || 'Sin estado') + ' · Servicio: ' + esc(inf.fecha_servicio || '—') +
+        ' · Responsable: ' + esc(inf.responsable || '—') + '</small></div>' +
+        (u ? '<a href="' + esc(u) + '" target="_blank" rel="noopener">Abrir ↗</a>' : '') +
+      '</div>';
+    }).join('') + '</div>';
+  }
+
+  function pintarAuditoria(bit){
+    if(!bit.length) return '<div class="audit-empty">Sin eventos registrados en AUDITORIA para esta OT.</div>';
+    return '<table><thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Campo</th><th>Antes → Después</th></tr></thead><tbody>' +
+      bit.map(b => '<tr><td>' + esc(b.timestamp) + '</td><td>' + esc(b.usuario) + '</td><td>' + esc(b.accion) +
+        '</td><td>' + esc(b.campo) + '</td><td>' + esc(b.valor_anterior || '—') + ' → ' + esc(b.valor_nuevo || '—') + '</td></tr>').join('') +
+      '</tbody></table>';
   }
 
   function pintarDetalle(r){
-    const ot = r.ot;
-    const expUrl = safeDriveUrl(r.expediente);
-    const btnExp = expUrl
-      ? `<a class="btn" href="${expUrl}" target="_blank" rel="noopener">📁 ABRIR EXPEDIENTE</a>`
-      : `<span class="btn dis">📁 Sin expediente</span>`;
+    const ot = r.ot || {};
+    const estado = r.estado_traz || ot.estatus || 'SIN ESTADO';
+    const informes = r.informes || [];
+    const bit = r.bitacora || [];
 
-    // Timeline
-    const tl = (r.linea_tiempo||[]).map(p=>`
-      <div class="step ${p.estado}">
-        <div class="dot">${p.estado==='ok'?'✓':'•'}</div>
-        <div class="t">${esc(p.titulo)}</div>
-        ${p.fecha?`<div class="d">${esc(p.fecha)}</div>`:''}
-        ${p.extra?`<div class="x">${esc(p.extra)}</div>`:''}
-      </div>`).join('');
+    document.getElementById('detalle').innerHTML =
+      '<div class="kicker-row"><span class="kicker">Trazabilidad del servicio</span><span class="updated">' +
+        (ultimaActualizacion ? 'Actualizado ' + esc(ultimaActualizacion) : '') + '</span></div>' +
 
-    // Informes
-    const infs = (r.informes||[]).map(inf=>{
-      const u = safeDriveUrl(inf.link_drive);
-      return `<div class="inf">
-        <span class="st">${esc(inf.estatus||'')}</span>
-        <div class="folio">${esc(inf.num_informe||'(sin folio)')}</div>
-        <div class="meta" style="font-size:12px;color:var(--gris)">
-          Responsable: ${esc(inf.responsable||'—')} · Servicio: ${esc(inf.fecha_servicio||'—')} · Entrega: ${esc(inf.fecha_entrega||'—')}
-        </div>
-        ${u?`<div style="margin-top:6px"><a href="${u}" target="_blank" rel="noopener" style="color:var(--verde);font-size:13px">📁 Abrir expediente del informe</a></div>`:''}
-      </div>`;
-    }).join('') || '<div class="noticia" style="color:var(--warn)">Esta OT no tiene informes registrados.</div>';
+      '<section class="hero"><div><h2>' + esc(ot.folio || '') + '</h2>' +
+        '<div class="hero-client">' + esc(ot.cliente || '—') + '</div>' +
+        '<div class="hero-sub">' + esc(ot.nom || '—') + (ot.sucursal ? ' · ' + esc(ot.sucursal) : '') + '</div></div>' +
+        '<div class="status-box"><span class="status-pill ' + estadoClase(estado) + '">' + esc(estado) + '</span>' +
+        '<div class="sea-status">Estatus SEA: ' + esc(ot.estatus || '—') + '</div></div></section>' +
 
-    // Bitácora (AUDITORIA) — eventos reales, sin inferencia
-    const bit = (r.bitacora||[]);
-    const bitHtml = bit.length ? `<table>
-      <thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Campo</th><th>Antes → Después</th></tr></thead>
-      <tbody>${bit.map(b=>`<tr>
-        <td>${esc(b.timestamp)}</td><td>${esc(b.usuario)}</td><td>${esc(b.accion)}</td>
-        <td>${esc(b.campo)}</td><td>${esc(b.valor_anterior||'')} → ${esc(b.valor_nuevo||'')}</td>
-      </tr>`).join('')}</tbody></table>`
-      : '<div class="d" style="color:var(--gris);font-size:13px">Sin eventos registrados en la bitácora para esta OT.</div>';
+      '<section class="route"><div class="route-head"><strong>Ruta del servicio</strong>' +
+        '<span>Qué existe y hasta dónde llegó la OT</span></div>' + pintarRuta(r) + '</section>' +
 
-    // Advertencias
-    const warns = (r.advertencias||[]);
-    const warnHtml = warns.length
-      ? `<ul class="warns">${warns.map(w=>`<li>⚠ ${esc(w)}</li>`).join('')}</ul>`
-      : '<div class="noticia">✓ Sin inconsistencias detectadas con los datos disponibles.</div>';
+      '<div class="workspace"><section class="card"><div class="card-head"><h3>Historia de esta OT</h3>' +
+        '<span>Hitos disponibles + AUDITORIA real</span></div>' + pintarHistoria(r) + '</section>' +
+        '<aside><section class="card"><div class="card-head"><h3>Trabajar esta OT</h3><span>Accesos directos</span></div>' +
+        pintarAcciones(r) + '</section>' + pintarAdvertencias(r) + '</aside></div>' +
 
-    document.getElementById('detalle').innerHTML = `
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap">
-          <div>
-            <p class="ot-title">${esc(ot.folio)}</p>
-            <div class="ot-sub">${esc(ot.cliente||'')} ${ot.sucursal?('· '+esc(ot.sucursal)):''} · ${esc(ot.nom||'')}</div>
-          </div>
-          ${btnExp}
-        </div>
-        <div class="grid2">
-          <div><b>Tipo</b>${esc(ot.tipo||'—')}</div>
-          <div><b>RFC</b>${esc(ot.rfc||'—')}</div>
-          <div><b>Personal</b>${esc(ot.personal||'—')}</div>
-          <div><b>Estado TRAZ</b>${esc(r.estado_traz||ot.estatus||'—')}</div>
-          <div><b>Estatus SEA</b>${esc(ot.estatus||'—')}</div>
-          <div><b>Fecha visita</b>${esc(ot.fecha_visita||'—')}</div>
-          <div><b>Entrega límite</b>${esc(ot.fecha_entrega_limite||'—')}</div>
-          <div><b>Entrega real</b>${esc(ot.fecha_real_entrega||'—')}</div>
-        </div>
-      </div>
+      '<div class="tabs">' +
+        '<button class="tab active" onclick="mostrarTab(event,\'datos\')">Datos del servicio</button>' +
+        '<button class="tab" onclick="mostrarTab(event,\'informes\')">Informes</button>' +
+        '<button class="tab" onclick="mostrarTab(event,\'auditoria\')">AUDITORIA</button>' +
+      '</div>' +
 
-      <div class="card">
-        <h3>Línea de tiempo</h3>
-        <div class="tl">${tl}</div>
-      </div>
+      '<div class="panel active" id="panel-datos"><div class="data-card">' +
+        '<div class="data-item"><small>OT</small><strong>' + esc(ot.folio || '—') + '</strong></div>' +
+        '<div class="data-item"><small>Tipo</small><strong>' + esc(ot.tipo || '—') + '</strong></div>' +
+        '<div class="data-item"><small>Servicio</small><strong>' + esc(ot.nom || '—') + '</strong></div>' +
+        '<div class="data-item"><small>Cliente</small><strong>' + esc(ot.cliente || '—') + '</strong></div>' +
+        '<div class="data-item"><small>Sucursal</small><strong>' + esc(ot.sucursal || '—') + '</strong></div>' +
+        '<div class="data-item"><small>Personal</small><strong>' + esc(ot.personal || '—') + '</strong></div>' +
+        '<div class="data-item"><small>Fecha visita OT</small><strong>' + esc(ot.fecha_visita || '—') + '</strong></div>' +
+        '<div class="data-item"><small>Entrega límite</small><strong>' + esc(ot.fecha_entrega_limite || '—') + '</strong></div>' +
+        '<div class="data-item"><small>Entrega real</small><strong>' + esc(ot.fecha_real_entrega || '—') + '</strong></div>' +
+        '<div class="data-item"><small>RFC</small><strong>' + esc(ot.rfc || '—') + '</strong></div>' +
+        '<div class="data-item"><small>Estado TRAZ</small><strong>' + esc(estado) + '</strong></div>' +
+        '<div class="data-item"><small>Estatus SEA</small><strong>' + esc(ot.estatus || '—') + '</strong></div>' +
+      '</div></div>' +
 
-      <div class="card">
-        <h3>Informe(s) de la OT</h3>
-        ${infs}
-      </div>
-
-      <div class="card">
-        <h3>Advertencias</h3>
-        ${warnHtml}
-      </div>
-
-      <div class="card">
-        <h3>Bitácora real (AUDITORIA)</h3>
-        ${bitHtml}
-      </div>`;
+      '<div class="panel" id="panel-informes">' + pintarInformes(informes) + '</div>' +
+      '<div class="panel" id="panel-auditoria">' + pintarAuditoria(bit) + '</div>';
   }
-</script>
 
-<script>
-  // Sin autenticación: carga la trazabilidad directamente al abrir la página.
-  cargarResumen();
+  function mostrarTab(ev,nombre){
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+    ev.currentTarget.classList.add('active');
+    const p = document.getElementById('panel-' + nombre);
+    if(p) p.classList.add('active');
+  }
+
+  cargarResumen(false);
 </script>
 </body>
 </html>
