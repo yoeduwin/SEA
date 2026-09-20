@@ -152,6 +152,7 @@ function trazEstado_(ot, informes) {
   var externo = String((ot && (ot.estatus || ot.estatus_ot)) || '').trim().toUpperCase();
 
   if (externo === 'CANCELADO') return 'CANCELADO';
+  if (externo === 'EN PAUSA') return 'EN PAUSA';
 
   if (String((ot && ot.fecha_real_entrega) || '').trim()) return 'ENTREGADO';
   if (externo === 'ENTREGADO' || externo === 'FINALIZADO') return externo;
