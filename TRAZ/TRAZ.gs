@@ -316,7 +316,7 @@ function trazLineaTiempo_(ot, informes) {
   });
 
   var pasos = [];
-  var servicioEjecutado = trazFechaNoFutura_(ot.fecha_visita) || informes.length > 0;
+  var servicioEjecutado = trazFechaNoFutura_(ot.fecha_visita);
 
   pasos.push(nodo('ot', 'Orden de Trabajo', ot.fecha_alta, !!ot.folio, ot.folio));
   pasos.push(nodo('ejecucion', 'Servicio ejecutado', ot.fecha_visita, servicioEjecutado));
