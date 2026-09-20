@@ -93,6 +93,62 @@ function trazNormOt_(ot) {
   return String(ot == null ? '' : ot).trim().toUpperCase();
 }
 
+/**
+ * Convierte las fechas visibles del SEA a Date sin depender de un único formato.
+ * Admite principalmente YYYY-MM-DD y DD/MM/YYYY.
+ */
+function trazParseFecha_(valor) {
+  var s = String(valor == null ? '' : valor).trim();
+  if (!s) return null;
+
+  var m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+
+  var d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function trazFechaNoFutura_(valor) {
+  var d = trazParseFecha_(valor);
+  if (!d) return false;
+  d.setHours(0, 0, 0, 0);
+  var hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  return d.getTime() <= hoy.getTime();
+}
+
+/**
+ * Estado propio de TRAZ: representa la etapa comprobable de la trazabilidad.
+ * El Estatus_Dashboard original se conserva como dato de SEA, pero no gobierna
+ * la visualización cuando existen evidencias más avanzadas.
+ */
+function trazEstado_(ot, informes) {
+  informes = informes || [];
+  var externo = String((ot && (ot.estatus || ot.estatus_ot)) || '').trim().toUpperCase();
+
+  if (externo === 'CANCELADO') return 'CANCELADO';
+
+  if (String((ot && ot.fecha_real_entrega) || '').trim()) return 'ENTREGADO';
+  if (externo === 'ENTREGADO' || externo === 'FINALIZADO') return externo;
+
+  // Si ya existe informe, el Proceso del informe es la mejor evidencia de etapa.
+  // Para múltiples informes se toma el último proceso no vacío registrado.
+  for (var i = informes.length - 1; i >= 0; i--) {
+    var proceso = String(informes[i].estatus || '').trim();
+    if (proceso) return proceso.toUpperCase();
+  }
+  if (informes.length > 0) return 'INFORME GENERADO';
+
+  if (String((ot && ot.fecha_visita) || '').trim()) {
+    return trazFechaNoFutura_(ot.fecha_visita) ? 'SERVICIO EJECUTADO' : 'PROGRAMADO';
+  }
+
+  return 'PENDIENTE';
+}
+
 function trazLeerHoja_(nombre) {
   var sheet = SpreadsheetApp.openById(TRAZ_CONFIG.SPREADSHEET_ID).getSheetByName(nombre);
   if (!sheet) return [];
@@ -121,6 +177,14 @@ function trazResumen_() {
       var folio = String(r[CO.OT]).trim();
       var informesDeOT = infPorOt[trazNormOt_(folio)] || [];
       var estatus = String(r[CO.ESTATUS_EXTERNO] || '').toUpperCase();
+      var resumenInformes = informesDeOT.map(function (x) {
+        return { estatus: x[CI.ESTATUS], num_informe: x[CI.NUM_INFORME] };
+      });
+      var estadoTraz = trazEstado_({
+        estatus_ot: r[CO.ESTATUS_EXTERNO],
+        fecha_visita: r[CO.FECHA_VISITA],
+        fecha_real_entrega: r[CO.FECHA_REAL]
+      }, resumenInformes);
       return {
         ot:            folio,
         tipo:          r[CO.TIPO],
@@ -130,10 +194,11 @@ function trazResumen_() {
         personal:      r[CO.PERSONAL],
         fecha_visita:  r[CO.FECHA_VISITA],
         estatus_ot:    r[CO.ESTATUS_EXTERNO],
+        estado_traz:   estadoTraz,
         tiene_carpeta: String(r[CO.LINK_DRIVE] || '').indexOf('http') === 0,
         num_informes:  informesDeOT.length,
         folios_informe: informesDeOT.map(function (x) { return x[CI.NUM_INFORME]; }).filter(Boolean),
-        entregado:     TRAZ_ESTATUS_TERMINALES.indexOf(estatus) !== -1
+        entregado:     estadoTraz === 'ENTREGADO' || estadoTraz === 'FINALIZADO'
       };
     });
 
@@ -228,6 +293,7 @@ function trazDetalle_(otFolio) {
     informes: informes,
     expediente: expediente,
     bitacora: bitacora,
+    estado_traz: trazEstado_(ot, informes),
     linea_tiempo: trazLineaTiempo_(ot, informes),
     advertencias: trazAdvertencias_(ot, informes)
   };
@@ -250,8 +316,10 @@ function trazLineaTiempo_(ot, informes) {
   });
 
   var pasos = [];
+  var servicioEjecutado = trazFechaNoFutura_(ot.fecha_visita) || informes.length > 0;
+
   pasos.push(nodo('ot', 'Orden de Trabajo', ot.fecha_alta, !!ot.folio, ot.folio));
-  pasos.push(nodo('ejecucion', 'Servicio ejecutado', ot.fecha_visita, !!String(ot.fecha_visita || '').trim()));
+  pasos.push(nodo('ejecucion', 'Servicio ejecutado', ot.fecha_visita, servicioEjecutado));
   pasos.push(nodo('expediente', 'Expediente', '', tieneExp, tieneExp ? 'Carpeta de trabajo disponible' : 'Sin carpeta relacionada'));
   pasos.push(nodo('informe', 'Informe', '', foliosInf.length > 0, foliosInf.join(', ')));
   pasos.push(nodo('entrega', 'Entrega', ot.fecha_real_entrega, !!String(ot.fecha_real_entrega || '').trim()));
