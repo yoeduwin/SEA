@@ -28,6 +28,11 @@
   .brand h1{margin:0;font-size:16px;letter-spacing:.09em}
   .brand .sub{font-size:10.5px;opacity:.82;margin-top:2px;white-space:nowrap}
   .head-actions{display:flex;align-items:center;gap:11px}
+  .auth-user{
+    background:#fff;border-radius:9px;padding:4px 7px;min-height:36px;
+    display:flex;align-items:center;box-shadow:0 1px 5px rgba(0,0,0,.08)
+  }
+  .auth-user:empty{display:none}
   #contador{font-size:11px;opacity:.85;white-space:nowrap}
   .refresh{
     border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.08);color:#fff;
@@ -229,6 +234,7 @@
     </div>
   </div>
   <div class="head-actions">
+    <div id="sea-user-info" class="auth-user"></div>
     <span id="contador">Cargando…</span>
     <button class="refresh" id="btnRefresh" onclick="cargarResumen(true)">Actualizar</button>
   </div>
@@ -290,9 +296,14 @@
 
   async function api(params){
     const qs = new URLSearchParams(params);
-    const resp = await fetch(API_URL + '?' + qs.toString(), {cache:'no-store'});
+    const resp = await SEAAuth.wrapFetch(API_URL + '?' + qs.toString(), {cache:'no-store'});
     if(!resp.ok) throw new Error('HTTP ' + resp.status);
-    return resp.json();
+    const data = await resp.json();
+    if(data && data.error === 'AUTH_REQUIRED'){
+      SEAAuth.logout();
+      throw new Error(data.message || 'Acceso no autorizado.');
+    }
+    return data;
   }
 
   async function cargarResumen(refrescarDetalle){
@@ -589,7 +600,13 @@
     if(p) p.classList.add('active');
   }
 
-  cargarResumen(false);
+</script>
+<script src="https://accounts.google.com/gsi/client" onload="onGISLoaded()" async defer></script>
+<script src="../auth.js"></script>
+<script>
+  SEAAuth.init(function(_token, _user) {
+    cargarResumen(false);
+  }, { gasUrl: API_URL });
 </script>
 </body>
 </html>
