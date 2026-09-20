@@ -20,10 +20,11 @@
 7. [Autenticación y Seguridad](#7-autenticación-y-seguridad)
 8. [Configuración e Instalación](#8-configuración-e-instalación)
 9. [Sistema de Respaldos](#9-sistema-de-respaldos)
-10. [Gestión de Usuarios](#10-gestión-de-usuarios)
-11. [Pruebas Automatizadas](#11-pruebas-automatizadas)
-12. [Solución de Problemas](#12-solución-de-problemas)
-13. [Glosario](#13-glosario)
+10. [Notificaciones Automáticas](#10-notificaciones-automáticas)
+11. [Gestión de Usuarios](#11-gestión-de-usuarios)
+12. [Pruebas Automatizadas](#12-pruebas-automatizadas)
+13. [Solución de Problemas](#13-solución-de-problemas)
+14. [Glosario](#14-glosario)
 
 ---
 
@@ -885,9 +886,82 @@ Cuando se supera el máximo de 12 copias, el respaldo más antiguo se mueve auto
 
 ---
 
-## 10. Gestión de Usuarios
+## 10. Notificaciones Automáticas
 
-### 10.1 Agregar un usuario nuevo
+**Archivo:** `NOTIFICACIONES.gs`
+
+Convierte en correo lo que hasta ahora sólo era visible si alguien abría SEADB. No modifica `doGet` ni `doPost`, así que **instalarlo no requiere publicar una versión nueva del Web App**.
+
+### 10.1 Correos que envía
+
+| Correo | Cuándo | Destinatarios | Contenido |
+|---|---|---|---|
+| Digest operativo | Lunes y jueves 07:30 | operaciones, dirección, aclientes | OTs vencidas, en límite y en pausa |
+| Resumen de dirección | Viernes 17:00 | dirección general | Movimiento de la semana, estado de la operación, antigüedad de la cartera, informes atascados, carga por responsable |
+| Renovaciones | Lunes 08:00 | ventas | Servicios cuyo ciclo normativo vence o está por vencer |
+
+El digest y el de renovaciones **no se envían si no hay nada que reportar**. El digest indica además cuántas órdenes vencidas son nuevas respecto al envío anterior.
+
+### 10.2 Consumo de cuota
+
+8 destinatarios por semana (6 del digest + 1 dirección + 1 renovaciones), compartidos con los correos transaccionales que ya envía `BACKEND_FIXES.gs`. El límite de una cuenta gratuita es de 100 destinatarios al día.
+
+### 10.3 Interruptores
+
+Se configuran en **Configuración del proyecto → Propiedades del script**:
+
+| Propiedad | Efecto |
+|---|---|
+| `NOTIF_ACTIVO` = `false` | Apaga todos los envíos sin borrar los triggers |
+| `NOTIF_DRY_RUN` = `correo@dominio` | Redirige todo a ese buzón, con `[PRUEBA]` en el asunto |
+
+Los envíos en modo prueba se registran aparte y no bloquean el envío real posterior.
+
+### 10.4 Funciones disponibles
+
+| Función | Qué hace |
+|---|---|
+| `notif_estado()` | Diagnóstico: configuración, zona horaria, datos, triggers y cuota restante |
+| `notif_previsualizar()` | Indica qué se enviaría, sin enviar ni tocar la bitácora |
+| `notif_probarEnvio()` | Manda los tres correos al buzón de `NOTIF_DRY_RUN` |
+| `configurarTriggersNotificaciones()` | Crea los tres triggers (se puede repetir sin duplicar) |
+| `eliminarTriggersNotificaciones()` | Quita los triggers de este módulo sin tocar los demás |
+
+### 10.5 Instalación
+
+1. Pegar `NOTIFICACIONES.gs` en el editor de Apps Script y guardar.
+2. Ejecutar `notif_estado()` y revisar que la zona horaria del proyecto coincida con la operación. **Los triggers usan la zona del proyecto, no `CONFIG.TIMEZONE`.**
+3. Ejecutar `notif_previsualizar()`.
+4. Poner `NOTIF_DRY_RUN` con un correo propio y ejecutar `notif_probarEnvio()`.
+5. Borrar `NOTIF_DRY_RUN` y ejecutar `configurarTriggersNotificaciones()`.
+
+### 10.6 Bitácora
+
+La hoja `NOTIFICACIONES_LOG` se crea sola en el primer envío y guarda timestamp, tipo, clave, destinatarios, asunto, resultado y detalle. Sirve para dos cosas: evitar que un doble disparo del trigger duplique un correo, y calcular el delta de órdenes vencidas entre un envío y el siguiente.
+
+### 10.7 Umbrales configurables
+
+Viven en `NOTIF_CONFIG`, al inicio del archivo:
+
+| Constante | Valor | Significado |
+|---|---|---|
+| `DIAS_LIMITE` | 3 | Una OT está "en límite" si entrega en menos de N días |
+| `SLA_DIGITAL_DIAS` | 20 | Fecha límite estimada como visita + N días cuando no está capturada |
+| `DIAS_ANTIGUO` | 60 | Un informe abierto cuenta como atascado a partir de N días |
+| `VENTANA_RENOVACION` | 30 | Renovaciones que entran al correo: vencidas y a menos de N días |
+| `MAX_FILAS_TABLA` | 15 | Corte por bloque; el resto se resume en "+N más" |
+
+### 10.8 Reconocimiento de servicios renovables
+
+La columna NOM de la hoja `INFORMES` es texto libre y en la práctica trae formatos muy distintos para la misma norma: `NOM-025-STPS`, `NOM-025-STPS-2008`, `NOM-025`, `025` y `25`. La función `notif_clavesServicio_()` los normaliza al número de norma y reconoce además celdas con varias normas (`NOM-015-STPS, NOM-022-STPS`) y las variantes de protección civil (`PIPC`, `PROGRAMA INTERNO`, `PROTECCIÓN CIVIL`).
+
+Ciclos rastreados: NOM-022 y NOM-081 anuales; NOM-024, NOM-025 y NOM-015 bienales; PIPC anual.
+
+---
+
+## 11. Gestión de Usuarios
+
+### 11.1 Agregar un usuario nuevo
 
 1. Abrir el Spreadsheet principal
 2. Ir a la hoja `USUARIOS_AUTORIZADOS`
@@ -901,11 +975,11 @@ Cuando se supera el máximo de 12 copias, el respaldo más antiguo se mueve auto
 
 > El sistema actualiza los permisos en un máximo de 10 minutos (cache de GAS).
 
-### 10.2 Desactivar un usuario
+### 11.2 Desactivar un usuario
 
 Cambiar la celda `Activo` de `TRUE` a `FALSE`. El sistema bloqueará el acceso en la próxima solicitud y enviará una alerta al correo de dirección general si el usuario intenta acceder.
 
-### 10.3 Roles disponibles
+### 11.3 Roles disponibles
 
 | Rol | Descripción |
 |---|---|
@@ -913,7 +987,7 @@ Cambiar la celda `Activo` de `TRUE` a `FALSE`. El sistema bloqueará el acceso e
 | `operador` | Acceso a módulos asignados (SEADB, SEAOT, SEAINF) |
 | `auxiliar_operador` | Acceso limitado a módulos específicos |
 
-### 10.4 Usuarios iniciales del sistema
+### 11.4 Usuarios iniciales del sistema
 
 | Email | Nombre | Rol |
 |---|---|---|
@@ -924,11 +998,11 @@ Cambiar la celda `Activo` de `TRUE` a `FALSE`. El sistema bloqueará el acceso e
 
 ---
 
-## 11. Pruebas Automatizadas
+## 12. Pruebas Automatizadas
 
 **Archivo:** `TESTS_BACKEND.gs`
 
-### 11.1 Tipos de prueba
+### 12.1 Tipos de prueba
 
 | Tipo | Descripción |
 |---|---|
@@ -936,7 +1010,7 @@ Cambiar la celda `Activo` de `TRUE` a `FALSE`. El sistema bloqueará el acceso e
 | E2E | Pruebas completas contra recursos exclusivos de staging |
 | Correo | Prueba manual de envío; no forma parte del runner E2E |
 
-### 11.2 Seguridad obligatoria para E2E
+### 12.2 Seguridad obligatoria para E2E
 
 Las E2E se niegan a comenzar si no existen estas Script Properties:
 
@@ -950,7 +1024,7 @@ El Spreadsheet de staging debe conservar los contratos `CLIENTES_MAESTRO` A–V,
 
 > Las E2E nunca deben apuntar al Spreadsheet ni a la carpeta Drive productivos. `runUnitTests()` no requiere ninguna propiedad de staging y no produce efectos secundarios.
 
-### 11.3 Pruebas E2E disponibles
+### 12.3 Pruebas E2E disponibles
 
 | ID | Módulo | Descripción |
 |---|---|---|
@@ -973,7 +1047,7 @@ El Spreadsheet de staging debe conservar los contratos `CLIENTES_MAESTRO` A–V,
 | E17 | Drive | Expediente legado de cuatro subcarpetas se completa a seis sin duplicados |
 | E18 | Drive | Carpeta manual con el RFC fuera del prefijo se resuelve por fila con link legado y por búsqueda en raíz; otro RFC no puede adoptarla |
 
-### 11.4 Cómo ejecutar
+### 12.4 Cómo ejecutar
 
 **Solo unitarias, sin efectos secundarios:**
 
@@ -989,7 +1063,7 @@ El Spreadsheet de staging debe conservar los contratos `CLIENTES_MAESTRO` A–V,
 
 Cada `runTest_E01` … `runTest_E18` vuelve a comprobar el guard de staging cuando se ejecuta individualmente.
 
-### 11.5 Datos reservados para pruebas
+### 12.5 Datos reservados para pruebas
 
 | Dato | Valor principal |
 |---|---|
@@ -998,7 +1072,7 @@ Cada `runTest_E01` … `runTest_E18` vuelve a comprobar el guard de staging cuan
 | Sucursal | `Sucursal Test E2E` (auxiliares: `Sucursal Histórica E2E`, `Sucursal Manual E2E`) |
 | Empresa | `EMPRESA TEST E2E SA DE CV` (E18 usa `CLIENTE MANUAL E2E SA DE CV`) |
 
-### 11.6 Verificaciones manuales previas al despliegue
+### 12.6 Verificaciones manuales previas al despliegue
 
 Estas comprobaciones son de solo lectura salvo la prueba de humo, que debe realizarse exclusivamente en staging:
 
@@ -1012,7 +1086,7 @@ Poblar enlaces históricos o renombrar carpetas sería una migración separada y
 
 ---
 
-## 12. Solución de Problemas
+## 13. Solución de Problemas
 
 ### Error: "No existe una carpeta exacta para este RFC y sucursal" / "No se encontró una carpeta exacta para el RFC y la sucursal"
 
@@ -1092,7 +1166,7 @@ CacheService.getScriptCache().removeAll([]);
 
 ---
 
-## 13. Glosario
+## 14. Glosario
 
 | Término | Definición |
 |---|---|
