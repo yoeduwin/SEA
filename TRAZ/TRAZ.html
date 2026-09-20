@@ -127,7 +127,7 @@
       return `<div class="ot-item ${seleccion===o.ot?'active':''}" onclick="abrir('${esc(o.ot).replace(/'/g,"\\'")}')">
         <div class="folio">${esc(o.ot)}</div>
         <div class="meta">${esc(o.cliente||'')} ${o.sucursal?('· '+esc(o.sucursal)):''}</div>
-        <div class="meta">${esc(o.nom||'')} · ${esc(o.estatus_ot||'')}</div>
+        <div class="meta">${esc(o.nom||'')} · ${esc(o.estado_traz||o.estatus_ot||'')}</div>
         <div>${chipInf} ${chipCarpeta}</div>
       </div>`;
     }).join('');
@@ -137,7 +137,7 @@
     const q = document.getElementById('buscar').value.toLowerCase().trim();
     if(!q){ pintarLista(RESUMEN); return; }
     pintarLista(RESUMEN.filter(o=>{
-      const hay = [o.ot,o.cliente,o.sucursal,o.nom,(o.folios_informe||[]).join(' ')].join(' ').toLowerCase();
+      const hay = [o.ot,o.cliente,o.sucursal,o.nom,o.estado_traz,o.estatus_ot,(o.folios_informe||[]).join(' ')].join(' ').toLowerCase();
       return hay.indexOf(q)>=0;
     }));
   }
@@ -158,7 +158,7 @@
   function matchFiltro(o){
     const q = document.getElementById('buscar').value.toLowerCase().trim();
     if(!q) return true;
-    return [o.ot,o.cliente,o.sucursal,o.nom].join(' ').toLowerCase().indexOf(q)>=0;
+    return [o.ot,o.cliente,o.sucursal,o.nom,o.estado_traz,o.estatus_ot].join(' ').toLowerCase().indexOf(q)>=0;
   }
 
   function pintarDetalle(r){
@@ -219,7 +219,8 @@
           <div><b>Tipo</b>${esc(ot.tipo||'—')}</div>
           <div><b>RFC</b>${esc(ot.rfc||'—')}</div>
           <div><b>Personal</b>${esc(ot.personal||'—')}</div>
-          <div><b>Estatus OT</b>${esc(ot.estatus||'—')}</div>
+          <div><b>Estado TRAZ</b>${esc(r.estado_traz||ot.estatus||'—')}</div>
+          <div><b>Estatus SEA</b>${esc(ot.estatus||'—')}</div>
           <div><b>Fecha visita</b>${esc(ot.fecha_visita||'—')}</div>
           <div><b>Entrega límite</b>${esc(ot.fecha_entrega_limite||'—')}</div>
           <div><b>Entrega real</b>${esc(ot.fecha_real_entrega||'—')}</div>
