@@ -132,14 +132,29 @@ function trazFechaNoFutura_(valor) {
 function trazFechaEjecucion_(ot, informes) {
   informes = informes || [];
 
+  // Si INFORMES tiene una fecha de servicio válida, esa fecha es la referencia
+  // vigente para el hito, incluso cuando haya sido reprogramada a futuro.
   for (var i = informes.length - 1; i >= 0; i--) {
-    if (trazFechaNoFutura_(informes[i].fecha_servicio)) {
-      return informes[i].fecha_servicio;
+    var fechaInforme = String(informes[i].fecha_servicio || '').trim();
+    if (trazFechaClave_(fechaInforme) !== null) {
+      return {
+        fecha: fechaInforme,
+        ejecutado: trazFechaNoFutura_(fechaInforme),
+        fuente: 'INFORMES'
+      };
     }
   }
 
-  if (ot && trazFechaNoFutura_(ot.fecha_visita)) return ot.fecha_visita;
-  return '';
+  var fechaOt = String((ot && ot.fecha_visita) || '').trim();
+  if (trazFechaClave_(fechaOt) !== null) {
+    return {
+      fecha: fechaOt,
+      ejecutado: trazFechaNoFutura_(fechaOt),
+      fuente: 'OT'
+    };
+  }
+
+  return { fecha: '', ejecutado: false, fuente: '' };
 }
 
 /**
@@ -339,11 +354,10 @@ function trazLineaTiempo_(ot, informes) {
   });
 
   var pasos = [];
-  var fechaEjecucion = trazFechaEjecucion_(ot, informes);
-  var servicioEjecutado = !!fechaEjecucion;
+  var ejecucion = trazFechaEjecucion_(ot, informes);
 
   pasos.push(nodo('ot', 'Orden de Trabajo', ot.fecha_alta, !!ot.folio, ot.folio));
-  pasos.push(nodo('ejecucion', 'Servicio ejecutado', fechaEjecucion || ot.fecha_visita, servicioEjecutado));
+  pasos.push(nodo('ejecucion', 'Servicio ejecutado', ejecucion.fecha, ejecucion.ejecutado));
   pasos.push(nodo('expediente', 'Expediente', '', tieneExp, tieneExp ? 'Carpeta de trabajo disponible' : 'Sin carpeta relacionada'));
   pasos.push(nodo('informe', 'Informe', '', foliosInf.length > 0, foliosInf.join(', ')));
   pasos.push(nodo('entrega', 'Entrega', ot.fecha_real_entrega, !!String(ot.fecha_real_entrega || '').trim()));
