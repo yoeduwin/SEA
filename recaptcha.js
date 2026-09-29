@@ -33,7 +33,7 @@ const SEARecaptcha = (() => {
   /**
    * Solicita un token de reCAPTCHA Enterprise.
    * No requiere interacción del usuario (invisible).
-   * Incluye timeout de 8s para evitar que el formulario quede congelado
+   * Incluye timeout de 15s para evitar que el formulario quede congelado
    * si el servicio de reCAPTCHA no responde.
    * @returns {Promise<string>} token
    */
@@ -49,7 +49,7 @@ const SEARecaptcha = (() => {
       });
     });
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('reCAPTCHA timeout — recarga la página e intenta de nuevo')), 8000)
+      setTimeout(() => reject(new Error('reCAPTCHA timeout — recarga la página e intenta de nuevo')), 15000)
     );
     return Promise.race([tokenPromise, timeoutPromise]);
   }

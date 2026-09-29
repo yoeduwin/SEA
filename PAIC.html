@@ -764,17 +764,29 @@
           }
         }
         if (total > MAX_TOTAL_SIZE) throw new Error('ARCHIVOS_MUY_GRANDES');
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(),120000);
-        const response = await SEARecaptcha.wrapFetch(SCRIPT_URL, {
-          method:'POST', headers:{'Content-Type':'text/plain'}, body:JSON.stringify(data), signal:controller.signal
-        });
-        clearTimeout(timeoutId);
-        if (!response.ok) throw new Error(`HTTP_ERROR_${response.status}`);
-        const text = await response.text();
-        let result;
-        try { result = JSON.parse(text); } catch (_) { throw new Error('RESPUESTA_INVALIDA'); }
-        if (!result || result.success === false) throw new Error(result?.error || 'ERROR_SERVIDOR');
+        const body = JSON.stringify(data);
+        const enviar = async () => {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(),120000);
+          try {
+            const response = await SEARecaptcha.wrapFetch(SCRIPT_URL, {
+              method:'POST', headers:{'Content-Type':'text/plain'}, body, signal:controller.signal
+            });
+            if (!response.ok) throw new Error(`HTTP_ERROR_${response.status}`);
+            const text = await response.text();
+            try { return JSON.parse(text); } catch (_) { throw new Error('RESPUESTA_INVALIDA'); }
+          } finally {
+            clearTimeout(timeoutId);
+          }
+        };
+        let result = await enviar();
+        // El backend rechaza antes de procesar si falla reCAPTCHA; un token nuevo suele bastar.
+        if (result && result.error === 'AUTH_REQUIRED') result = await enviar();
+        if (!result || result.success === false) {
+          const err = new Error(result?.error || 'ERROR_SERVIDOR');
+          err.detail = result?.message || '';
+          throw err;
+        }
         if (loading) loading.style.display='none';
         if (successMsg) { successMsg.style.display='block'; successMsg.scrollIntoView({behavior:'smooth',block:'center'}); }
         form.reset();
@@ -786,6 +798,7 @@
         if (error.name === 'AbortError') showError('La solicitud tardó demasiado tiempo.','Intente nuevamente o contáctenos.');
         else if (error.message === 'ARCHIVOS_MUY_GRANDES') showError('Los archivos adjuntos superan 25 MB en total.','Comprima los archivos o reduzca su tamaño.');
         else if (error.message.startsWith('HTTP_ERROR_')) showError('El servidor devolvió un error.','Por favor intente nuevamente.');
+        else if (error.message === 'AUTH_REQUIRED') showError('No se pudo completar la verificación de seguridad (reCAPTCHA).',(error.detail ? error.detail + ' ' : '') + 'Recargue la página, desactive bloqueadores de anuncios o VPN, o intente desde otro navegador/red. Si persiste, contáctenos.');
         else showError('No fue posible guardar la información.',error.message || 'Error desconocido');
       } finally {
         if (submitBtn) submitBtn.disabled=false;
