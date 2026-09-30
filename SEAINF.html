@@ -523,7 +523,8 @@
             telefono: orden.telefono || orden.telefono_responsable || '',
             direccion: orden.direccion || orden.direccion_evaluacion || '',
             solicitante: orden.solicitante || orden.nombre_solicitante || '',
-            nom: orden.nom_servicio || orden.nom || ''
+            nom: orden.nom_servicio || orden.nom || '',
+            tipo_orden: orden.tipo_orden || ''
           };
           const option = document.createElement('option');
           option.value = otKey;
@@ -640,14 +641,36 @@
     reader.readAsArrayBuffer(file);
   });
 
+  // Serie de la OT. La serie OTC (servicios complementarios) no lleva número de
+  // informe; se reconoce por la col C que devuelve getOrdenes o, como respaldo,
+  // por el prefijo del folio (el backend exige que ambos coincidan).
+  function serieDeOT(ot) {
+    const key = String(ot || '').trim();
+    const folio = key.toUpperCase();
+    const tipo = String((ordenesMap[key] && ordenesMap[key].tipo_orden) || '').trim().toUpperCase();
+    if (tipo === 'OTC' || folio.startsWith('OTC')) return 'OTC';
+    if (folio.startsWith('OTB')) return 'OTB';
+    return folio.startsWith('OT') ? 'OT' : '';
+  }
+
+  function actualizarCampoNumeroInforme() {
+    const field = document.getElementById('field-num-informe');
+    const esOTC = serieDeOT(document.getElementById('field-ot').value) === 'OTC';
+    field.disabled = esOTC;
+    field.placeholder = esOTC
+      ? 'No aplica: la serie OTC no lleva número de informe'
+      : 'Se generará al completar OT y NOM (Puedes editarlo si es necesario)';
+    if (esOTC) field.value = '';
+  }
+
   function detectarTipoOrden() {
-    const ot = document.getElementById('field-ot').value.trim().toUpperCase();
     const tipo = document.getElementById('field-tipo-orden');
     const datalist = document.getElementById('nom-list');
-    tipo.value = ot.startsWith('OTB') ? 'OTB' : (ot.startsWith('OT') ? 'OT' : '');
+    tipo.value = serieDeOT(document.getElementById('field-ot').value);
     datalist.innerHTML = '';
     ALL_NOMS.forEach(n => datalist.appendChild(new Option(n, n)));
     document.getElementById('field-nom').value = '';
+    actualizarCampoNumeroInforme();
     generarNumeroInforme();
   }
 
@@ -656,6 +679,7 @@
     const nom = document.getElementById('field-nom').value.trim();
     const field = document.getElementById('field-num-informe');
     if (!ot || !nom) { field.value = ''; return; }
+    if (serieDeOT(document.getElementById('field-ot').value) === 'OTC') { field.value = ''; return; }
     const tipoOrden = ot.startsWith('OTB') ? 'OTB' : 'OT';
     field.value = 'Generando formato...';
     
@@ -680,8 +704,11 @@
       // (081, CM, PIPC, DE, código STPS…) y decide si lleva serie independiente.
       const response = await SEAAuth.wrapFetch(`${SCRIPT_URL}?action=getConsecutivo&anio=${anio}&mes=${mes}&nom=${encodeURIComponent(nom)}&tipo=${tipoOrden}`);
       const res = await response.json();
+      // Respuesta tardía: si ya se eligió otra OT (p. ej. una OTC), no escribir el número.
+      if (document.getElementById('field-ot').value.trim().toUpperCase() !== ot) return;
       field.value = (res && res.success) ? res.numeroInforme : '[Automático al enviar]';
     } catch (e) {
+      if (document.getElementById('field-ot').value.trim().toUpperCase() !== ot) return;
       field.value = '[Automático al enviar]';
     }
   }
@@ -713,17 +740,21 @@
     const ot = document.getElementById('field-ot').value.trim();
     const nom = document.getElementById('field-nom').value.trim();
     const nomCode = extraerCodigoNOM(nom);
-    
+    const esOTC = serieDeOT(ot) === 'OTC';
+
     // === VALIDACIÓN INTELIGENTE DE DUPLICIDAD ===
     if(allTableroData) {
-      const expedienteExistente = allTableroData.find(r => 
-        String(r.ot).toUpperCase() === ot.toUpperCase() && 
+      // OTC no tiene número de informe: basta con que la OT ya tenga expediente.
+      const expedienteExistente = allTableroData.find(r =>
+        String(r.ot).toUpperCase() === ot.toUpperCase() && (esOTC || (
         extraerCodigoNOM(String(r.nom)).toUpperCase() === nomCode.toUpperCase() &&
-        String(r.numInforme).trim() !== ''
+        String(r.numInforme).trim() !== ''))
       );
 
       if (expedienteExistente) {
-        alert(`⚠️ El expediente ya existe.\n\nLa OT "${ot}" ya tiene asignado el informe: ${expedienteExistente.numInforme}.\n\nPuedes buscarlo en la pestaña de "Tablero de Informes".`); 
+        alert(esOTC
+          ? `⚠️ El expediente ya existe.\n\nLa OT "${ot}" (serie OTC) ya tiene expediente.\n\nPuedes buscarlo en la pestaña de "Tablero de Informes".`
+          : `⚠️ El expediente ya existe.\n\nLa OT "${ot}" ya tiene asignado el informe: ${expedienteExistente.numInforme}.\n\nPuedes buscarlo en la pestaña de "Tablero de Informes".`);
         return;
       }
     }
@@ -776,7 +807,7 @@
         action: 'createExpediente',
         data: {
           ot, nom,
-          numInforme: document.getElementById('field-num-informe').value,
+          numInforme: esOTC ? '' : document.getElementById('field-num-informe').value,
           cliente: document.getElementById('field-cliente-inicial').value.trim(),
           sucursal: document.getElementById('field-cliente-final').value.trim(),
           fechaServicio: document.getElementById('field-fecha').value,
@@ -889,6 +920,7 @@
     perfilDataFile = null;
     const infoBox = document.getElementById('ot-autofill-box');
     if (infoBox) infoBox.style.display = 'none';
+    actualizarCampoNumeroInforme();
     validarProgreso();
   }
 
@@ -1072,7 +1104,7 @@ const mkRespSel = (ot, resp) => {
         else if (dias !== null && dias <= 7) rowClass = 'row-por-vencer';
       }
       return `<tr class="${rowClass}">
-        <td><strong>${escHtml(r.numInforme || '-')}</strong><br><span style="color:var(--muted); font-size:10px;">${escHtml(r.ot)}</span></td>
+        <td><strong>${escHtml(r.numInforme || (String(r.tipoOrden || '').toUpperCase() === 'OTC' ? 'Sin informe (OTC)' : '-'))}</strong><br><span style="color:var(--muted); font-size:10px;">${escHtml(r.ot)}</span></td>
         <td><strong>${escHtml(r.nom || '-')}</strong><br><span style="color:var(--muted); font-size:10px;">${escHtml(r.fecha || '-')}</span></td>
         <td>${escHtml(cInicial)}</td>
         <td>${escHtml(cFinal)}</td>
@@ -1358,7 +1390,7 @@ const mkRespSel = (ot, resp) => {
               borders: NO_BORDERS_TABLE,
               rows: [
                 new TableRow({ children: [ metaCell('Sucursal', row.sucursal), metaCell('Orden de Trabajo', row.ot) ] }),
-                new TableRow({ children: [ metaCell('Número de Informe', row.numInforme), metaCell('Fecha de Servicio', row.fecha) ] }),
+                new TableRow({ children: [ metaCell('Número de Informe', row.numInforme || (String(row.tipoOrden || '').toUpperCase() === 'OTC' ? 'No aplica (serie OTC)' : '')), metaCell('Fecha de Servicio', row.fecha) ] }),
                 new TableRow({ children: [ metaCell('Fecha de Entrega', row.fechaEntrega), metaCell('Servicio / NOM', row.nom) ] })
               ]
             }),
@@ -1368,7 +1400,7 @@ const mkRespSel = (ot, resp) => {
             ] }),
 
             sectionHeading('ESTUDIOS RECIBIDOS:'),
-            new Paragraph({ spacing: { after: 160 }, children: [ new TextRun({ text: '1.  ' + (row.nom || 'Servicio') + ' — Informe ' + (row.numInforme || '') }) ] }),
+            new Paragraph({ spacing: { after: 160 }, children: [ new TextRun({ text: '1.  ' + (row.nom || 'Servicio') + (row.numInforme ? ' — Informe ' + row.numInforme : '') }) ] }),
 
             sectionHeading('ENTREGABLES RECIBIDOS:'),
             ...entregables.map(e => new Paragraph({ spacing: { after: 60 }, children: [ new TextRun({ text: (e.checked ? '✅ ' : '⬜ ') + e.label }) ] })),
@@ -1541,6 +1573,11 @@ async function cambiarDatoRapido(ot, campo, valor) {
         return;
       }
 
+      // Serie OTC: no lleva número de informe (el backend lo valida contra la OT registrada).
+      if (serieDeOT(document.getElementById('field-ot')?.value) === 'OTC') {
+        return originalEnviarTodo.apply(this, arguments);
+      }
+
       let numInforme = (document.getElementById('field-num-informe')?.value || '').trim();
       if (!numInforme || numInforme.includes('Automático') || numInforme.includes('Generado')) {
         if (typeof window.generarNumeroInforme === 'function') await window.generarNumeroInforme();
@@ -1559,7 +1596,10 @@ async function cambiarDatoRapido(ot, campo, valor) {
 
     const originalRenderTablero = window.renderTablero;
     window.renderTablero = function(data) {
-      const soloExpedientes = (data || []).filter(r => String((r && r.numInforme) || '').trim() !== '');
+      // Expedientes = filas con número de informe, más las de la serie OTC (que no lo llevan).
+      const soloExpedientes = (data || []).filter(r =>
+        String((r && r.numInforme) || '').trim() !== '' ||
+        String((r && r.tipoOrden) || '').trim().toUpperCase() === 'OTC');
       return originalRenderTablero.call(this, soloExpedientes);
     };
 
