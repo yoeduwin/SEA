@@ -286,10 +286,11 @@
       <div class="section-content">
         <div class="form-grid">
           <div class="form-group full-width no-print">
-            <label>Serie de Orden (Operativo)<span class="tt" tabindex="0" data-tip="OT = Orden estándar para servicios de laboratorio e higiene. OTB = Orden tipo B para servicios adicionales de seguridad industrial. El folio se asigna automáticamente según la serie.">i</span></label>
+            <label>Serie de Orden (Operativo)<span class="tt" tabindex="0" data-tip="OT = Orden estándar para servicios de laboratorio e higiene. OTB = Orden tipo B para servicios adicionales de seguridad industrial. OTC = Orden de servicios complementarios (capacitación, protección civil…): lleva expediente, pero no número de informe. El folio se asigna automáticamente según la serie.">i</span></label>
             <div class="radio-group">
               <label><input type="radio" name="orderSeries" value="OT" checked onchange="updateOrderNumber()"> Serie OT</label>
               <label><input type="radio" name="orderSeries" value="OTB" onchange="updateOrderNumber()"> Serie OTB</label>
+              <label><input type="radio" name="orderSeries" value="OTC" onchange="updateOrderNumber()"> Serie OTC</label>
             </div>
             <div class="series-info" id="seriesInfo">Último: OT-000 | Siguiente sugerido: ...</div>
           </div>
@@ -424,6 +425,11 @@
   const SHEETS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby8t7Py-cilePxLiGa-Lq7Df73XaRlmkRYV_kXbTs79HFydaJyub8muA0PBLRkPevUuXg/exec';
   const NOM_081 = 'NOM-081-SEMARNAT-1994';
   const PREDEFINED_SERVICES = ['NOM-001-STPS','NOM-002-STPS','NOM-004-STPS','NOM-006-STPS','NOM-011-STPS','NOM-015-STPS','NOM-017-STPS','NOM-019-STPS','NOM-022-STPS','NOM-024-STPS','NOM-025-STPS','NOM-026-STPS','NOM-030-STPS', NOM_081,'PROTECCIÓN CIVIL','CAPACITACIÓN','DICTAMEN ESTRUCTURAL','ESTUDIO DE RIESGO','PLAN DE EMERGENCIA','PROGRAMA INTERNO'];
+  // Serie OTC (servicios complementarios): no admite NOM, que llevan informe.
+  // Solo cuenta el servicio que EMPIEZA con NOM: "CURSO NOM-020-STPS" es capacitación.
+  const esServicioNom = s => /^NOM[\s-]?\d/i.test(String(s || '').trim());
+  // Servicios que normalmente van en OTC; en OT/OTB se pide confirmación.
+  const SERVICIOS_OTC_PATRON = /PROTECCI[OÓ]N CIVIL|\bPIPC\b|PROGRAMA INTERNO|PLAN DE EMERGENCIA|CAPACITACI[OÓ]N|\bCURSO/i;
 
   let profileData = {};
   const excelCellMapping = {
@@ -701,17 +707,17 @@
   function getSelectedSeries() { const radio = document.querySelector('input[name="orderSeries"]:checked'); return radio ? radio.value : 'OT'; }
 
   // Regla estricta serie ↔ NOM-081-SEMARNAT-1994:
-  //  • Serie OT  → se coloca automáticamente (si aún no está en la tabla de servicios).
-  //  • Serie OTB → queda restringida: se retira de la tabla y se bloquea al registrar.
+  //  • Serie OT        → se coloca automáticamente (si aún no está en la tabla de servicios).
+  //  • Series OTB/OTC  → queda restringida: se retira de la tabla y se bloquea al registrar.
   function applySeriesNomRule(series) {
     const inputs = Array.from(document.querySelectorAll('#workTableBody .service-input'));
     const has081 = v => String(v || '').toUpperCase().includes('NOM-081');
 
-    if (series === 'OTB') {
+    if (series !== 'OT') {
       let removed = false;
       inputs.forEach(inp => { if (has081(inp.value)) { inp.value = ''; removed = true; } });
       if (removed) {
-        showStatus('workorderStatus', '⚠ La NOM-081-SEMARNAT-1994 no aplica a la serie OTB; se retiró de la orden.', 'warning');
+        showStatus('workorderStatus', `⚠ La NOM-081-SEMARNAT-1994 no aplica a la serie ${series}; se retiró de la orden.`, 'warning');
         updateDeclarationTable();
       }
       return;
@@ -739,6 +745,14 @@
     try {
       const resp = await SEAAuth.wrapFetch(`${SHEETS_SCRIPT_URL}?action=getSiguienteFolioOT&serie=${encodeURIComponent(series)}`, { method: 'GET' });
       const result = await resp.json();
+      // Respuesta tardía de una serie que el usuario ya cambió: no pisar el folio vigente.
+      if (getSelectedSeries() !== series) return;
+      if (result && result.success && result.serie && result.serie !== series) {
+        // Backend desplegado que no conoce la serie (la convertía a OT): no proponer un folio ajeno.
+        if (folioEl) folioEl.value = '';
+        if (infoEl) infoEl.textContent = `⚠ El servidor aún no reconoce la serie ${series} (respondió ${result.serie}). Actualiza el backend antes de usarla.`;
+        return;
+      }
       if (result && result.success) {
         if (folioEl) folioEl.value = result.folio;
         if (infoEl) infoEl.textContent = `Último en Base Maestra: ${result.ultimo} | Siguiente sugerido: ${result.folio} · editable si necesitas corregirlo.`;
@@ -799,7 +813,9 @@
       const val = this.value.toUpperCase().trim();
       if (val.length < 2) { suggestionsDiv.classList.remove('show'); return; }
       let pool = PREDEFINED_SERVICES;
-      if (getSelectedSeries() === 'OTB') pool = pool.filter(s => !s.toUpperCase().includes('NOM-081'));
+      const serie = getSelectedSeries();
+      if (serie === 'OTB') pool = pool.filter(s => !s.toUpperCase().includes('NOM-081'));
+      else if (serie === 'OTC') pool = pool.filter(s => !esServicioNom(s));
       const filtered = pool.filter(s => s.toUpperCase().includes(val));
       if (filtered.length) { suggestionsDiv.innerHTML = filtered.map(s => `<div data-service="${s}">${s}</div>`).join(''); suggestionsDiv.classList.add('show'); } else { suggestionsDiv.classList.remove('show'); }
     });
@@ -1005,6 +1021,26 @@ Tel: 222-941-7295`;
       if (getSelectedSeries() === 'OTB' && services.some(s => s.toUpperCase().includes('NOM-081'))) {
         showStatus('workorderStatus','❌ La NOM-081-SEMARNAT-1994 no está permitida en la serie OTB. Cámbiala a serie OT o retira esa NOM.','error');
         return;
+      }
+
+      // Serie OTC: SEAINF la reconoce por el prefijo del folio, así que folio y serie deben coincidir.
+      const serieOT = getSelectedSeries();
+      if (orderNumber.trim().toUpperCase().startsWith('OTC') !== (serieOT === 'OTC')) {
+        showStatus('workorderStatus','❌ El folio y la serie no coinciden: un folio OTC solo va con la serie OTC. Corrige el N° de Orden o la serie.','error');
+        return;
+      }
+      if (serieOT === 'OTC') {
+        const nomsEnOtc = services.filter(esServicioNom);
+        if (nomsEnOtc.length) {
+          showStatus('workorderStatus', `❌ La serie OTC es para servicios sin informe (capacitación, protección civil…). ${nomsEnOtc.join(', ')} lleva informe: regístrala en una OT u OTB.`, 'error');
+          return;
+        }
+      } else {
+        const complementarios = services.filter(s => SERVICIOS_OTC_PATRON.test(s));
+        if (complementarios.length && !confirm(`Estos servicios normalmente van en la serie OTC, que no genera número de informe:\n\n${complementarios.join('\n')}\n\n¿Registrar de todos modos en la serie ${serieOT}?`)) {
+          showStatus('workorderStatus','Registro cancelado. Cambia la serie a OTC para estos servicios.','warning');
+          return;
+        }
       }
 
       const payload = {

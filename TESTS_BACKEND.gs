@@ -14,12 +14,13 @@
 //   E09  SEAINF → updateEstatusInforme FINALIZADO (estatus interno del informe)
 //   E10–E18 → idempotencia, versionado, aislamiento, fallbacks seguros y
 //             coincidencia relajada de carpetas manuales / links legados
+//   E19  SEAOT/SEAINF → serie OTC: OT y expediente sin número de informe
 //
 // USO
 //   1. Configurar Script Properties de staging:
 //      SEA_E2E_ENABLED=TRUE, SEA_TEST_SPREADSHEET_ID y SEA_TEST_FOLDER_ID.
 //   2. Editor GAS → seleccionar runE2ETests → ▶ Ejecutar → Ver registros.
-//   Para ejecutar un flujo individual: runTest_E01 … runTest_E18.
+//   Para ejecutar un flujo individual: runTest_E01 … runTest_E19.
 //   Para solo pruebas unitarias: runUnitTests (no requiere staging).
 //
 // SEGURIDAD
@@ -46,6 +47,9 @@ var TEST_FOLIO_RESOLVED = 'TEST-E2E-RESOLVED';
 var TEST_FOLIO_FAKEID   = 'TEST-E2E-FAKE-ID';
 var TEST_FOLIO_FOREIGN  = 'TEST-E2E-FOREIGN-LINK';
 var TEST_FOLIO_INTRUDER = 'TEST-E2E-INTRUDER-RFC';
+// Serie OTC: el folio debe empezar con OTC. No sigue el formato OTCAAMM-N, así que
+// no altera el consecutivo real de la serie.
+var TEST_FOLIO_OTC      = 'OTC-TEST-E2E-001';
 var TEST_RFC_MANUAL     = 'MANU000000TST';
 var TEST_SUCURSAL       = 'Sucursal Test E2E';
 var TEST_SUCURSAL_HIST  = 'Sucursal Histórica E2E';
@@ -56,7 +60,8 @@ var TEST_FOLIOS_ = [
   TEST_FOLIO, TEST_FOLIO_B, TEST_FOLIO_MISSING,
   TEST_FOLIO_EMPTY, TEST_FOLIO_GARBAGE, TEST_FOLIO_LEGACY,
   TEST_FOLIO_LEGACYLINK, TEST_FOLIO_RESOLVED,
-  TEST_FOLIO_FAKEID, TEST_FOLIO_FOREIGN, TEST_FOLIO_INTRUDER
+  TEST_FOLIO_FAKEID, TEST_FOLIO_FOREIGN, TEST_FOLIO_INTRUDER,
+  TEST_FOLIO_OTC
 ];
 var TEST_RFCS_ = [TEST_RFC, TEST_RFC_HIST, TEST_RFC_MISSING, TEST_RFC_MANUAL];
 
@@ -159,13 +164,15 @@ function runE2ETests() {
   var results = {
     e01: false, e02: false, e03: false, e04: false, e05: false, e06: false,
     e07: false, e08: false, e09: false, e10: false, e11: false, e12: false,
-    e13: false, e14: false, e15: false, e16: false, e17: false, e18: false
+    e13: false, e14: false, e15: false, e16: false, e17: false, e18: false,
+    e19: false
   };
 
   var tests = [
     runTest_E01, runTest_E02, runTest_E03, runTest_E04, runTest_E05, runTest_E06,
     runTest_E07, runTest_E08, runTest_E09, runTest_E10, runTest_E11, runTest_E12,
-    runTest_E13, runTest_E14, runTest_E15, runTest_E16, runTest_E17, runTest_E18
+    runTest_E13, runTest_E14, runTest_E15, runTest_E16, runTest_E17, runTest_E18,
+    runTest_E19
   ];
   for (var n = 0; n < tests.length; n++) {
     var number = String(n + 1).padStart(2, '0');
@@ -205,6 +212,7 @@ function runE2ETests() {
   Logger.log('  E16 OT sin carpeta/legado  : ' + (results.e16 ? 'OK' : 'FALLO'));
   Logger.log('  E17 retroajuste carpetas   : ' + (results.e17 ? 'OK' : 'FALLO'));
   Logger.log('  E18 carpetas manuales      : ' + (results.e18 ? 'OK' : 'FALLO'));
+  Logger.log('  E19 serie OTC sin informe  : ' + (results.e19 ? 'OK' : 'FALLO'));
   Logger.log('══════════════════════════════════════════════');
 
   // Ejecutar también las pruebas unitarias
@@ -1259,6 +1267,84 @@ function runTest_E18() {
 }
 
 // =========================================================================
+// E19 — Serie OTC: OT y expediente sin número de informe
+// =========================================================================
+// Requiere que E01 haya creado el cliente de prueba y su carpeta.
+// Verifica que:
+//   - Una OTC no admite servicios NOM y el rechazo no escribe nada
+//   - La OTC se registra, aparece pendiente en SEAINF y rechaza número de informe
+//   - Su expediente se crea sin número, nombrado por el folio, y sale de pendientes
+//   - La serie la decide la OT registrada: el payload dice tipoOrden OTA y no importa
+function runTest_E19() {
+  _activateE2EStaging_();
+  Logger.log('');
+  Logger.log('── E19: serie OTC sin número de informe ─────────');
+
+  var cliente = 'EMPRESA TEST E2E SA DE CV';
+  var payloadOT = function(nomServicio) {
+    return {
+      action:               'registrarOT',
+      ot_folio:             TEST_FOLIO_OTC,
+      tipo_orden:           'OTC',
+      nom_servicio:         nomServicio,
+      cliente_razon_social: cliente,
+      sucursal:             TEST_SUCURSAL,
+      rfc:                  TEST_RFC,
+      personal_asignado:    'Ing. Test',
+      fecha_visita:         '2026-10-01',
+      fecha_entrega_limite: '',
+      link_drive_cliente:   _ctx_.linkDriveCliente || '',
+      observaciones:        'OTC generada por test E2E'
+    };
+  };
+  var sheetOT = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+  var sheetInf = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_INFORMES);
+
+  _eq_('E19-1: una NOM en OTC se rechaza',
+    fase2_RegistrarOT(payloadOT('CAPACITACIÓN, NOM-025-STPS')).code, 'NOM_EN_OTC');
+  _eq_('E19-2: el rechazo no escribe la OT', _countRowsByOt_(sheetOT, TEST_FOLIO_OTC, CO.OT), 0);
+
+  _check_('E19-3: OT OTC registrada', fase2_RegistrarOT(payloadOT('CAPACITACIÓN')).success === true);
+  var orden = (getOrdenesSafe_().data || []).filter(function(o) { return o.ot === TEST_FOLIO_OTC; })[0];
+  _check_('E19-4: la OTC aparece pendiente en SEAINF', !!orden);
+  _eq_('E19-5: getOrdenes devuelve la serie OTC', orden && orden.tipo_orden, 'OTC');
+
+  var conNumero = fase3_CrearExpediente(_createPayload_(
+    TEST_FOLIO_OTC, 'EA-2610-CAP-0001', 'CAPACITACIÓN', TEST_RFC, TEST_SUCURSAL, cliente, _ctx_.linkDriveCliente));
+  _check_('E19-6: la OTC rechaza un número de informe', conNumero.success === false);
+  _eq_('E19-7: el rechazo no escribe INFORMES', _countRowsByOt_(sheetInf, TEST_FOLIO_OTC, CI.OT), 0);
+
+  var sinNumero = _createPayload_(
+    TEST_FOLIO_OTC, '', 'CAPACITACIÓN', TEST_RFC, TEST_SUCURSAL, cliente, _ctx_.linkDriveCliente);
+  var exp = fase3_CrearExpediente(sinNumero);
+  _check_('E19-8: la OTC crea expediente sin número', exp.success === true && !!exp.url);
+  var m = String(exp.url || '').match(/folders\/([a-zA-Z0-9_-]+)/);
+  _check_('E19-9: url del expediente con ID de carpeta', !!m);
+  _ctx_.folderIdsToTrash.push(m[1]);
+  _eq_('E19-10: carpeta nombrada por el folio, sin consecutivo',
+    DriveApp.getFolderById(m[1]).getName(),
+    sanitizeFolderName_('02_Expediente_' + TEST_FOLIO_OTC + '_CAPACITACIÓN'));
+
+  var filaInf = null;
+  var rowsInf = sheetInf.getDataRange().getValues();
+  for (var i = rowsInf.length - 1; i >= 1; i--) {
+    if (normalizeOtForSeainf_(rowsInf[i][CI.OT]) === normalizeOtForSeainf_(TEST_FOLIO_OTC)) {
+      filaInf = rowsInf[i]; break;
+    }
+  }
+  _check_('E19-11: fila de expediente en INFORMES', filaInf !== null);
+  _eq_('E19-12: la fila no tiene número de informe', filaInf[CI.NUM_INFORME], '');
+  _eq_('E19-13: la fila conserva la serie OTC', filaInf[CI.TIPO_ORDEN], 'OTC');
+  _check_('E19-14: con expediente, la OTC sale de pendientes',
+    !(getOrdenesSafe_().data || []).some(function(o) { return o.ot === TEST_FOLIO_OTC; }));
+
+  var reintento = fase3_CrearExpediente(sinNumero);
+  _check_('E19-15: el reintento reutiliza el expediente',
+    reintento.success === true && reintento.alreadyExists === true && reintento.url === exp.url);
+  _eq_('E19-16: una sola fila INFORMES para la OTC', _countRowsByOt_(sheetInf, TEST_FOLIO_OTC, CI.OT), 1);
+}
+
+// =========================================================================
 // LIMPIEZA — elimina todos los datos de prueba
 // =========================================================================
 function _cleanup_() {
@@ -1621,6 +1707,34 @@ function runUnitTests() {
   };
   _check_('U86: carpeta sin RFC no se adjudica por razón social',
     !folderMatchesClientBranch_(sucursalStub, 'BCA001206674', 'Matriz', 'BODEGA CRUZ AZUL SA DE CV'));
+
+  // ── Serie OTC: servicios complementarios sin número de informe ────────────
+  // U94–U98 validan guardas que responden antes de abrir Sheets o Drive.
+  _check_('U87: OTC se reconoce sin importar mayúsculas ni espacios',
+    esSerieOTC_(' otc ') && !esSerieOTC_('OTB') && !esSerieOTC_(''));
+  _check_('U88: folio OTC con serie OTC es coherente', folioCoincideConSerieOTC_('OTC2610-1', 'OTC'));
+  _check_('U89: folio OTC con serie OTB se rechaza', !folioCoincideConSerieOTC_('OTC2610-1', 'OTB'));
+  _check_('U90: serie OTC con folio OTB se rechaza', !folioCoincideConSerieOTC_('OTB2610-1', 'OTC'));
+  _check_('U91: folios OT/OTB e históricos no cambian',
+    folioCoincideConSerieOTC_('OT2610-1', 'OT') && folioCoincideConSerieOTC_('OT25- 29', 'OTB') &&
+    folioCoincideConSerieOTC_(TEST_FOLIO, 'OTA'));
+  _eq_('U92: detecta la NOM dentro de una OTC',
+    serviciosNomEnLista_('CAPACITACIÓN, NOM-025-STPS').join('|'), 'NOM-025-STPS');
+  _eq_('U93: un curso sobre una NOM no cuenta como NOM',
+    serviciosNomEnLista_('CURSO NOM-020-STPS; PIPC | PROTECCIÓN CIVIL').length, 0);
+  _eq_('U94: una serie de OT desconocida se rechaza',
+    getSiguienteFolioOT_({ serie: 'OTX' }).success, false);
+  _eq_('U95: la serie OTC no pide consecutivo de informe',
+    getConsecutivoSafe_({ tipo: 'OTC', nom: 'PIPC', anio: '26', mes: '10' }).success, false);
+  _eq_('U96: registrarOT rechaza folio OTC con serie OTB',
+    fase2_RegistrarOT({ ot_folio: 'OTC2610-1', tipo_orden: 'OTB', cliente_razon_social: 'X',
+      sucursal: TEST_SUCURSAL, rfc: TEST_RFC }).code, 'SERIE_FOLIO_INCONSISTENTE');
+  _eq_('U97: registrarOT rechaza una NOM en OTC',
+    fase2_RegistrarOT({ ot_folio: 'OTC2610-1', tipo_orden: 'OTC', nom_servicio: 'NOM-011-STPS',
+      cliente_razon_social: 'X', sucursal: TEST_SUCURSAL, rfc: TEST_RFC }).code, 'NOM_EN_OTC');
+  _eq_('U98: número de informe mal formado se rechaza',
+    fase3_CrearExpediente({ data: { ot: 'OTC2610-1', numInforme: 'EA-2610-PIPC' } }).error,
+    'Número de informe inválido.');
 
   var pass = _results_.filter(function(r){ return r.indexOf('PASS') === 0; }).length;
   var fail = _results_.filter(function(r){ return r.indexOf('FAIL') === 0; }).length;

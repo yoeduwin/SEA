@@ -141,6 +141,32 @@ const ESTATUS_EXTERNO_VALIDOS_   = ['NO INICIADO', 'EN PROCESO', 'EN PAUSA', 'EN
 const ESTATUS_EXTERNO_TERMINALES_ = ['FINALIZADO', 'CANCELADO'];
 // Estatus desde los que se puede pausar una OT
 const ESTATUS_PAUSABLES_          = ['NO INICIADO', 'EN PROCESO'];
+// Series de OT (col C de ORDENES_TRABAJO y prefijo del folio):
+//   OT / OTB → servicios con informe técnico y número de informe.
+//   OTC      → servicios complementarios (capacitación, protección civil…):
+//              llevan OT y expediente, pero NO número de informe.
+const SERIES_OT_VALIDAS_ = ['OT', 'OTB', 'OTC'];
+const SERIE_OTC_         = 'OTC';
+
+function esSerieOTC_(tipo) {
+  return String(tipo == null ? '' : tipo).trim().toUpperCase() === SERIE_OTC_;
+}
+
+// SEAINF reconoce la serie por el prefijo del folio y el backend por la col C:
+// un folio OTC solo es válido con serie OTC, y viceversa.
+function folioCoincideConSerieOTC_(folio, tipo) {
+  const f = String(folio == null ? '' : folio).trim().toUpperCase();
+  return (f.indexOf(SERIE_OTC_) === 0) === esSerieOTC_(tipo);
+}
+
+// Servicios NOM (llevan informe) dentro de una lista de servicios. Solo cuenta
+// el servicio que EMPIEZA con NOM: "CURSO NOM-020-STPS" es capacitación.
+function serviciosNomEnLista_(nomServicio) {
+  return String(nomServicio == null ? '' : nomServicio)
+    .split(/[,;|]/)
+    .map(s => s.trim())
+    .filter(s => /^NOM[\s-]?\d/i.test(s));
+}
 // =========================================================================
 // MÓDULO DE SEGURIDAD — Autenticación Google OAuth + reCAPTCHA v3
 // =========================================================================
@@ -921,6 +947,24 @@ function fase2_RegistrarOT(data) {
   if (!data || !data.ot_folio || !data.cliente_razon_social || !data.sucursal || !data.rfc) {
     return { success: false, error: 'Faltan datos obligatorios de la OT: folio, cliente, sucursal o RFC.' };
   }
+  if (!folioCoincideConSerieOTC_(data.ot_folio, data.tipo_orden)) {
+    return {
+      success: false,
+      code: 'SERIE_FOLIO_INCONSISTENTE',
+      error: 'El folio y la serie no coinciden: un folio OTC solo se registra con la serie OTC, y la serie OTC solo con folio OTC.'
+    };
+  }
+  if (esSerieOTC_(data.tipo_orden)) {
+    const nomsEnOtc = serviciosNomEnLista_(data.nom_servicio);
+    if (nomsEnOtc.length) {
+      return {
+        success: false,
+        code: 'NOM_EN_OTC',
+        error: 'La serie OTC es para servicios sin informe (capacitación, protección civil…). Registra ' +
+          nomsEnOtc.join(', ') + ' en una OT u OTB.'
+      };
+    }
+  }
   // No confiar a ciegas en el enlace recibido: sólo se acepta si resuelve a
   // una carpeta real de Drive que corresponda al RFC+sucursal de la OT (un ID
   // con formato válido puede estar mal tecleado, ser un archivo o pertenecer
@@ -1346,10 +1390,11 @@ function fase3_CrearExpediente(payload) {
   const info = payload && payload.data ? payload.data : {};
   const files = payload && payload.files ? payload.files : [];
 
-  if (!info.ot || !info.numInforme) {
+  if (!info.ot) {
     return { success: false, error: 'Faltan OT o número de informe.' };
   }
-  if (!/^EA-.*-\d{4}$/.test(String(info.numInforme).trim())) {
+  const numInforme = String(info.numInforme == null ? '' : info.numInforme).trim();
+  if (numInforme && !/^EA-.*-\d{4}$/.test(numInforme)) {
     return { success: false, error: 'Número de informe inválido.' };
   }
 
@@ -1365,6 +1410,16 @@ function fase3_CrearExpediente(payload) {
   if (!otMatch) return { success: false, error: 'OT no encontrada.' };
 
   const otRow = values[otMatch.arrayIndex];
+  // La serie la decide la OT registrada (col C), no el payload: OTC nunca lleva
+  // número de informe y las demás series siempre lo llevan.
+  const esOTC = esSerieOTC_(otRow[CO.TIPO]);
+  if (esOTC && numInforme) {
+    return { success: false, error: 'Las OTs de la serie OTC no llevan número de informe. No se creó el expediente.' };
+  }
+  if (!esOTC && !numInforme) {
+    return { success: false, error: 'Faltan OT o número de informe.' };
+  }
+  info.numInforme = numInforme;
   // Normalizar primero desde la fuente canónica; después validar.
   info.rfc = String(otRow[CO.RFC] || info.rfc || '').trim();
   info.sucursal = String(otRow[CO.SUCURSAL] || info.sucursal || '').trim();
@@ -1416,10 +1471,11 @@ function fase3_CrearExpediente(payload) {
     };
   }
 
-  const consecutivoMatch = String(info.numInforme).match(/-(\d{4})$/);
+  const consecutivoMatch = numInforme.match(/-(\d{4})$/);
   const consecutivoPrefix = consecutivoMatch ? consecutivoMatch[1] : '0000';
+  // OTC no tiene consecutivo de informe: su expediente se nombra por el folio.
   const folderName = sanitizeFolderName_(
-    '02_Expediente_' + consecutivoPrefix + '_' + info.ot + '_' + info.nom
+    '02_Expediente_' + (esOTC ? '' : consecutivoPrefix + '_') + info.ot + '_' + info.nom
   );
 
   const sameName = branchFolder.getFoldersByName(folderName);
@@ -1532,7 +1588,8 @@ function getOrdenesSafe_() {
   const sheet = ss.getSheetByName(CONFIG.SHEET_OT);
   const values = sheet.getDataRange().getDisplayValues();
 
-  // OTs que YA tienen expediente (fila en INFORMES con número de informe).
+  // OTs que YA tienen expediente (fila en INFORMES con número de informe; en la
+  // serie OTC, que no lleva número, basta la fila del expediente).
   // Regla del negocio: una OT = un expediente → una vez generado, desaparece
   // del selector de "Nuevo Expediente".
   const otsConInforme = {};
@@ -1542,7 +1599,7 @@ function getOrdenesSafe_() {
     infValues.forEach(row => {
       const num = String(row[CI.NUM_INFORME] || '').trim();
       const otInf = normalizeOtForSeainf_(row[CI.OT]);
-      if (num && otInf) otsConInforme[otInf] = true;
+      if (otInf && (num || esSerieOTC_(row[CI.TIPO_ORDEN]))) otsConInforme[otInf] = true;
     });
   } catch (e) {
     Logger.log('getOrdenesSafe_: no se pudo leer INFORMES para filtrar OTs con expediente: ' + e.message);
@@ -1584,12 +1641,18 @@ function getOrdenesSafe_() {
  * MÁS RECIENTE de la serie y se toma el máximo dentro de una banda alrededor de ese ancla, para no
  * repetir folios ante filas desordenadas o duplicadas al final de la hoja.
  *
- * @param {{serie?:string}} params  serie = 'OT' | 'OTB' (default 'OT')
+ * El mismo anclaje separa la serie OTC: 'OT' exige dígitos tras el prefijo, así que nunca
+ * cuenta folios 'OTB' ni 'OTC'. Una serie desconocida se rechaza (antes se convertía en 'OT'
+ * sin avisar y podía repetir folios).
+ *
+ * @param {{serie?:string}} params  serie = 'OT' | 'OTB' | 'OTC' (default 'OT')
  * @returns {{success:boolean, serie:string, folio:string, ultimo:string, consecutivo:number}}
  */
 function getSiguienteFolioOT_(params) {
   var serie = String((params && params.serie) || 'OT').toUpperCase().trim();
-  if (serie !== 'OT' && serie !== 'OTB') serie = 'OT';
+  if (SERIES_OT_VALIDAS_.indexOf(serie) === -1) {
+    return { success: false, error: 'Serie de OT no válida: ' + serie + '. Usa OT, OTB u OTC.' };
+  }
 
   var sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
   var values = sheet.getDataRange().getDisplayValues().slice(1);
@@ -1667,6 +1730,9 @@ function claveServicio_(nom) {
 }
 
 function getConsecutivoSafe_(params) {
+  if (esSerieOTC_(params && params.tipo)) {
+    return { success: false, error: 'La serie OTC no lleva número de informe.' };
+  }
   // Lee de INFORMES para encontrar el siguiente consecutivo.
   const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_INFORMES);
   const dataRange = sheet.getDataRange().getDisplayValues().slice(1);

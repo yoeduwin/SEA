@@ -34,7 +34,7 @@ El **Sistema SEA** (Sistema Ejecutivo Ambiental) es una plataforma web integral 
 ### Características principales
 
 - Registro centralizado de clientes con carpetas en Google Drive creadas automáticamente
-- Generación y seguimiento de Órdenes de Trabajo (OT y OTB)
+- Generación y seguimiento de Órdenes de Trabajo (OT, OTB y OTC)
 - Creación de expedientes con estructura de carpetas estandarizada
 - Dashboard en tiempo real con semáforos de estatus y alertas de vencimiento
 - Portal público para asesores, intermediarios y consultores (PAIC)
@@ -181,13 +181,14 @@ El formulario incluye un modal de búsqueda por RFC que pre-llena los campos si 
 |---|---|
 | OTA | Orden de Trabajo Ambiental (estándar) |
 | OTB | Orden de Trabajo de Brigada (campo) |
+| OTC | Orden de servicios complementarios (capacitación, protección civil…): lleva OT y expediente, pero **no** número de informe |
 
 #### Campos de la Orden de Trabajo
 
 | Campo | Requerido | Descripción |
 |---|---|---|
 | Folio OT | Sí | Identificador único (ej. EA-2026-001) |
-| Tipo de orden | Sí | OTA / OTB |
+| Tipo de orden | Sí | OTA / OTB / OTC |
 | Servicio NOM | Sí | Norma a aplicar (NOM-035, NOM-036, etc.) |
 | Cliente (razón social) | Sí | Nombre del cliente |
 | Sucursal | Sí | Planta o sucursal |
@@ -208,6 +209,18 @@ El formulario incluye un modal de búsqueda por RFC que pre-llena los campos si 
 5. Backend crea fila en ORDENES_TRABAJO con estatus inicial "NO INICIADO"
 6. El link_drive_cliente se guarda en la OT para referencia posterior
 ```
+
+#### Serie OTC (servicios complementarios)
+
+La serie OTC separa los servicios que no generan informe técnico del laboratorio (capacitación, protección civil y similares), los ejecute personal propio o un externo. Tiene su propio consecutivo (`OTC2610-1`, `OTC2610-2`…) y las siguientes reglas, validadas en SEAOT y de nuevo en el backend:
+
+| Regla | Comportamiento |
+|---|---|
+| Folio ↔ serie | Un folio que empieza con `OTC` solo se registra con la serie OTC, y viceversa (SEAINF reconoce la serie por el prefijo del folio). |
+| Servicios NOM | No se admiten en OTC: llevan informe y van en OT u OTB. Cuenta solo el servicio que **empieza** con NOM; `CURSO NOM-020-STPS` es capacitación y sí va en OTC. |
+| NOM-081 | Solo se agrega automáticamente en la serie OT; al cambiar a OTB u OTC se retira. |
+| Servicios de PC o capacitación en OT/OTB | SEAOT pide confirmación antes de registrarlos fuera de OTC. |
+| Backend anterior | Si el backend desplegado aún no reconoce la serie, SEAOT avisa y no propone folio. |
 
 #### Carga desde Excel
 
@@ -264,7 +277,7 @@ El destino de los formatos se controla con la constante `FORMATOS_BASE` en `SEAO
 ```
 Paso 1: Seleccionar OT
         ↓ (desbloquea Paso 2)
-Paso 2: Asignar número de informe (consecutivo automático EA-AAMM-NOM-0000)
+Paso 2: Asignar número de informe (consecutivo automático EA-AAMM-NOM-0000; no aplica a la serie OTC)
         ↓ (desbloquea Paso 3)
 Paso 3: Crear estructura de carpetas en Drive
         ↓ (desbloquea Paso 4)
@@ -272,6 +285,10 @@ Paso 4: Subir documentos a las carpetas correspondientes
         ↓
 Paso 5: Confirmar expediente completo
 ```
+
+#### Expedientes de la serie OTC
+
+Una OT de la serie OTC crea su expediente sin número de informe: el campo aparece deshabilitado («No aplica») y SEAINF no solicita consecutivo. El backend decide la serie con la columna Tipo de la OT registrada (no con el payload), rechaza cualquier número enviado para una OTC y sigue exigiéndolo para OT/OTB. La carpeta se nombra por el folio (`02_Expediente_{FOLIO_OT}_{SERVICIO}`) y la fila de INFORMES queda con el número vacío y la serie `OTC`. La OT sale del selector de pendientes en cuanto tiene esa fila, y el tablero de SEAINF la muestra como «Sin informe (OTC)».
 
 #### Formato del número de informe
 
@@ -411,7 +428,7 @@ Para clientes con el centinela `SIN_RFC`, la carpeta padre solo se reutiliza cua
 |---|---|---|---|
 | 1 | 0 | Fecha | Fecha de creación de la OT |
 | 2 | 1 | OT (Folio) | Identificador único |
-| 3 | 2 | Tipo | OTA / OTB |
+| 3 | 2 | Tipo | OTA / OTB / OTC |
 | 4 | 3 | Servicio NOM | Norma aplicada |
 | 5 | 4 | Cliente | Razón social |
 | 6 | 5 | Sucursal | Planta o sucursal |
@@ -476,6 +493,7 @@ Registro automático de todos los cambios de estatus. Se crea automáticamente a
 | Carpeta raíz del cliente | `{RFC} — {RAZON_SOCIAL_LIMPIA}` |
 | Carpeta de sucursal | `{NOMBRE_SUCURSAL}` |
 | Carpeta de expediente | `02_Expediente_{CONSECUTIVO}_{FOLIO_OT}_{NOM}` |
+| Carpeta de expediente (serie OTC) | `02_Expediente_{FOLIO_OT}_{SERVICIO}` |
 
 La función `cleanCompanyName()` elimina sufijos legales (SA DE CV, S.A., S.C., etc.) del nombre para mantener los nombres de carpeta cortos y legibles. La función `sanitizeFileName()` elimina caracteres especiales y trunca a 50 caracteres.
 
@@ -613,7 +631,7 @@ Crea una nueva Orden de Trabajo en ORDENES_TRABAJO.
 {
   action: 'registrarOT',
   ot_folio: 'EA-2026-001',
-  tipo_orden: 'OTA',           // 'OTA' | 'OTB'
+  tipo_orden: 'OTA',           // 'OTA' | 'OTB' | 'OTC'
   nom_servicio: 'NOM-035-STPS',
   cliente_razon_social: 'EMPRESA SA DE CV',
   sucursal: 'Matriz',
@@ -681,6 +699,8 @@ Crea de forma idempotente la carpeta del expediente en Drive y registra el exped
   rejectedFiles: [] // puede contener archivos rechazados si los demás sí se guardaron
 }
 ```
+
+En la serie OTC, `numInforme` se omite: el backend lo rechaza si llega uno y usa la columna Tipo de la OT para decidir la serie.
 
 La operación es idempotente por OT. Si el expediente ya existe, el backend reutiliza la carpeta registrada y carga únicamente los archivos recibidos que aún falten. Los archivos válidos no se pierden porque otro archivo sea rechazado; la interfaz muestra la advertencia y conserva el formulario para reemplazar los rechazados y reintentar sobre el mismo expediente.
 
@@ -848,6 +868,8 @@ Pasos para actualizar sin romper los frontends:
 
 ⚠️ Usar **"Nueva versión" sobre la implementación existente**, NUNCA "Nueva implementación": una implementación nueva genera otra URL `/exec` y todos los frontends (SEAPD, SEAOT, SEAINF, SEADB) dejarían de apuntar al backend.
 
+> **Serie OTC:** desplegar el backend antes de publicar los HTML. Un backend anterior no conoce la serie OTC; SEAOT lo detecta, avisa y no propone folio, y ese backend tampoco crea expedientes sin número.
+
 ---
 
 ## 9. Sistema de Respaldos
@@ -932,7 +954,7 @@ Cambiar la celda `Activo` de `TRUE` a `FALSE`. El sistema bloqueará el acceso e
 
 | Tipo | Descripción |
 |---|---|
-| Unitarias | 74 comprobaciones de lógica pura, sin Drive ni Sheets |
+| Unitarias | 101 comprobaciones de lógica pura, sin Drive ni Sheets |
 | E2E | Pruebas completas contra recursos exclusivos de staging |
 | Correo | Prueba manual de envío; no forma parte del runner E2E |
 
@@ -972,29 +994,30 @@ El Spreadsheet de staging debe conservar los contratos `CLIENTES_MAESTRO` A–V,
 | E16 | SEAOT | Cliente sin carpeta bloquea la OT; enlace legado y resolución server-side la aceptan con link canónico |
 | E17 | Drive | Expediente legado de cuatro subcarpetas se completa a seis sin duplicados |
 | E18 | Drive | Carpeta manual con el RFC fuera del prefijo se resuelve por fila con link legado y por búsqueda en raíz; otro RFC no puede adoptarla |
+| E19 | SEAOT/SEAINF | Serie OTC: rechaza NOM y número de informe; crea el expediente sin número, nombrado por el folio, y la OT sale de pendientes |
 
 ### 11.4 Cómo ejecutar
 
 **Solo unitarias, sin efectos secundarios:**
 
 1. Seleccionar `runUnitTests`.
-2. Ejecutar y revisar el registro: el resultado esperado es `89 PASS | 0 FAIL`.
+2. Ejecutar y revisar el registro: el resultado esperado es `101 PASS | 0 FAIL`.
 
 **E2E completas, únicamente después de configurar staging:**
 
 1. Confirmar las tres Script Properties de staging.
 2. Seleccionar `runE2ETests`.
-3. Ejecutar y revisar los resultados E01–E18.
+3. Ejecutar y revisar los resultados E01–E19.
 4. El runner realiza limpieza previa y final. Elimina filas de prueba en CLIENTES, ORDENES, INFORMES y AUDITORIA, y envía sus carpetas de staging —incluida `01_Cliente`— a la papelera.
 
-Cada `runTest_E01` … `runTest_E18` vuelve a comprobar el guard de staging cuando se ejecuta individualmente.
+Cada `runTest_E01` … `runTest_E19` vuelve a comprobar el guard de staging cuando se ejecuta individualmente.
 
 ### 11.5 Datos reservados para pruebas
 
 | Dato | Valor principal |
 |---|---|
 | RFC | `XTES000000TST` (auxiliares: `HIST000000TST`, `MISS000000TST`, `MANU000000TST`) |
-| Folios | `TEST-E2E-001`, `TEST-E2E-002` y auxiliares `TEST-E2E-*` |
+| Folios | `TEST-E2E-001`, `TEST-E2E-002`, auxiliares `TEST-E2E-*` y `OTC-TEST-E2E-001` (serie OTC) |
 | Sucursal | `Sucursal Test E2E` (auxiliares: `Sucursal Histórica E2E`, `Sucursal Manual E2E`) |
 | Empresa | `EMPRESA TEST E2E SA DE CV` (E18 usa `CLIENTE MANUAL E2E SA DE CV`) |
 
@@ -1099,6 +1122,7 @@ CacheService.getScriptCache().removeAll([]);
 | **OT** | Orden de Trabajo |
 | **OTA** | Orden de Trabajo Ambiental (estudio en campo) |
 | **OTB** | Orden de Trabajo de Brigada |
+| **OTC** | Orden de servicios complementarios, sin número de informe |
 | **RFC** | Registro Federal de Contribuyentes |
 | **HDC** | Hoja de Campo |
 | **PIPC** | Programa Interno de Protección Civil |
