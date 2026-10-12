@@ -722,7 +722,10 @@ function fase1_RegistrarCliente(data) {
     }
 
     const companyClean = cleanCompanyName(data.razon_social || 'Cliente');
-    const branchClean = sanitizeFileName(data.sucursal || 'Matriz');
+    // Sucursal sin espacios sobrantes: un espacio al final ("Planta Norte ")
+    // dejaba la fila y la carpeta imposibles de encontrar desde SEAOT.
+    const sucursalLimpia = String(data.sucursal || '').replace(/\s+/g, ' ').trim();
+    const branchClean = sanitizeFileName(sucursalLimpia || 'Matriz');
     const timestamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'yyMMdd');
     const esPaic = String((data && data.portal_origen) || '').toUpperCase() === 'PAIC';
 
@@ -766,9 +769,14 @@ function fase1_RegistrarCliente(data) {
 
     // 2. LÓGICA DE CARPETA HIJO (Sucursal)
     let carpetaCliente;
-    const bIter = parentFolder.getFoldersByName(branchClean);
-    if (bIter.hasNext()) {
-      carpetaCliente = bIter.next();
+    // Por clave normalizada, para reutilizar carpetas históricas creadas con
+    // espacios sobrantes en vez de duplicarlas.
+    const bIter = parentFolder.getFolders();
+    while (bIter.hasNext()) {
+      const candidate = bIter.next();
+      if (branchKey_(candidate.getName()) === branchKey_(branchClean)) { carpetaCliente = candidate; break; }
+    }
+    if (carpetaCliente) {
       addLog(`Carpeta Sucursal encontrada: ${branchClean}`);
     } else {
       carpetaCliente = parentFolder.createFolder(branchClean);
@@ -786,7 +794,7 @@ function fase1_RegistrarCliente(data) {
     const rowData = [
       Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'dd/MM/yyyy HH:mm:ss'), // 1. Fecha Registro
       data.razon_social || '',                                          // 2. Razón Social
-      data.sucursal || '',                                              // 3. Sucursal
+      sucursalLimpia,                                                   // 3. Sucursal
       data.rfc || '',                                                   // 4. RFC
       data.representante_legal || '',                                   // 5. Representante Legal
       data.direccion_evaluacion || '',                                  // 6. Dirección Evaluación
@@ -813,7 +821,7 @@ function fase1_RegistrarCliente(data) {
     // evitando desalineación cuando hay filas residuales de ejecuciones previas.
     for (let i = allData.length - 1; i >= 1; i--) {
       if (String(allData[i][CL.RFC]).toUpperCase().trim() === rfcClean &&
-          sanitizeFileName(String(allData[i][CL.SUCURSAL] || 'Matriz')).toLowerCase() === branchClean.toLowerCase()) {
+          branchKey_(allData[i][CL.SUCURSAL]) === branchKey_(branchClean)) {
         rowIndex = i + 1;
         break;
       }
@@ -1101,9 +1109,7 @@ function rfcAppearsDelimited_(folderName, rfc) {
 // carpeta, y es un dato obligatorio en todo registro.
 function folderMatchesClientBranch_(folder, rfc, sucursal, razonSocial) {
   if (!folder) return false;
-  const expectedBranch = sanitizeFileName(sucursal || 'Matriz').toLowerCase();
-  const actualBranch = sanitizeFileName(folder.getName() || 'Matriz').toLowerCase();
-  if (actualBranch !== expectedBranch) return false;
+  if (branchKey_(folder.getName()) !== branchKey_(sucursal)) return false;
 
   const expectedRfc = String(rfc || '').toUpperCase().trim();
   if (!expectedRfc) return false;
@@ -1126,12 +1132,12 @@ function findExactClientBranchFolder_(rfc, sucursal, razonSocial) {
   if (!sheetCli) return null;
   const rows = sheetCli.getDataRange().getValues();
   const expectedRfc = String(rfc).toUpperCase().trim();
-  const expectedBranch = sanitizeFileName(sucursal || 'Matriz').toLowerCase();
+  const expectedBranch = branchKey_(sucursal);
   const expectedCompany = cleanCompanyName(razonSocial || '');
 
   for (let i = rows.length - 1; i >= 1; i--) {
     if (String(rows[i][CL.RFC]).toUpperCase().trim() !== expectedRfc) continue;
-    if (sanitizeFileName(rows[i][CL.SUCURSAL] || 'Matriz').toLowerCase() !== expectedBranch) continue;
+    if (branchKey_(rows[i][CL.SUCURSAL]) !== expectedBranch) continue;
     if (expectedRfc === 'SIN_RFC' &&
         (!expectedCompany || cleanCompanyName(rows[i][CL.RAZON_SOCIAL] || '') !== expectedCompany)) continue;
     const folder = getFolderByDriveLinkSafe_(rows[i][CL.LINK_DRIVE]);
@@ -1158,7 +1164,7 @@ function findClientBranchByExactPath_(rfc, razonSocial, sucursal) {
   if (!rfc || !sucursal) return null;
   const root = DriveApp.getFolderById(CONFIG.FOLDER_ID);
   const expectedRfc = String(rfc).toUpperCase().trim();
-  const expectedBranch = sanitizeFileName(sucursal || 'Matriz').toLowerCase();
+  const expectedBranch = branchKey_(sucursal);
   const expectedSinRfcParent = 'SIN_RFC - ' + cleanCompanyName(razonSocial || 'Cliente');
 
   // Folder.searchFolders limita la consulta a los hijos directos de la raíz.
@@ -1186,7 +1192,7 @@ function scanParentsForBranch_(parents, expectedRfc, razonSocial, expectedBranch
     const branches = parent.getFolders();
     while (branches.hasNext()) {
       const branch = branches.next();
-      if (sanitizeFileName(branch.getName() || 'Matriz').toLowerCase() === expectedBranch) return branch;
+      if (branchKey_(branch.getName()) === expectedBranch) return branch;
     }
   }
   return null;
@@ -2795,6 +2801,13 @@ function formatFileSize(bytes) {
 }
 var LEGAL_SUFFIX_REGEX_ = / S\.A\. DE C\.V\.| SA DE CV| S\.A\.| S\.C\./gi;
 function cleanCompanyName(name) { return sanitizeFileName((name || 'Cliente').replace(LEGAL_SUFFIX_REGEX_, '').trim()); }
+// Clave de comparación de sucursal: ignora mayúsculas y espacios sobrantes
+// (al inicio, al final o repetidos), que SEAPD no recortaba al registrar y
+// que SEAOT sí recorta al buscar.
+function branchKey_(sucursal) {
+  const clean = String(sucursal || '').replace(/\s+/g, ' ').trim();
+  return sanitizeFileName(clean || 'Matriz').trim().toLowerCase();
+}
 function sanitizeFileName(name) { return String(name || 'Sin_nombre').replace(/[^a-z0-9áéíóúñü ]/gi, '_').substring(0, 50); }
 function guardarLogEnDrive(carpetaCliente, logEntries, data) {
   try { const blob = Utilities.newBlob(logEntries.join('\n'), 'text/plain', `LOG_${Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'yyyyMMdd_HHmmss')}.txt`); carpetaCliente.createFile(blob); } catch (e) {}
