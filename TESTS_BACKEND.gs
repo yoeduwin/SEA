@@ -1736,6 +1736,35 @@ function runUnitTests() {
     fase3_CrearExpediente({ data: { ot: 'OTC2610-1', numInforme: 'EA-2610-PIPC' } }).error,
     'Número de informe inválido.');
 
+  // ── Registro público seguro (Bloque 1 de seguridad) ──────────────────────
+  _eq_('U99: texto con = se guarda como literal', textoSeguroSheet_('=HYPERLINK("x")'), '\'=HYPERLINK("x")');
+  _eq_('U100: texto con + - @ se guarda como literal',
+    [textoSeguroSheet_('+1'), textoSeguroSheet_('-1'), textoSeguroSheet_('@a')].join('|'), '\'+1|\'-1|\'@a');
+  _eq_('U101: texto normal y números no cambian', textoSeguroSheet_('Calle 1') + '|' + textoSeguroSheet_(5), 'Calle 1|5');
+  _eq_('U102: correo enmascarado', enmascararCorreo_('ana@empresa.com'), 'a•••@e•••.com');
+  _eq_('U103: teléfono enmascarado', enmascararTelefono_(2221234567), '••• 4567');
+  _eq_('U104: Sí/No vacío queda vacío (conservar)', siNoCliente_(''), '');
+
+  var existente = fila22.slice();
+  var enviada = new Array(22).fill('');
+  enviada[CL.FECHA_REGISTRO] = 'hoy';
+  enviada[CL.CORREO] = 'otro@evil.com';
+  enviada[CL.DIRECCION] = 'Dir Nueva';
+  var fusion = fusionarActualizacionPublica_(existente, enviada);
+  _eq_('U105: el correo crítico no se sobrescribe', fusion.fila[CL.CORREO], 'sol@test.com');
+  _eq_('U106: el correo crítico queda pendiente', fusion.pendientes.map(function(p) { return p.campo; }).join(','), 'correo_informe');
+  _eq_('U107: un campo no crítico se actualiza', fusion.fila[CL.DIRECCION], 'Dir Nueva');
+  _eq_('U108: un campo vacío conserva el valor', fusion.fila[CL.TELEFONO], '2221234567');
+  _eq_('U109: mismo valor con otro formato no genera pendiente',
+    fusionarActualizacionPublica_(existente, (function() { var f = enviada.slice(); f[CL.CORREO] = ' SOL@test.com '; return f; })()).pendientes.length, 0);
+
+  var maestroSinRfc = [fila22, ['x', 'EMPRESA A', 'Matriz', 'SIN_RFC']];
+  _eq_('U110: SIN_RFC con otra razón social no reutiliza la fila',
+    buscarFilaClienteExistente_(maestroSinRfc, 'SIN_RFC', 'Matriz', 'EMPRESA B'), -1);
+  _eq_('U111: SIN_RFC con la misma razón social sí la encuentra',
+    buscarFilaClienteExistente_(maestroSinRfc, 'SIN_RFC', 'Matriz', 'empresa a'), 2);
+  _eq_('U112: buscarClienteNombre exige Google', AUTH_MODE.buscarClienteNombre, 'GOOGLE');
+
   var pass = _results_.filter(function(r){ return r.indexOf('PASS') === 0; }).length;
   var fail = _results_.filter(function(r){ return r.indexOf('FAIL') === 0; }).length;
   Logger.log('');

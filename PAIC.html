@@ -531,7 +531,7 @@
         <div class="submit-section">
           <button type="submit" class="btn-submit" id="submitBtn">Revisar y enviar información</button>
           <div class="loading" id="loading"><div class="loading-spinner"></div><p class="loading-text">Guardando información del cliente...</p></div>
-          <div class="message success-message" id="successMsg"><strong>Cliente/sucursal guardado correctamente.</strong><br>El registro quedó guardado o actualizado. La orden de trabajo se gestiona por separado en SEAOT.</div>
+          <div class="message success-message" id="successMsg"><strong>Cliente/sucursal guardado correctamente.</strong><br>El registro quedó guardado o actualizado. La orden de trabajo se gestiona por separado en SEAOT.<div id="successRevision" style="display:none;margin-top:10px;"></div></div>
           <div class="message error-message" id="errorMsg">✗ <span id="errorMsgText">Error al enviar la información.</span></div>
         </div>
       </form>
@@ -776,7 +776,16 @@
         try { result = JSON.parse(text); } catch (_) { throw new Error('RESPUESTA_INVALIDA'); }
         if (!result || result.success === false) throw new Error(result?.error || 'ERROR_SERVIDOR');
         if (loading) loading.style.display='none';
+        const revision=document.getElementById('successRevision');
+        if (revision) {
+          const campos=Array.isArray(result.cambiosEnRevision) ? result.cambiosEnRevision : [];
+          revision.style.display=campos.length ? 'block' : 'none';
+          revision.innerHTML=campos.length
+            ? `<strong>En revisión:</strong> ${campos.map(escHtml).join(', ')}. Por seguridad, estos datos se aplicarán cuando Ejecutiva Ambiental los confirme; avisamos al correo registrado del cliente.`
+            : '';
+        }
         if (successMsg) { successMsg.style.display='block'; successMsg.scrollIntoView({behavior:'smooth',block:'center'}); }
+        setModoActualizacion(false);
         form.reset();
         resetUploadState();
         document.getElementById('returningBanner')?.classList.remove('active');
@@ -822,7 +831,7 @@
         if (data.found && Array.isArray(data.sucursales) && data.sucursales.length) {
           window._returningClientBranches=data.sucursales; window._returningRazonSocial=data.razon_social; window._returningRfc=rfc;
           const opciones=data.sucursales
-            .map((s,i) => `<option value="${i}">Actualizar ${escHtml(s.sucursal || 'Matriz')}</option>`)
+            .map((s,i) => `<option value="${i}">Actualizar ${escHtml(s.sucursal || 'Matriz')}${s.correo_informe_mask ? ` (${escHtml(s.correo_informe_mask)})` : ''}</option>`)
             .join('') + '<option value="new">Registrar nueva sucursal</option>';
           resultDiv.className='rfc-search-result found'; resultDiv.style.display='block';
           resultDiv.innerHTML=`<strong>Cliente encontrado:</strong> ${escHtml(data.razon_social)}<br><br><label style="font-size:11px;font-weight:bold;color:#1e5a3e;">¿Qué desea hacer?</label><select id="branchSelectModal" style="width:100%;padding:8px;margin:5px 0 15px;border:1px solid #ccc;border-radius:4px;"><option value="">-- Seleccione una opción --</option>${opciones}</select><button type="button" class="btn-search" style="width:100%;" onclick="applyClientData()">Continuar con esta selección</button>`;
@@ -881,37 +890,76 @@
       const select=document.getElementById('branchSelectModal');
       if (!select || select.value === '') { alert('Seleccione una sucursal o elija "Registrar nueva sucursal".'); return; }
       const val=select.value;
-      const base=window._returningClientBranches?.[0] || {};
-      const rfc=base.rfc || window._returningRfc || '';
-      const razon=base.razon_social || window._returningRazonSocial || '';
+      const rfc=window._returningRfc || '';
+      const razon=window._returningRazonSocial || '';
 
       isReturningClient=true;
       resetUploadState();
+      // El portal es público: la búsqueda sólo devuelve razón social, sucursales y
+      // datos enmascarados. Nunca se pre-llenan datos del cliente.
       CAMPOS_SUCURSAL.forEach(k => setField(k,''));
       setField('razon_social',razon); setField('rfc',rfc);
 
       const banner=document.getElementById('returningBanner');
+      const bannerText=banner?.querySelector('.banner-text');
       if (val === 'new') {
-        // Alta de otra ubicación del mismo RFC: sólo se heredan los datos fiscales.
-        setField('representante_legal',base.representante_legal || '');
-        if (banner) { banner.classList.add('active'); banner.querySelector('.banner-text').innerHTML='<strong>Cliente identificado</strong><br>Datos fiscales autocompletados. Capture los datos de la <strong>nueva sucursal</strong>.'; }
+        setModoActualizacion(false);
+        if (bannerText) bannerText.innerHTML='<strong>Cliente identificado</strong><br>Capture los datos de la <strong>nueva sucursal</strong>.';
       } else {
-        // Actualización de una sucursal existente: se pre-llena todo el maestro.
         const suc=window._returningClientBranches?.[val] || {};
-        ['razon_social','rfc','nombre_solicitante'].concat(CAMPOS_SUCURSAL).forEach(k => {
-          if (suc[k]) setField(k,suc[k]);
-        });
-        showOnRecordIndicators();
-        if (banner) { banner.classList.add('active'); banner.querySelector('.banner-text').innerHTML='<strong>Sucursal identificada</strong><br>Pre-llenamos los datos vigentes. Verifique, corrija lo que cambió y envíe para actualizar el registro.'; }
+        setField('sucursal',suc.sucursal || '');
+        setModoActualizacion(true);
+        if (suc.en_expediente) showOnRecordIndicators();
+        const registrados=[
+          suc.correo_informe_mask ? `correo de informes <strong>${escHtml(suc.correo_informe_mask)}</strong>` : '',
+          suc.telefono_empresa_mask ? `teléfono <strong>${escHtml(suc.telefono_empresa_mask)}</strong>` : ''
+        ].filter(Boolean).join(' y ');
+        if (bannerText) bannerText.innerHTML=`<strong>Actualizar ${escHtml(suc.sucursal || 'sucursal')}</strong><br>`
+          + 'Capture solo lo que cambió: <strong>los campos vacíos conservan lo registrado</strong>.'
+          + (registrados ? ` Registrado: ${registrados}.` : '')
+          + '<br><small>Por seguridad, los cambios de razón social, representante legal, contacto, teléfono o correo de informes se confirman con Ejecutiva Ambiental antes de aplicarse.</small>';
       }
+      banner?.classList.add('active');
 
       if (rfcInput) { rfcInput.value=rfc; rfcInput.dispatchEvent(new Event('input')); }
       closeReturningModal(); document.querySelector('.form-content')?.scrollIntoView({behavior:'smooth'});
+    }
+
+    // En la actualización de una sucursal existente, los datos del cliente dejan
+    // de ser obligatorios: vacío = conservar lo registrado. Los datos del asesor
+    // y la indicación NOM-020 siguen siendo obligatorios; RFC y sucursal quedan fijos.
+    const CAMPOS_FIJOS_ACTUALIZACION=['razon_social','rfc','sucursal','nombre_solicitante','correo_acuse','aplica_nom020'];
+    function setModoActualizacion(activo) {
+      const form=document.getElementById('paicForm');
+      if (!form) return;
+      form.querySelectorAll('input:not([type="file"]), textarea').forEach(el => {
+        if (CAMPOS_FIJOS_ACTUALIZACION.includes(el.name)) return;
+        if (activo && el.required) {
+          el.required=false;
+          el.dataset.requiredOriginal='1';
+          if (el.type !== 'radio') {
+            el.dataset.placeholderOriginal=el.placeholder || '';
+            el.placeholder='Dejar vacío para conservar lo registrado';
+          }
+        } else if (!activo && el.dataset.requiredOriginal) {
+          el.required=true;
+          delete el.dataset.requiredOriginal;
+          if (el.dataset.placeholderOriginal !== undefined) {
+            el.placeholder=el.dataset.placeholderOriginal;
+            delete el.dataset.placeholderOriginal;
+          }
+        }
+      });
+      ['rfc','sucursal'].forEach(n => {
+        const el=form.querySelector(`[name="${n}"]`);
+        if (el) el.readOnly=activo;
+      });
     }
     window.applyClientData=applyClientData;
 
 
     function clearPrefill() {
+      setModoActualizacion(false);
       document.getElementById('paicForm')?.reset();
       document.getElementById('returningBanner')?.classList.remove('active');
       resetUploadState();

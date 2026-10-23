@@ -165,7 +165,14 @@ Gestión →[SEADB]→ Dashboard + Semáforos + Alertas
 
 #### Búsqueda de cliente existente
 
-El formulario incluye un modal de búsqueda por RFC que pre-llena los campos si el cliente ya está registrado. Esto permite actualizar datos sin crear duplicados.
+El formulario incluye un modal de búsqueda por RFC para actualizar una sucursal existente sin crear duplicados. Como el portal es público, la búsqueda **no pre-llena datos del cliente**: sólo muestra la razón social, las sucursales y el correo y teléfono enmascarados (`a•••@e•••.com`, `••• 4567`).
+
+Al actualizar una sucursal existente:
+- RFC y sucursal quedan fijos y los demás campos son opcionales: **un campo vacío conserva lo registrado**.
+- Los campos no críticos (dirección, giro, capacidades, turnos, responsable, etc.) se actualizan directo.
+- Los campos críticos (**razón social, representante legal, teléfono de la empresa, contacto/solicitante y correo para informes**) no se aplican: quedan en la hoja `CAMBIOS_PENDIENTES` y se avisa al equipo y al correo ya registrado del cliente. Un usuario interno los aprueba o rechaza en SEAOT → **🔔 Cambios pendientes**; cada decisión queda en `AUDITORIA`.
+
+El mismo comportamiento aplica en PAIC.
 
 ---
 
@@ -380,7 +387,7 @@ Para clientes con el centinela `SIN_RFC`, la carpeta padre solo se reutiliza cua
 #### Características
 
 - Formulario de registro de estudios (1 estudio = 1 registro)
-- Búsqueda de cliente existente por RFC para pre-llenar datos
+- Búsqueda de cliente existente por RFC para elegir la sucursal a actualizar (sin pre-llenado; ver 3.1)
 - Subida de documentos con validación de tipo y tamaño
 - Detección de cliente con expediente previo
 - Integración con `recaptcha.js` para protección contra bots
@@ -741,16 +748,18 @@ Estas funciones son invocadas desde `doPost()` después de validar autenticació
 | Modo | Descripción | Usado por |
 |---|---|---|
 | `GOOGLE` | Requiere `id_token` válido + usuario en whitelist | Módulos internos |
-| `RECAPTCHA` | Requiere `recaptcha_token` válido (score ≥ 0.5) | Portales públicos |
-| `EITHER` | Acepta Google Auth o reCAPTCHA | `buscarClienteRFC/Nombre` |
+| `RECAPTCHA` | Requiere `recaptcha_token` válido (score ≥ 0.5, acción `sea_portal_submit` y, si se define la Script Property `RECAPTCHA_HOSTNAMES`, un dominio permitido) | Portales públicos |
+| `EITHER` | Acepta Google Auth o reCAPTCHA | `buscarClienteRFC` (con reCAPTCHA sólo devuelve la vista pública enmascarada) |
 
 ### 7.2 Tabla de modos por acción
 
 | Acción | Modo | Módulo |
 |---|---|---|
 | `registrarCliente` | RECAPTCHA | SEAPD / PAIC |
-| `buscarClienteRFC` | EITHER | SEAOT / PAIC |
-| `buscarClienteNombre` | EITHER | SEAOT / PAIC |
+| `buscarClienteRFC` | EITHER | SEAOT (ficha completa) / PAIC, SEAPD (vista pública) |
+| `buscarClienteNombre` | GOOGLE | SEAOT |
+| `getCambiosPendientes` | GOOGLE | SEAOT |
+| `resolverCambioPendiente` | GOOGLE | SEAOT |
 | `registrarOT` | GOOGLE | SEAOT |
 | `resolverCarpetaCliente` | GOOGLE | SEAOT |
 | `getOrdenes` | GOOGLE | SEAINF |

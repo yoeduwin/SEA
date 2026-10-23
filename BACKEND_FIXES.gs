@@ -21,6 +21,7 @@ const CONFIG = {
   SHEET_INFORMES:  'INFORMES',
   SHEET_USUARIOS:  'USUARIOS_AUTORIZADOS',
   SHEET_AUDITORIA: 'AUDITORIA',
+  SHEET_CAMBIOS:   'CAMBIOS_PENDIENTES',
 
   // ── Zona horaria ─────────────────────────────────────────────────────────
   TIMEZONE: 'GMT-6',
@@ -194,8 +195,10 @@ const AUTH_MODE = {
   updateRespInf:          'GOOGLE',
   updateResponsable:      'GOOGLE',
   // SEAOT
-  buscarClienteRFC:       'EITHER',   // SEAOT usa Google Auth; PAIC/SEAPD (públicos) usan reCAPTCHA
-  buscarClienteNombre:    'EITHER',   // igual que buscarClienteRFC
+  buscarClienteRFC:       'EITHER',   // SEAOT (Google) recibe la ficha completa; PAIC/SEAPD (reCAPTCHA) solo la vista pública enmascarada
+  buscarClienteNombre:    'GOOGLE',   // sólo SEAOT: la búsqueda por nombre permitiría listar la base completa
+  getCambiosPendientes:   'GOOGLE',   // SEAOT: cambios críticos de clientes enviados desde portales públicos
+  resolverCambioPendiente:'GOOGLE',
   resolverCarpetaCliente:  'GOOGLE',   // resolución read-only para clientes históricos
   registrarOT:            'GOOGLE',
   getSiguienteFolioOT:    'GOOGLE',   // SEAOT: calcula el siguiente folio leyendo ORDENES_TRABAJO
@@ -226,6 +229,8 @@ const ACTION_MODULE = {
   buscarClienteRFC:       'SEAOT',
   buscarClienteNombre:    'SEAOT',
   resolverCarpetaCliente:  'SEAOT',
+  getCambiosPendientes:   'SEAOT',
+  resolverCambioPendiente:'SEAOT',
   registrarOT:            'SEAOT',
   getSiguienteFolioOT:    'SEAOT',
   getOrdenes:             'SEAINF',
@@ -533,11 +538,20 @@ function verificarRecaptcha_(rcToken, minScore) {
       return false;
     }
     const r         = JSON.parse(resp.getContentText());
-    const valid     = r.tokenProperties && r.tokenProperties.valid === true;
+    const tp        = r.tokenProperties || {};
+    const valid     = tp.valid === true;
     const score     = (r.riskAnalysis && r.riskAnalysis.score) || 0;
     const threshold = (typeof minScore === 'number') ? minScore : 0.5;
-    Logger.log('reCAPTCHA Enterprise: valid=' + valid + ' score=' + score + ' action=' + (r.tokenProperties && r.tokenProperties.action));
-    return valid && score >= threshold;
+    // El token debe venir de la acción de los portales; Google sólo informa
+    // la acción, no la rechaza por sí mismo.
+    const accionOk  = tp.action === 'sea_portal_submit';
+    // RECAPTCHA_HOSTNAMES (opcional): dominios permitidos separados por coma,
+    // p. ej. "yoeduwin.github.io,registro.midominio.com".
+    const hosts     = String(props.getProperty('RECAPTCHA_HOSTNAMES') || '')
+      .split(',').map(h => h.trim().toLowerCase()).filter(Boolean);
+    const hostOk    = !hosts.length || hosts.indexOf(String(tp.hostname || '').toLowerCase()) !== -1;
+    Logger.log('reCAPTCHA Enterprise: valid=' + valid + ' score=' + score + ' action=' + tp.action + ' hostname=' + tp.hostname);
+    return valid && accionOk && hostOk && score >= threshold;
 
   } catch (e) {
     Logger.log('verificarRecaptcha_ error: ' + e.message);
@@ -612,6 +626,9 @@ function doPost(e) {
     lock.waitLock(15000);
     const data = JSON.parse(e.postData.contents);
     const action = data.action;
+    // Banderas internas de pruebas: nunca se aceptan desde una petición HTTP.
+    // Los tests llaman las funciones directamente y no pasan por doPost.
+    delete data._skipEmail;
 
     // ── Verificar autenticación antes de cualquier operación ──────────────
     const idToken = data.id_token || null;
@@ -640,9 +657,12 @@ function doPost(e) {
         const ok = u && verificarUsuarioAutorizado_(u.email, mod);
         return output_({ success: !!ok, email: u ? u.email : '' });
       }
-      case 'buscarClienteRFC': return output_(fase2_BuscarClienteRFC(data.rfc));
+      // Con id_token (ya verificado arriba) la petición es interna; sin él, viene de un portal público.
+      case 'buscarClienteRFC': return output_(idToken ? fase2_BuscarClienteRFC(data.rfc) : fase2_BuscarClienteRFCPublico_(data.rfc));
       case 'buscarClienteNombre': return output_(fase2_BuscarClienteNombre(data.nombre));
       case 'resolverCarpetaCliente': return output_(fase2_ResolverCarpetaCliente_(data.rfc, data.sucursal, data.razon_social || data.cliente));
+      case 'getCambiosPendientes': return output_(getCambiosPendientes_());
+      case 'resolverCambioPendiente': return output_(resolverCambioPendiente_(data, _usuario));
       case 'getTablero': return output_(fase4_GetTablero());
       case 'getTableroInf': return output_(fase4_GetTableroInf());
       case 'getOrdenes': return output_(getOrdenesSafe_());
@@ -677,7 +697,7 @@ function doGet(e) {
         const ok = u && verificarUsuarioAutorizado_(u.email, mod);
         return output_({ success: !!ok, email: u ? u.email : '' });
       }
-      case 'buscarClienteRFC': return output_(fase2_BuscarClienteRFC(e.parameter.rfc));
+      case 'buscarClienteRFC': return output_(idToken ? fase2_BuscarClienteRFC(e.parameter.rfc) : fase2_BuscarClienteRFCPublico_(e.parameter.rfc));
       case 'buscarClienteNombre': return output_(fase2_BuscarClienteNombre(e.parameter.nombre));
       case 'resolverCarpetaCliente': return output_(fase2_ResolverCarpetaCliente_(e.parameter.rfc, e.parameter.sucursal, e.parameter.razon_social || e.parameter.cliente));
       case 'getSiguienteFolioOT': return output_(getSiguienteFolioOT_(e.parameter));
@@ -781,75 +801,334 @@ function fase1_RegistrarCliente(data) {
     const perfilIter = carpetaCliente.getFoldersByName('01_Cliente');
     carpetaPerfil = perfilIter.hasNext() ? perfilIter.next() : carpetaCliente.createFolder('01_Cliente');
     const processedFiles = guardarArchivos(data, carpetaPerfil, addLog);
-    const sheetUrl = generarPerfilSheet(data, carpetaPerfil, companyClean, branchClean, timestamp, addLog);
+
     // 4. REGISTRAR O ACTUALIZAR EN CLIENTES_MAESTRO (22 Columnas)
-    const rowData = [
-      Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'dd/MM/yyyy HH:mm:ss'), // 1. Fecha Registro
-      data.razon_social || '',                                          // 2. Razón Social
-      data.sucursal || '',                                              // 3. Sucursal
-      data.rfc || '',                                                   // 4. RFC
-      data.representante_legal || '',                                   // 5. Representante Legal
-      data.direccion_evaluacion || '',                                  // 6. Dirección Evaluación
-      data.telefono_empresa || '',                                      // 7. Teléfono Empresa
-      data.nombre_solicitante || '',                                    // 8. Contacto (Solicitante)
-      data.correo_informe || '',                                        // 9. Email Contacto
-      data.giro || '',                                                  // 10. Giro / Actividad
-      data.registro_patronal || '',                                     // 11. Registro Patronal
-      data.capacidad_instalada || '',                                   // 12. Capacidad Instalada
-      data.capacidad_operacion || '',                                   // 13. Capacidad Operación
-      data.dias_turnos_horarios || '',                                  // 14. Días / Turnos
-      data.aplica_nom020 === 'si' ? 'SÍ' : 'NO',                        // 15. Aplica NOM-020
-      data.requiere_pipc === 'si' ? 'SÍ' : 'NO',                        // 16. Requiere PIPC
-      data.responsable || '',                                           // 17. Nombre quien Atiende
-      data.telefono_responsable || '',                                  // 18. Teléfono quien Atiende
-      data.nombre_dirigido || '',                                       // 19. A quien se dirige informe
-      data.puesto_dirigido || '',                                       // 20. Puesto a quien se dirige
-      carpetaCliente.getUrl(),                                          // 21. Link Drive (índice 20)
-      data.asesor_consultor || ''                                       // 22. Asesor / Consultor (índice 21)
-    ];
+    const rowData = construirFilaCliente_(data, carpetaCliente.getUrl());
     const allData = sheet.getDataRange().getValues();
-    let rowIndex = -1;
-    // Búsqueda backward → actualiza la fila más reciente (igual que el test),
-    // evitando desalineación cuando hay filas residuales de ejecuciones previas.
-    for (let i = allData.length - 1; i >= 1; i--) {
-      if (String(allData[i][CL.RFC]).toUpperCase().trim() === rfcClean &&
-          sanitizeFileName(String(allData[i][CL.SUCURSAL] || 'Matriz')).toLowerCase() === branchClean.toLowerCase()) {
-        rowIndex = i + 1;
-        break;
-      }
-    }
-    // PAIC no captura la indicación de PIPC. Al actualizar una sucursal existente
-    // conservamos el valor que ya tiene la fila para no degradar a "NO" un dato
-    // que el asesor no ve ni declara (p. ej. capturado antes desde SEAPD).
-    if (esPaic && rowIndex > -1) {
-      rowData[CL.REQUIERE_PIPC] = allData[rowIndex - 1][CL.REQUIERE_PIPC] || 'NO';
-    }
+    const rowIndex = buscarFilaClienteExistente_(allData, rfcClean, branchClean, data.razon_social);
+
+    // Los portales son públicos: en una sucursal existente, un campo vacío
+    // conserva lo registrado y los campos críticos no se sobrescriben, se
+    // envían a aprobación interna (CAMBIOS_PENDIENTES).
+    let filaFinal = rowData;
+    let pendientes = [];
     if (rowIndex > -1) {
-      sheet.getRange(rowIndex, 1, 1, rowData.length).setValues([rowData]);
+      const fusion = fusionarActualizacionPublica_(allData[rowIndex - 1], rowData);
+      filaFinal = fusion.fila;
+      pendientes = fusion.pendientes;
+    } else {
+      filaFinal = completarFilaNueva_(rowData);
+    }
+    const dataEfectiva = datosDesdeFilaCliente_(data, filaFinal);
+    const sheetUrl = generarPerfilSheet(dataEfectiva, carpetaPerfil, companyClean, branchClean, timestamp, addLog);
+
+    const filaSegura = filaFinal.map(textoSeguroSheet_);
+    if (rowIndex > -1) {
+      sheet.getRange(rowIndex, 1, 1, filaSegura.length).setValues([filaSegura]);
       addLog(`Registro actualizado en la fila ${rowIndex}`);
     } else {
-      sheet.appendRow(rowData);
+      sheet.appendRow(filaSegura);
       addLog('Nuevo registro agregado en BD.');
     }
-    // 5. Enviar correo de notificación (omitir si _skipEmail está activo, p.ej. en tests)
+    if (pendientes.length) {
+      registrarCambiosPendientes_(dataEfectiva, pendientes, esPaic ? 'PAIC' : 'SEAPD', data);
+      addLog(`Cambios críticos enviados a aprobación: ${pendientes.map(p => p.campo).join(', ')}`);
+    }
+
+    // 5. Enviar correo de notificación (omitir si _skipEmail está activo, p.ej. en tests;
+    // doPost elimina esa bandera de cualquier petición HTTP)
     if (!data._skipEmail) {
-      const emailResult = enviarNotificacionRobusta(data, processedFiles, carpetaCliente, sheetUrl, addLog);
+      const emailResult = enviarNotificacionRobusta(dataEfectiva, processedFiles, carpetaCliente, sheetUrl, addLog);
       if (emailResult && !emailResult.success) {
         addLog('WARNING: Email no enviado: ' + (emailResult.error || 'error desconocido'));
       }
+      if (pendientes.length) {
+        try { notificarCambiosPendientes_(dataEfectiva, pendientes, esPaic ? 'PAIC' : 'SEAPD'); }
+        catch (eAviso) { addLog('WARNING: aviso de cambios pendientes no enviado: ' + eAviso.message); }
+      }
     }
     guardarLogEnDrive(carpetaPerfil, logEntries, data);
+    // La respuesta va a un portal público: no incluye la liga de Drive del cliente.
     return {
       success: true,
       message: 'Registro/Actualización exitosa',
       files: processedFiles.length,
-      linkDrive: carpetaCliente.getUrl()
+      actualizado: rowIndex > -1,
+      cambiosEnRevision: pendientes.map(p => p.etiqueta)
     };
   } catch (error) {
     try { enviarEmailEmergencia(error, logEntries); } catch (e4) {}
     return { success: false, error: error.toString() };
   }
 }
+// =========================================================================
+// REGISTRO PÚBLICO: FUSIÓN SEGURA Y CAMBIOS PENDIENTES
+// =========================================================================
+// PAIC y SEAPD son portales públicos protegidos sólo con reCAPTCHA, que no
+// acredita quién envía. Por eso, sobre una sucursal existente:
+//   - un campo vacío conserva el valor registrado;
+//   - los campos no críticos se actualizan directo;
+//   - los campos críticos (a dónde llegan los informes y quién representa al
+//     cliente) no se sobrescriben: quedan en CAMBIOS_PENDIENTES hasta que un
+//     usuario interno los aprueba desde SEAOT, y se avisa al correo registrado.
+// RFC y sucursal son la llave del registro y nunca se modifican por esta vía.
+const CAMPOS_CLIENTE_PORTAL_ = [
+  { campo: 'razon_social',         col: CL.RAZON_SOCIAL,      etiqueta: 'Razón social',                 critico: true },
+  { campo: 'representante_legal',  col: CL.REPRESENTANTE,     etiqueta: 'Representante legal',          critico: true },
+  { campo: 'direccion_evaluacion', col: CL.DIRECCION,         etiqueta: 'Dirección de evaluación' },
+  { campo: 'telefono_empresa',     col: CL.TELEFONO,          etiqueta: 'Teléfono de la empresa',       critico: true },
+  { campo: 'nombre_solicitante',   col: CL.SOLICITANTE,       etiqueta: 'Contacto (solicitante)',       critico: true },
+  { campo: 'correo_informe',       col: CL.CORREO,            etiqueta: 'Correo para informes',         critico: true },
+  { campo: 'giro',                 col: CL.GIRO,              etiqueta: 'Giro' },
+  { campo: 'registro_patronal',    col: CL.REGISTRO_PATRONAL, etiqueta: 'Registro patronal' },
+  { campo: 'capacidad_instalada',  col: CL.CAP_INSTALADA,     etiqueta: 'Capacidad instalada' },
+  { campo: 'capacidad_operacion',  col: CL.CAP_OPERACION,     etiqueta: 'Capacidad de operación' },
+  { campo: 'dias_turnos_horarios', col: CL.DIAS_TURNOS,       etiqueta: 'Días, turnos y horarios' },
+  { campo: 'aplica_nom020',        col: CL.APLICA_NOM020,     etiqueta: 'Aplica NOM-020',               siNo: true },
+  { campo: 'requiere_pipc',        col: CL.REQUIERE_PIPC,     etiqueta: 'Requiere PIPC',                siNo: true },
+  { campo: 'responsable',          col: CL.RESPONSABLE,       etiqueta: 'Responsable que atiende' },
+  { campo: 'telefono_responsable', col: CL.TEL_RESPONSABLE,   etiqueta: 'Teléfono del responsable' },
+  { campo: 'nombre_dirigido',      col: CL.NOMBRE_DIRIGIDO,   etiqueta: 'A quién se dirige el informe' },
+  { campo: 'puesto_dirigido',      col: CL.PUESTO_DIRIGIDO,   etiqueta: 'Puesto a quién se dirige' },
+  { campo: 'asesor_consultor',     col: CL.ASESOR_CONSULTOR,  etiqueta: 'Asesor / consultor' }
+];
+const COLUMNAS_CLIENTES_ = 22;
+
+// Evita que un texto enviado por un portal se guarde como fórmula en Sheets.
+// El apóstrofo inicial fuerza texto literal y Sheets no lo muestra.
+function textoSeguroSheet_(valor) {
+  if (typeof valor !== 'string') return valor;
+  return /^[=+\-@\t\r]/.test(valor) ? "'" + valor : valor;
+}
+
+function siNoCliente_(valor) {
+  const v = String(valor == null ? '' : valor).trim().toLowerCase();
+  if (v === 'si' || v === 'sí') return 'SÍ';
+  if (v === 'no') return 'NO';
+  return '';
+}
+
+function normalizarValorCliente_(valor) {
+  return String(valor == null ? '' : valor).trim().replace(/\s+/g, ' ').toUpperCase();
+}
+
+// Arma la fila de 22 columnas con lo enviado. Los Sí/No vacíos quedan vacíos
+// para que en una actualización signifiquen "conservar".
+function construirFilaCliente_(data, linkDrive) {
+  const fila = new Array(COLUMNAS_CLIENTES_).fill('');
+  fila[CL.FECHA_REGISTRO] = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'dd/MM/yyyy HH:mm:ss');
+  fila[CL.SUCURSAL] = String(data.sucursal || '');
+  fila[CL.RFC] = String(data.rfc || '');
+  CAMPOS_CLIENTE_PORTAL_.forEach(c => {
+    const v = data[c.campo];
+    fila[c.col] = c.siNo ? siNoCliente_(v) : String(v == null ? '' : v).trim();
+  });
+  fila[CL.LINK_DRIVE] = linkDrive || '';
+  return fila;
+}
+
+function completarFilaNueva_(fila) {
+  const nueva = fila.slice();
+  if (!nueva[CL.APLICA_NOM020]) nueva[CL.APLICA_NOM020] = 'NO';
+  if (!nueva[CL.REQUIERE_PIPC]) nueva[CL.REQUIERE_PIPC] = 'NO';
+  return nueva;
+}
+
+// Devuelve la fila (1-based) más reciente de la misma sucursal, o -1.
+// SIN_RFC es un centinela compartido: además exige la misma razón social.
+function buscarFilaClienteExistente_(allData, rfcClean, branchClean, razonSocial) {
+  const razon = normalizarValorCliente_(razonSocial);
+  for (let i = allData.length - 1; i >= 1; i--) {
+    if (String(allData[i][CL.RFC]).toUpperCase().trim() !== rfcClean) continue;
+    if (sanitizeFileName(String(allData[i][CL.SUCURSAL] || 'Matriz')).toLowerCase() !== String(branchClean).toLowerCase()) continue;
+    if (rfcClean === 'SIN_RFC' && normalizarValorCliente_(allData[i][CL.RAZON_SOCIAL]) !== razon) continue;
+    return i + 1;
+  }
+  return -1;
+}
+
+// Aplica una actualización pública sobre la fila existente.
+// @returns {{fila: Array, pendientes: Array<{campo, col, etiqueta, anterior, nuevo}>}}
+function fusionarActualizacionPublica_(filaExistente, filaNueva) {
+  const fila = filaExistente.slice(0, COLUMNAS_CLIENTES_);
+  while (fila.length < COLUMNAS_CLIENTES_) fila.push('');
+  fila[CL.FECHA_REGISTRO] = filaNueva[CL.FECHA_REGISTRO];
+  if (filaNueva[CL.LINK_DRIVE]) fila[CL.LINK_DRIVE] = filaNueva[CL.LINK_DRIVE];
+  const pendientes = [];
+  CAMPOS_CLIENTE_PORTAL_.forEach(c => {
+    const nuevo = String(filaNueva[c.col] == null ? '' : filaNueva[c.col]).trim();
+    if (!nuevo) return;
+    const anterior = fila[c.col];
+    if (normalizarValorCliente_(anterior) === normalizarValorCliente_(nuevo)) return;
+    if (c.critico) {
+      pendientes.push({ campo: c.campo, col: c.col, etiqueta: c.etiqueta, anterior: String(anterior == null ? '' : anterior), nuevo: nuevo });
+    } else {
+      fila[c.col] = nuevo;
+    }
+  });
+  return { fila: fila, pendientes: pendientes };
+}
+
+// Copia de `data` con los valores que realmente quedaron en el maestro, para
+// que el perfil y los correos usen lo vigente y no lo enviado sin aprobar.
+function datosDesdeFilaCliente_(data, fila) {
+  const efectiva = Object.assign({}, data);
+  efectiva.sucursal = String(fila[CL.SUCURSAL] == null ? '' : fila[CL.SUCURSAL]);
+  efectiva.rfc = String(fila[CL.RFC] == null ? '' : fila[CL.RFC]);
+  CAMPOS_CLIENTE_PORTAL_.forEach(c => {
+    const v = fila[c.col] == null ? '' : String(fila[c.col]);
+    efectiva[c.campo] = c.siNo ? (v === 'SÍ' ? 'si' : (v === 'NO' ? 'no' : '')) : v;
+  });
+  return efectiva;
+}
+
+function enmascararCorreo_(correo) {
+  const c = String(correo || '').trim();
+  const at = c.indexOf('@');
+  if (at < 1) return '';
+  const dominio = c.slice(at + 1);
+  const punto = dominio.lastIndexOf('.');
+  if (punto < 1) return c.charAt(0) + '•••@•••';
+  return c.charAt(0) + '•••@' + dominio.charAt(0) + '•••' + dominio.slice(punto);
+}
+
+function enmascararTelefono_(telefono) {
+  const digitos = String(telefono == null ? '' : telefono).replace(/\D/g, '');
+  return digitos.length >= 4 ? '••• ' + digitos.slice(-4) : '';
+}
+
+// Vista pública de un RFC: sólo lo necesario para elegir la sucursal a actualizar.
+function fase2_BuscarClienteRFCPublico_(rfcBuscado) {
+  const rfc = String(rfcBuscado || '').toUpperCase().trim();
+  if (!rfc || rfc === 'SIN_RFC' || !validarRFC_(rfc)) return { found: false };
+  const completo = fase2_BuscarClienteRFC(rfc);
+  if (!completo.found) return { found: false };
+  return {
+    found: true,
+    razon_social: completo.razon_social,
+    sucursales: completo.sucursales.map(s => ({
+      sucursal:             s.sucursal,
+      correo_informe_mask:  enmascararCorreo_(s.correo_informe),
+      telefono_empresa_mask: enmascararTelefono_(s.telefono_empresa),
+      en_expediente:        !!s.link_drive_cliente
+    }))
+  };
+}
+
+const CAMBIOS_HEADERS_ = ['ID', 'Fecha', 'RFC', 'Sucursal', 'Razón social', 'Campo', 'Etiqueta',
+  'Valor anterior', 'Valor propuesto', 'Origen', 'Enviado por', 'Estatus', 'Resuelto por', 'Fecha resolución'];
+const CC_ = { ID: 0, FECHA: 1, RFC: 2, SUCURSAL: 3, RAZON: 4, CAMPO: 5, ETIQUETA: 6, ANTERIOR: 7,
+  PROPUESTO: 8, ORIGEN: 9, ENVIADO_POR: 10, ESTATUS: 11, RESUELTO_POR: 12, FECHA_RES: 13 };
+
+function hojaCambiosPendientes_() {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  let sheet = ss.getSheetByName(CONFIG.SHEET_CAMBIOS);
+  if (!sheet) {
+    sheet = ss.insertSheet(CONFIG.SHEET_CAMBIOS);
+    sheet.appendRow(CAMBIOS_HEADERS_);
+    sheet.getRange(1, 1, 1, CAMBIOS_HEADERS_.length).setFontWeight('bold').setBackground('#1e5a3e').setFontColor('#ffffff');
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+function registrarCambiosPendientes_(dataEfectiva, pendientes, origen, dataEnviada) {
+  const sheet = hojaCambiosPendientes_();
+  const fecha = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'dd/MM/yyyy HH:mm:ss');
+  const enviadoPor = [dataEnviada.nombre_solicitante, dataEnviada.correo_acuse]
+    .map(v => String(v || '').trim()).filter(Boolean).join(' · ');
+  const filas = pendientes.map(p => [
+    Utilities.getUuid(), fecha, dataEfectiva.rfc, dataEfectiva.sucursal, dataEfectiva.razon_social,
+    p.campo, p.etiqueta, p.anterior, p.nuevo, origen, enviadoPor, 'PENDIENTE', '', ''
+  ].map(textoSeguroSheet_));
+  sheet.getRange(sheet.getLastRow() + 1, 1, filas.length, CAMBIOS_HEADERS_.length).setValues(filas);
+}
+
+// Aviso al equipo y al correo ya registrado. Al cliente no se le muestran los
+// valores propuestos: si no pidió el cambio, sólo necesita saber que existe.
+function notificarCambiosPendientes_(dataEfectiva, pendientes, origen) {
+  const cliente = `${dataEfectiva.razon_social || '-'} / ${dataEfectiva.sucursal || '-'}`;
+  const lista = pendientes.map(p => `- ${p.etiqueta}: "${p.anterior || '(vacío)'}" → "${p.nuevo}"`).join('\n');
+  GmailApp.sendEmail(
+    CONFIG.EMAIL_TO.join(','),
+    `Cambios de cliente por aprobar · ${dataEfectiva.rfc || 'SIN RFC'}`,
+    `Se recibió desde ${origen} una actualización de ${cliente} (RFC ${dataEfectiva.rfc || '-'}) con cambios en datos críticos.\n` +
+    `No se aplicaron. Revíselos en SEAOT → "Cambios pendientes".\n\n${lista}`,
+    { name: CONFIG.COMPANY_NAME }
+  );
+  const correoRegistrado = String(dataEfectiva.correo_informe || '').trim();
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correoRegistrado)) {
+    GmailApp.sendEmail(
+      correoRegistrado,
+      `Solicitud de cambio de datos · ${CONFIG.COMPANY_NAME}`,
+      `Recibimos una solicitud para modificar estos datos del registro de ${cliente}:\n\n` +
+      pendientes.map(p => `- ${p.etiqueta}`).join('\n') +
+      `\n\nLos cambios no se aplicarán hasta que nuestro equipo los confirme.\n` +
+      `Si usted no hizo esta solicitud, avísenos en ${CONFIG.SUPPORT_EMAIL} o al ${CONFIG.SUPPORT_PHONE}.`,
+      { name: CONFIG.COMPANY_NAME }
+    );
+  }
+}
+
+function getCambiosPendientes_() {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = ss.getSheetByName(CONFIG.SHEET_CAMBIOS);
+  if (!sheet) return { success: true, cambios: [] };
+  const values = sheet.getDataRange().getDisplayValues();
+  const cambios = [];
+  for (let i = 1; i < values.length; i++) {
+    const r = values[i];
+    if (r[CC_.ESTATUS] !== 'PENDIENTE') continue;
+    cambios.push({
+      id: r[CC_.ID], fecha: r[CC_.FECHA], rfc: r[CC_.RFC], sucursal: r[CC_.SUCURSAL],
+      razon_social: r[CC_.RAZON], etiqueta: r[CC_.ETIQUETA], anterior: r[CC_.ANTERIOR],
+      propuesto: r[CC_.PROPUESTO], origen: r[CC_.ORIGEN], enviado_por: r[CC_.ENVIADO_POR]
+    });
+  }
+  return { success: true, cambios: cambios };
+}
+
+function resolverCambioPendiente_(data, usuario) {
+  const id = String((data && data.id) || '').trim();
+  const decision = String((data && data.decision) || '').toUpperCase();
+  if (!id || ['APROBAR', 'RECHAZAR'].indexOf(decision) === -1) {
+    return { success: false, error: 'Solicitud inválida: se requiere id y decisión APROBAR o RECHAZAR.' };
+  }
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheetCambios = ss.getSheetByName(CONFIG.SHEET_CAMBIOS);
+  if (!sheetCambios) return { success: false, error: 'No hay cambios pendientes.' };
+  const cambios = sheetCambios.getDataRange().getDisplayValues();
+  let filaCambio = -1;
+  for (let i = 1; i < cambios.length; i++) {
+    if (cambios[i][CC_.ID] === id) { filaCambio = i; break; }
+  }
+  if (filaCambio === -1) return { success: false, error: 'Cambio no encontrado.' };
+  const cambio = cambios[filaCambio];
+  if (cambio[CC_.ESTATUS] !== 'PENDIENTE') return { success: false, error: 'Este cambio ya fue resuelto (' + cambio[CC_.ESTATUS] + ').' };
+
+  const ref = cambio[CC_.RFC] + ' | ' + cambio[CC_.SUCURSAL];
+  if (decision === 'APROBAR') {
+    const def = CAMPOS_CLIENTE_PORTAL_.filter(c => c.campo === cambio[CC_.CAMPO])[0];
+    if (!def) return { success: false, error: 'Campo no reconocido: ' + cambio[CC_.CAMPO] };
+    const sheetCl = ss.getSheetByName(CONFIG.SHEET_CLIENTES);
+    const clientes = sheetCl.getDataRange().getValues();
+    const rfc = String(cambio[CC_.RFC]).toUpperCase().trim();
+    const fila = buscarFilaClienteExistente_(clientes, rfc, sanitizeFileName(cambio[CC_.SUCURSAL] || 'Matriz'), cambio[CC_.RAZON]);
+    if (fila === -1) return { success: false, error: 'No se encontró la sucursal ' + ref + ' en el maestro.' };
+    const actual = clientes[fila - 1][def.col];
+    sheetCl.getRange(fila, def.col + 1).setValue(textoSeguroSheet_(cambio[CC_.PROPUESTO]));
+    registrarAuditoria_(usuario, 'APROBAR_CAMBIO_CLIENTE', ref, def.etiqueta, actual, cambio[CC_.PROPUESTO]);
+  } else {
+    registrarAuditoria_(usuario, 'RECHAZAR_CAMBIO_CLIENTE', ref, cambio[CC_.ETIQUETA], cambio[CC_.ANTERIOR], cambio[CC_.PROPUESTO]);
+  }
+  sheetCambios.getRange(filaCambio + 1, CC_.ESTATUS + 1, 1, 3).setValues([[
+    decision === 'APROBAR' ? 'APROBADO' : 'RECHAZADO',
+    textoSeguroSheet_(usuario || 'desconocido'),
+    Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'dd/MM/yyyy HH:mm:ss')
+  ]]);
+  return { success: true };
+}
+
 // =========================================================================
 // FASE 2: BÚSQUEDA Y REGISTRO DE OT
 // =========================================================================
@@ -2119,14 +2398,14 @@ function generarPerfilSheet(data, carpetaCliente, cleanedCompany, cleanedBranch,
   const setHeader = (range, text) => { sheet.getRange(range).merge().setValue(text).setBackground(verde).setFontColor('#FFFFFF').setFontWeight('bold').setHorizontalAlignment('center'); };
   const fillFieldCell = (labelRange, label, valueCellA1, value, opt = {}) => {
     sheet.getRange(labelRange).merge().setValue(label).setFontWeight('bold');
-    const r = sheet.getRange(valueCellA1); r.setValue(value || '').setBackground(valueBg).setBorder(true, true, true, true, false, false);
+    const r = sheet.getRange(valueCellA1); r.setValue(textoSeguroSheet_(value || '')).setBackground(valueBg).setBorder(true, true, true, true, false, false);
     if (opt.boldValue) r.setFontWeight('bold'); if (opt.wrap) r.setWrap(true).setVerticalAlignment('top');
   };
   sheet.getRange('A1:L1').merge().setValue('PERFIL DE DATOS TÉCNICOS - EJECUTIVA AMBIENTAL').setBackground(verde).setFontColor('#FFFFFF').setFontWeight('bold').setHorizontalAlignment('center');
   fillFieldCell('B3:C3', 'Nombre solicitante:', 'D3', data.nombre_solicitante, { wrap: true });
   fillFieldCell('B5:C5', 'Razón Social:', 'D5', data.razon_social, { wrap: true });
   sheet.getRange('B6:C6').merge().setValue('SUCURSAL:').setFontWeight('bold').setFontColor('red');
-  sheet.getRange('D6').setValue(data.sucursal || '').setBackground(valueBg).setBorder(true, true, true, true, false, false).setFontWeight('bold').setWrap(true);
+  sheet.getRange('D6').setValue(textoSeguroSheet_(data.sucursal || '')).setBackground(valueBg).setBorder(true, true, true, true, false, false).setFontWeight('bold').setWrap(true);
   fillFieldCell('B7:C7', 'RFC:', 'D7', data.rfc);
   fillFieldCell('H7:H7', 'Teléfono Empresa:', 'I7', data.telefono_empresa);
   fillFieldCell('B9:C9', 'Representante Legal:', 'D9', data.representante_legal, { wrap: true });
@@ -2143,11 +2422,11 @@ function generarPerfilSheet(data, carpetaCliente, cleanedCompany, cleanedBranch,
   fillFieldCell('B28:C28', 'Puesto de quien dirige:', 'D28', data.puesto_dirigido, { wrap: true });
   fillFieldCell('B30:C30', 'Correo envío informe:', 'D30', data.correo_informe, { wrap: true });
   sheet.getRange('A32:L32').merge().setValue('DESCRIPCIÓN DEL PROCESO').setBackground(verde).setFontColor('#FFFFFF').setFontWeight('bold').setHorizontalAlignment('center');
-  sheet.getRange('A33:L36').merge().setValue(data.descripcion_proceso || '').setVerticalAlignment('top').setWrap(true).setBackground(valueBg).setBorder(true, true, true, true, false, false);
+  sheet.getRange('A33:L36').merge().setValue(textoSeguroSheet_(data.descripcion_proceso || '')).setVerticalAlignment('top').setWrap(true).setBackground(valueBg).setBorder(true, true, true, true, false, false);
   sheet.getRange('A1:L36').setFontFamily('Arial');
   sheet.setColumnWidth(2, 170); sheet.setColumnWidth(4, 280); sheet.setColumnWidth(8, 160); sheet.setColumnWidth(9, 220);
   let currentRow = 38; setHeader(`A${currentRow}:L${currentRow}`, 'FECHAS PREFERIDAS');
-  sheet.getRange(`B${currentRow+1}:L${currentRow+3}`).merge().setValue(data.fechas_preferidas || 'No especificadas').setBackground(valueBg).setWrap(true).setBorder(true, true, true, true, false, false);
+  sheet.getRange(`B${currentRow+1}:L${currentRow+3}`).merge().setValue(textoSeguroSheet_(data.fechas_preferidas || 'No especificadas')).setBackground(valueBg).setWrap(true).setBorder(true, true, true, true, false, false);
   if (data.aplica_nom020) {
     setHeader(`A${currentRow+5}:L${currentRow+5}`, 'NOM-020-STPS');
     sheet.getRange(`B${currentRow+6}:L${currentRow+6}`).merge().setValue(data.aplica_nom020 === 'si' ? 'SÍ APLICA' : 'NO APLICA').setHorizontalAlignment('center').setFontWeight('bold');
