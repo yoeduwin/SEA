@@ -904,6 +904,7 @@
           <div class="message success-message" id="successMsg">
             <strong>¡Información enviada correctamente!</strong><br><br>
             Nuestro equipo revisará la información y se comunicará con usted en las próximas <strong>24 horas</strong>.
+            <div id="successRevision" style="display:none; margin-top:12px;"></div>
           </div>
           <div class="message error-message" id="errorMsg">
             ✗ <span id="errorMsgText">Error al enviar la información. Por favor, intente nuevamente o contáctenos directamente.</span>
@@ -1205,17 +1206,17 @@
       let confirmationHTML = `
         <div class="confirmation-section">
           <h3>📋 DATOS GENERALES</h3>
-          <div class="confirmation-item"><span class="confirmation-label">Razón Social:</span><span class="confirmation-value">${formData.get('razon_social') || ''}</span></div>
-          <div class="confirmation-item"><span class="confirmation-label">Sucursal:</span><span class="confirmation-value">${formData.get('sucursal') || ''}</span></div>
-          <div class="confirmation-item"><span class="confirmation-label">RFC:</span><span class="confirmation-value">${formData.get('rfc') || ''}</span></div>
-          <div class="confirmation-item"><span class="confirmation-label">Responsable:</span><span class="confirmation-value">${formData.get('responsable') || ''}</span></div>
-          <div class="confirmation-item"><span class="confirmation-label">Correo para informe:</span><span class="confirmation-value" style="font-weight:bold;color:#1e5a3e;">${formData.get('correo_informe') || ''}</span></div>
+          <div class="confirmation-item"><span class="confirmation-label">Razón Social:</span><span class="confirmation-value">${escHtml(formData.get('razon_social') || '')}</span></div>
+          <div class="confirmation-item"><span class="confirmation-label">Sucursal:</span><span class="confirmation-value">${escHtml(formData.get('sucursal') || '')}</span></div>
+          <div class="confirmation-item"><span class="confirmation-label">RFC:</span><span class="confirmation-value">${escHtml(formData.get('rfc') || '')}</span></div>
+          <div class="confirmation-item"><span class="confirmation-label">Responsable:</span><span class="confirmation-value">${escHtml(formData.get('responsable') || '')}</span></div>
+          <div class="confirmation-item"><span class="confirmation-label">Correo para informe:</span><span class="confirmation-value" style="font-weight:bold;color:#1e5a3e;">${escHtml(formData.get('correo_informe') || '')}</span></div>
         </div>
         <div class="confirmation-section">
           <h3>📎 ARCHIVOS ADJUNTOS (${filesCount} archivos)</h3>
           ${filesCount > 0 ? `
             <ul class="file-list">
-              ${filesInfo.map(f => `<li>✓ ${f.label} <br><strong>${f.name}</strong> (${f.size})</li>`).join('')}
+              ${filesInfo.map(f => `<li>✓ ${escHtml(f.label)} <br><strong>${escHtml(f.name)}</strong> (${escHtml(f.size)})</li>`).join('')}
             </ul>
           ` : '<p style="color:#856404;">⚠️ No se adjuntaron archivos</p>'}
         </div>
@@ -1333,7 +1334,19 @@
           throw new Error(result.error || 'ERROR_SERVIDOR');
         }
         if (loading) loading.style.display = 'none';
+        const revision = document.getElementById('successRevision');
+        if (revision) {
+          const campos = Array.isArray(result.cambiosEnRevision) ? result.cambiosEnRevision : [];
+          revision.style.display = campos.length ? 'block' : 'none';
+          revision.innerHTML = campos.length
+            ? `<strong>En revisión:</strong> ${campos.map(escHtml).join(', ')}. Por seguridad, estos datos se aplicarán cuando nuestro equipo los confirme; avisamos al correo registrado.`
+            : '';
+        }
         if (successMsg) successMsg.style.display = 'block';
+        setModoActualizacion(false);
+        const bannerOk = document.getElementById('returningBanner');
+        if (bannerOk) bannerOk.classList.remove('active');
+        isReturningClient = false;
         form.reset();
         document.querySelectorAll('.file-preview').forEach(p => p.classList.remove('active'));
         document.querySelectorAll('.file-upload-group').forEach(g => g.classList.remove('has-file'));
@@ -1367,6 +1380,12 @@
       }
     }
     window.confirmAndSend = confirmAndSend;
+
+    function escHtml(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
+    }
 
     function fileToBase64(file) {
       return new Promise((resolve, reject) => {
@@ -1430,17 +1449,19 @@
         if (data.found && data.sucursales && data.sucursales.length > 0) {
           window._returningClientBranches = data.sucursales;
           window._returningRazonSocial = data.razon_social;
+          window._returningRfc = rfc;
 
           let optionsHtml = '<option value="">-- Seleccione una opción --</option>';
           data.sucursales.forEach((suc, index) => {
-            optionsHtml += `<option value="${index}">🏢 Actualizar ${suc.sucursal || 'Matriz'}</option>`;
+            const correo = suc.correo_informe_mask ? ` (${suc.correo_informe_mask})` : '';
+            optionsHtml += `<option value="${index}">🏢 Actualizar ${escHtml(suc.sucursal || 'Matriz')}${escHtml(correo)}</option>`;
           });
           optionsHtml += `<option value="new" style="font-weight:bold; color:#1e5a3e;">➕ Registrar Nueva Sucursal</option>`;
 
           resultDiv.className = 'rfc-search-result found';
           resultDiv.style.display = 'block';
           resultDiv.innerHTML = `
-            <strong>Cliente encontrado:</strong> <span style="font-size:13px;">${data.razon_social}</span><br><br>
+            <strong>Cliente encontrado:</strong> <span style="font-size:13px;">${escHtml(data.razon_social)}</span><br><br>
             <label style="font-size:11px; font-weight:bold; color:#1e5a3e;">¿Qué desea hacer?</label>
             <select id="branchSelectModal" style="width:100%; padding:8px; margin-top:5px; margin-bottom:15px; border:1px solid #ccc; border-radius:4px;">
               ${optionsHtml}
@@ -1472,76 +1493,90 @@
 
       isReturningClient = true;
       const val = select.value;
+      const form = document.getElementById('perfilDatosForm');
+      // El portal es público: la búsqueda sólo devuelve razón social, sucursales y
+      // datos enmascarados. Nunca se pre-llenan datos de contacto.
+      form.querySelectorAll('input:not([type="file"]):not([type="radio"]):not([type="checkbox"]), textarea').forEach(el => { el.value = ''; });
+      resetRespuestasCondicionales();
+      document.querySelector('[name="razon_social"]').value = window._returningRazonSocial || '';
+      document.querySelector('[name="rfc"]').value = window._returningRfc || '';
 
+      const banner = document.getElementById('returningBanner');
+      const bannerText = banner ? banner.querySelector('.banner-text') : null;
       if (val === "new") {
-        // Opción: NUEVA SUCURSAL (Llena solo datos fiscales)
-        const baseData = window._returningClientBranches[0];
-        document.querySelector('[name="razon_social"]').value = baseData.razon_social || window._returningRazonSocial;
-        document.querySelector('[name="rfc"]').value = baseData.rfc || '';
-        document.querySelector('[name="representante_legal"]').value = baseData.representante_legal || '';
-        
-        // Limpiamos los campos específicos de sucursal
-        document.querySelector('[name="sucursal"]').value = '';
-        document.querySelector('[name="direccion_evaluacion"]').value = '';
-        document.querySelector('[name="telefono_empresa"]').value = '';
-        document.querySelector('[name="nombre_solicitante"]').value = '';
-        document.querySelector('[name="responsable"]').value = '';
-        document.querySelector('[name="telefono_responsable"]').value = '';
-        document.querySelector('[name="correo_informe"]').value = '';
+        setModoActualizacion(false);
+        if (bannerText) bannerText.innerHTML = `<strong>Cliente identificado</strong><br>Capture los datos de la <strong>nueva sucursal</strong>.`;
       } else {
-        // Opción: ACTUALIZAR EXISTENTE (Llena TODO)
-        const data = window._returningClientBranches[val];
-        const fieldMap = {
-          'nombre_solicitante': data.nombre_solicitante,
-          'razon_social': data.razon_social,
-          'sucursal': data.sucursal,
-          'rfc': data.rfc,
-          'telefono_empresa': data.telefono_empresa,
-          'representante_legal': data.representante_legal,
-          'direccion_evaluacion': data.direccion_evaluacion,
-          'responsable': data.responsable,
-          'telefono_responsable': data.telefono_responsable,
-          'giro': data.giro,
-          'actividad_principal': data.actividad_principal,
-          'registro_patronal': data.registro_patronal,
-          'capacidad_instalada': data.capacidad_instalada,
-          'capacidad_operacion': data.capacidad_operacion,
-          'dias_turnos_horarios': data.dias_turnos_horarios,
-          'nombre_dirigido': data.nombre_dirigido,
-          'puesto_dirigido': data.puesto_dirigido,
-          'correo_informe': data.correo_informe,
-          'descripcion_proceso': data.descripcion_proceso
-        };
-        for (const [fieldName, value] of Object.entries(fieldMap)) {
-          if (value) {
-            const el = document.querySelector(`[name="${fieldName}"]`);
-            if (el) el.value = value;
-          }
-        }
-        
-        if (data.link_drive_cliente) {
-          showOnRecordIndicators();
-        }
+        const suc = window._returningClientBranches[val] || {};
+        document.querySelector('[name="sucursal"]').value = suc.sucursal || '';
+        setModoActualizacion(true);
+        if (suc.en_expediente) showOnRecordIndicators();
+        const registrados = [
+          suc.correo_informe_mask ? `correo de informes <strong>${escHtml(suc.correo_informe_mask)}</strong>` : '',
+          suc.telefono_empresa_mask ? `teléfono <strong>${escHtml(suc.telefono_empresa_mask)}</strong>` : ''
+        ].filter(Boolean).join(' y ');
+        if (bannerText) bannerText.innerHTML = `<strong>Actualizar ${escHtml(suc.sucursal || 'sucursal')}</strong><br>` +
+          `Llene solo lo que cambió: <strong>los campos vacíos conservan lo registrado</strong>.` +
+          (registrados ? ` Tenemos registrado ${registrados}.` : '') +
+          `<br><small>Por seguridad, los cambios de razón social, representante legal, contacto, teléfono o correo de informes se confirman con nuestro equipo antes de aplicarse.</small>`;
       }
+      if (banner) banner.classList.add('active');
 
       const rfcField = document.querySelector('input[name="rfc"]');
       if (rfcField && rfcField.value.length >= 12) {
         rfcField.style.borderColor = '#28a745';
       }
 
-      const banner = document.getElementById('returningBanner');
-      if (banner) {
-        banner.classList.add('active');
-        if(val === "new") {
-          banner.querySelector('.banner-text').innerHTML = `<strong>Cliente identificado</strong><br>Datos fiscales autocompletados. Por favor ingrese los datos de la <strong>Nueva Sucursal</strong>.`;
-        } else {
-           banner.querySelector('.banner-text').innerHTML = `<strong>Sucursal identificada</strong><br>Hemos pre-llenado sus datos. Verifique que estén correctos y complete solo lo nuevo.`;
-        }
-      }
-
       closeReturningModal();
       const formContent = document.querySelector('.form-content');
       if (formContent) formContent.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // Una respuesta Sí/No marcada antes de la búsqueda se enviaría y sobrescribiría
+    // lo registrado: se limpia para que "sin respuesta" signifique conservar.
+    function resetRespuestasCondicionales() {
+      document.querySelectorAll('input[name="aplica_nom020"], input[name="requiere_pipc"]').forEach(r => { r.checked = false; });
+      if (docLegalSection) docLegalSection.classList.remove('active');
+      clearConditionalFilesByAttr('nom020');
+      document.querySelectorAll('[data-conditional-required="nom020"]:not([type="file"])').forEach(f => { f.value = ''; });
+      if (docPIPCSection) docPIPCSection.classList.remove('active');
+      clearConditionalFilesByAttr('pipc');
+      resetPIPCConditionals();
+      if (checkSinCalibracion && checkSinCalibracion.checked) {
+        checkSinCalibracion.checked = false;
+        checkSinCalibracion.dispatchEvent(new Event('change'));
+      }
+    }
+
+    // En la actualización de una sucursal existente, los campos dejan de ser
+    // obligatorios: vacío = conservar lo registrado. RFC y sucursal identifican
+    // el registro y quedan fijos.
+    const CAMPOS_FIJOS_ACTUALIZACION = ['razon_social', 'rfc', 'sucursal'];
+    function setModoActualizacion(activo) {
+      const form = document.getElementById('perfilDatosForm');
+      if (!form) return;
+      form.querySelectorAll('input:not([type="file"]), textarea').forEach(el => {
+        if (CAMPOS_FIJOS_ACTUALIZACION.includes(el.name)) return;
+        if (activo && el.required) {
+          el.required = false;
+          el.dataset.requiredOriginal = '1';
+          if (el.type !== 'radio') {
+            el.dataset.placeholderOriginal = el.placeholder || '';
+            el.placeholder = 'Dejar vacío para conservar lo registrado';
+          }
+        } else if (!activo && el.dataset.requiredOriginal) {
+          el.required = true;
+          delete el.dataset.requiredOriginal;
+          if (el.dataset.placeholderOriginal !== undefined) {
+            el.placeholder = el.dataset.placeholderOriginal;
+            delete el.dataset.placeholderOriginal;
+          }
+        }
+      });
+      ['rfc', 'sucursal'].forEach(n => {
+        const el = form.querySelector(`[name="${n}"]`);
+        if (el) el.readOnly = activo;
+      });
     }
     window.applyClientData = applyClientData;
 
@@ -1587,6 +1622,7 @@
 
     function clearPrefill() {
       isReturningClient = false;
+      setModoActualizacion(false);
       const form = document.getElementById('perfilDatosForm');
       if (form) form.reset();
       const banner = document.getElementById('returningBanner');
