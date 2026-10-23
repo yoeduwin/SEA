@@ -1497,6 +1497,7 @@
       // El portal es público: la búsqueda sólo devuelve razón social, sucursales y
       // datos enmascarados. Nunca se pre-llenan datos de contacto.
       form.querySelectorAll('input:not([type="file"]):not([type="radio"]):not([type="checkbox"]), textarea').forEach(el => { el.value = ''; });
+      resetRespuestasCondicionales();
       document.querySelector('[name="razon_social"]').value = window._returningRazonSocial || '';
       document.querySelector('[name="rfc"]').value = window._returningRfc || '';
 
@@ -1529,6 +1530,22 @@
       closeReturningModal();
       const formContent = document.querySelector('.form-content');
       if (formContent) formContent.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // Una respuesta Sí/No marcada antes de la búsqueda se enviaría y sobrescribiría
+    // lo registrado: se limpia para que "sin respuesta" signifique conservar.
+    function resetRespuestasCondicionales() {
+      document.querySelectorAll('input[name="aplica_nom020"], input[name="requiere_pipc"]').forEach(r => { r.checked = false; });
+      if (docLegalSection) docLegalSection.classList.remove('active');
+      clearConditionalFilesByAttr('nom020');
+      document.querySelectorAll('[data-conditional-required="nom020"]:not([type="file"])').forEach(f => { f.value = ''; });
+      if (docPIPCSection) docPIPCSection.classList.remove('active');
+      clearConditionalFilesByAttr('pipc');
+      resetPIPCConditionals();
+      if (checkSinCalibracion && checkSinCalibracion.checked) {
+        checkSinCalibracion.checked = false;
+        checkSinCalibracion.dispatchEvent(new Event('change'));
+      }
     }
 
     // En la actualización de una sucursal existente, los campos dejan de ser

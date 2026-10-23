@@ -3130,11 +3130,13 @@ function registrarAuditoria_(usuario, accion, ot, campo, valorAnterior, valorNue
       sheet.setColumnWidth(1, 180); sheet.setColumnWidth(2, 220);
       Logger.log('Hoja AUDITORIA creada automáticamente.');
     }
+    // Los valores pueden venir de portales públicos (p. ej. un cambio propuesto
+    // rechazado): se escriben como texto literal para no evaluarlos como fórmula.
     sheet.appendRow([
       new Date(), usuario || 'desconocido', accion, ot, campo,
       valorAnterior !== undefined ? String(valorAnterior) : '',
       valorNuevo    !== undefined ? String(valorNuevo)    : ''
-    ]);
+    ].map(textoSeguroSheet_));
   } catch (e) {
     Logger.log('registrarAuditoria_ error: ' + e.message);
   }
