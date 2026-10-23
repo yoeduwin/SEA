@@ -1743,7 +1743,11 @@ function runUnitTests() {
   _eq_('U101: texto normal y números no cambian', textoSeguroSheet_('Calle 1') + '|' + textoSeguroSheet_(5), 'Calle 1|5');
   _eq_('U102: correo enmascarado', enmascararCorreo_('ana@empresa.com'), 'a•••@e•••.com');
   _eq_('U103: teléfono enmascarado', enmascararTelefono_(2221234567), '••• 4567');
-  _eq_('U104: Sí/No vacío queda vacío (conservar)', siNoCliente_(''), '');
+  var filaNom = construirFilaCliente_({ aplica_nom020: 'si', requiere_pipc: 'si' }, '');
+  _eq_('U104: NOM-020 y PIPC no se guardan en CLIENTES_MAESTRO',
+    String(filaNom[CL.APLICA_NOM020]) + '|' + String(filaNom[CL.REQUIERE_PIPC]), '|');
+  _eq_('U104B: el perfil y los correos sí reciben la respuesta de este registro',
+    datosDesdeFilaCliente_({ aplica_nom020: 'si', requiere_pipc: 'no' }, filaNom).aplica_nom020, 'si');
 
   var existente = fila22.slice();
   var enviada = new Array(22).fill('');

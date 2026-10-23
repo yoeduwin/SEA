@@ -1532,8 +1532,9 @@
       if (formContent) formContent.scrollIntoView({ behavior: 'smooth' });
     }
 
-    // Una respuesta Sí/No marcada antes de la búsqueda se enviaría y sobrescribiría
-    // lo registrado: se limpia para que "sin respuesta" signifique conservar.
+    // NOM-020 y PIPC sólo indican qué documentos acompañan este envío (no se
+    // guardan como dato del cliente). Al elegir una sucursal el formulario empieza
+    // limpio, sin respuestas ni secciones abiertas de antes de la búsqueda.
     function resetRespuestasCondicionales() {
       document.querySelectorAll('input[name="aplica_nom020"], input[name="requiere_pipc"]').forEach(r => { r.checked = false; });
       if (docLegalSection) docLegalSection.classList.remove('active');
