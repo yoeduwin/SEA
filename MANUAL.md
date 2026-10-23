@@ -416,8 +416,8 @@ Para clientes con el centinela `SIN_RFC`, la carpeta padre solo se reutiliza cua
 | 12 | 11 | Cap. Instalada | Capacidad instalada |
 | 13 | 12 | Cap. Operación | Capacidad de operación |
 | 14 | 13 | Días/Turnos/Horarios | Jornada laboral |
-| 15 | 14 | Aplica NOM-020 | SÍ / NO |
-| 16 | 15 | Requiere PIPC | SÍ / NO |
+| 15 | 14 | Aplica NOM-020 | **En desuso:** ya no se escribe (ver nota) |
+| 16 | 15 | Requiere PIPC | **En desuso:** ya no se escribe (ver nota) |
 | 17 | 16 | Responsable | Responsable del área |
 | 18 | 17 | Teléfono Responsable | Teléfono del responsable |
 | 19 | 18 | Nombre Dirigido | Destinatario del informe |
@@ -426,6 +426,8 @@ Para clientes con el centinela `SIN_RFC`, la carpeta padre solo se reutiliza cua
 | 22 | 21 | Asesor/Consultor | Intermediario que refirió |
 
 > **Importante:** El link de Drive está en el índice **20** (columna 21). Este índice es crítico para el funcionamiento de toda la cadena de búsqueda de carpetas.
+
+> **Nota sobre NOM-020 y PIPC:** las preguntas de NOM-020 y Protección Civil del formulario existen sólo para que el cliente envíe desde su registro la documentación de ese servicio. No son datos del cliente: se reflejan en el perfil del registro, en los correos y en los documentos de su carpeta de Drive, pero ya no se guardan en `CLIENTES_MAESTRO`. Las columnas 15 y 16 se conservan vacías para no desplazar los índices siguientes (Link Drive y Asesor); los valores históricos que ya tengan no se modifican.
 
 ### 4.2 Hoja ORDENES_TRABAJO
 

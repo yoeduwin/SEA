@@ -72,8 +72,8 @@ const CONFIG = {
       CAP_INSTALADA:    11,
       CAP_OPERACION:    12,
       DIAS_TURNOS:      13,
-      APLICA_NOM020:    14,
-      REQUIERE_PIPC:    15,
+      APLICA_NOM020:    14, // en desuso: NOM-020 y PIPC son del servicio solicitado,
+      REQUIERE_PIPC:    15, // no del cliente; la columna se conserva sólo por el contrato de 22
       RESPONSABLE:      16,
       TEL_RESPONSABLE:  17,
       NOMBRE_DIRIGIDO:  18,
@@ -819,8 +819,6 @@ function fase1_RegistrarCliente(data) {
       const fusion = fusionarActualizacionPublica_(allData[rowIndex - 1], rowData);
       filaFinal = fusion.fila;
       pendientes = fusion.pendientes;
-    } else {
-      filaFinal = completarFilaNueva_(rowData);
     }
     const dataEfectiva = datosDesdeFilaCliente_(data, filaFinal);
     // El perfil y los correos de PAIC identifican al asesor que hizo este envío.
@@ -877,6 +875,9 @@ function fase1_RegistrarCliente(data) {
 //     cliente) no se sobrescriben: quedan en CAMBIOS_PENDIENTES hasta que un
 //     usuario interno los aprueba desde SEAOT, y se avisa al correo registrado.
 // RFC y sucursal son la llave del registro y nunca se modifican por esta vía.
+// NOM-020 y PIPC no están aquí a propósito: sólo indican qué documentos acompañan
+// este registro (van al perfil, a los correos y a la carpeta), no son datos del
+// cliente y no se guardan en CLIENTES_MAESTRO.
 const CAMPOS_CLIENTE_PORTAL_ = [
   { campo: 'razon_social',         col: CL.RAZON_SOCIAL,      etiqueta: 'Razón social',                 critico: true },
   { campo: 'representante_legal',  col: CL.REPRESENTANTE,     etiqueta: 'Representante legal',          critico: true },
@@ -889,8 +890,6 @@ const CAMPOS_CLIENTE_PORTAL_ = [
   { campo: 'capacidad_instalada',  col: CL.CAP_INSTALADA,     etiqueta: 'Capacidad instalada' },
   { campo: 'capacidad_operacion',  col: CL.CAP_OPERACION,     etiqueta: 'Capacidad de operación' },
   { campo: 'dias_turnos_horarios', col: CL.DIAS_TURNOS,       etiqueta: 'Días, turnos y horarios' },
-  { campo: 'aplica_nom020',        col: CL.APLICA_NOM020,     etiqueta: 'Aplica NOM-020',               siNo: true },
-  { campo: 'requiere_pipc',        col: CL.REQUIERE_PIPC,     etiqueta: 'Requiere PIPC',                siNo: true },
   { campo: 'responsable',          col: CL.RESPONSABLE,       etiqueta: 'Responsable que atiende' },
   { campo: 'telefono_responsable', col: CL.TEL_RESPONSABLE,   etiqueta: 'Teléfono del responsable' },
   { campo: 'nombre_dirigido',      col: CL.NOMBRE_DIRIGIDO,   etiqueta: 'A quién se dirige el informe' },
@@ -906,19 +905,11 @@ function textoSeguroSheet_(valor) {
   return /^[=+\-@\t\r]/.test(valor) ? "'" + valor : valor;
 }
 
-function siNoCliente_(valor) {
-  const v = String(valor == null ? '' : valor).trim().toLowerCase();
-  if (v === 'si' || v === 'sí') return 'SÍ';
-  if (v === 'no') return 'NO';
-  return '';
-}
-
 function normalizarValorCliente_(valor) {
   return String(valor == null ? '' : valor).trim().replace(/\s+/g, ' ').toUpperCase();
 }
 
-// Arma la fila de 22 columnas con lo enviado. Los Sí/No vacíos quedan vacíos
-// para que en una actualización signifiquen "conservar".
+// Arma la fila de 22 columnas con lo enviado.
 function construirFilaCliente_(data, linkDrive) {
   const fila = new Array(COLUMNAS_CLIENTES_).fill('');
   fila[CL.FECHA_REGISTRO] = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'dd/MM/yyyy HH:mm:ss');
@@ -926,17 +917,10 @@ function construirFilaCliente_(data, linkDrive) {
   fila[CL.RFC] = String(data.rfc || '');
   CAMPOS_CLIENTE_PORTAL_.forEach(c => {
     const v = data[c.campo];
-    fila[c.col] = c.siNo ? siNoCliente_(v) : String(v == null ? '' : v).trim();
+    fila[c.col] = String(v == null ? '' : v).trim();
   });
   fila[CL.LINK_DRIVE] = linkDrive || '';
   return fila;
-}
-
-function completarFilaNueva_(fila) {
-  const nueva = fila.slice();
-  if (!nueva[CL.APLICA_NOM020]) nueva[CL.APLICA_NOM020] = 'NO';
-  if (!nueva[CL.REQUIERE_PIPC]) nueva[CL.REQUIERE_PIPC] = 'NO';
-  return nueva;
 }
 
 // Devuelve la fila (1-based) más reciente de la misma sucursal, o -1.
@@ -981,8 +965,7 @@ function datosDesdeFilaCliente_(data, fila) {
   efectiva.sucursal = String(fila[CL.SUCURSAL] == null ? '' : fila[CL.SUCURSAL]);
   efectiva.rfc = String(fila[CL.RFC] == null ? '' : fila[CL.RFC]);
   CAMPOS_CLIENTE_PORTAL_.forEach(c => {
-    const v = fila[c.col] == null ? '' : String(fila[c.col]);
-    efectiva[c.campo] = c.siNo ? (v === 'SÍ' ? 'si' : (v === 'NO' ? 'no' : '')) : v;
+    efectiva[c.campo] = fila[c.col] == null ? '' : String(fila[c.col]);
   });
   return efectiva;
 }
@@ -1184,8 +1167,6 @@ function fase2_BuscarClienteRFC(rfcBuscado) {
           capacidad_instalada:  data[i][CL.CAP_INSTALADA],
           capacidad_operacion:  data[i][CL.CAP_OPERACION],
           dias_turnos_horarios: data[i][CL.DIAS_TURNOS],
-          aplica_nom020:        data[i][CL.APLICA_NOM020],
-          requiere_pipc:        data[i][CL.REQUIERE_PIPC],
           responsable:          data[i][CL.RESPONSABLE],
           telefono_responsable: data[i][CL.TEL_RESPONSABLE],
           nombre_dirigido:      data[i][CL.NOMBRE_DIRIGIDO],
@@ -1229,8 +1210,6 @@ function fase2_BuscarClienteNombre(nombreBuscado) {
           capacidad_instalada:  data[i][CL.CAP_INSTALADA],
           capacidad_operacion:  data[i][CL.CAP_OPERACION],
           dias_turnos_horarios: data[i][CL.DIAS_TURNOS],
-          aplica_nom020:        data[i][CL.APLICA_NOM020],
-          requiere_pipc:        data[i][CL.REQUIERE_PIPC],
           responsable:          data[i][CL.RESPONSABLE],
           telefono_responsable: data[i][CL.TEL_RESPONSABLE],
           nombre_dirigido:      data[i][CL.NOMBRE_DIRIGIDO],
