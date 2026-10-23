@@ -806,6 +806,9 @@ function fase1_RegistrarCliente(data) {
     const rowData = construirFilaCliente_(data, carpetaCliente.getUrl());
     const allData = sheet.getDataRange().getValues();
     const rowIndex = buscarFilaClienteExistente_(allData, rfcClean, branchClean, data.razon_social);
+    // En PAIC, nombre_solicitante es el asesor que envía, no el contacto del
+    // cliente: al actualizar una sucursal no debe tocar ese campo del maestro.
+    if (esPaic && rowIndex > -1) rowData[CL.SOLICITANTE] = '';
 
     // Los portales son públicos: en una sucursal existente, un campo vacío
     // conserva lo registrado y los campos críticos no se sobrescriben, se
@@ -820,6 +823,8 @@ function fase1_RegistrarCliente(data) {
       filaFinal = completarFilaNueva_(rowData);
     }
     const dataEfectiva = datosDesdeFilaCliente_(data, filaFinal);
+    // El perfil y los correos de PAIC identifican al asesor que hizo este envío.
+    if (esPaic) dataEfectiva.nombre_solicitante = data.nombre_solicitante;
     const sheetUrl = generarPerfilSheet(dataEfectiva, carpetaPerfil, companyClean, branchClean, timestamp, addLog);
 
     const filaSegura = filaFinal.map(textoSeguroSheet_);
@@ -1116,17 +1121,36 @@ function resolverCambioPendiente_(data, usuario) {
     const fila = buscarFilaClienteExistente_(clientes, rfc, sanitizeFileName(cambio[CC_.SUCURSAL] || 'Matriz'), cambio[CC_.RAZON]);
     if (fila === -1) return { success: false, error: 'No se encontró la sucursal ' + ref + ' en el maestro.' };
     const actual = clientes[fila - 1][def.col];
+    // Si el valor registrado cambió desde que se envió la solicitud (p. ej. se
+    // aprobó otra sobre el mismo campo), aprobarla pisaría el valor vigente.
+    if (normalizarValorCliente_(actual) !== normalizarValorCliente_(cambio[CC_.ANTERIOR])) {
+      marcarCambioResuelto_(sheetCambios, filaCambio, 'OBSOLETO', usuario);
+      return { success: false, error: 'El valor registrado cambió desde que se envió esta solicitud; se marcó como obsoleta. Si aún aplica, el cliente debe enviarla de nuevo.' };
+    }
     sheetCl.getRange(fila, def.col + 1).setValue(textoSeguroSheet_(cambio[CC_.PROPUESTO]));
     registrarAuditoria_(usuario, 'APROBAR_CAMBIO_CLIENTE', ref, def.etiqueta, actual, cambio[CC_.PROPUESTO]);
+    // Las demás solicitudes pendientes del mismo campo partían del valor anterior.
+    for (let i = 1; i < cambios.length; i++) {
+      if (i !== filaCambio && cambios[i][CC_.ESTATUS] === 'PENDIENTE' && cambios[i][CC_.CAMPO] === cambio[CC_.CAMPO] &&
+          String(cambios[i][CC_.RFC]).toUpperCase().trim() === rfc &&
+          sanitizeFileName(cambios[i][CC_.SUCURSAL] || 'Matriz').toLowerCase() === sanitizeFileName(cambio[CC_.SUCURSAL] || 'Matriz').toLowerCase()) {
+        marcarCambioResuelto_(sheetCambios, i, 'OBSOLETO', usuario);
+      }
+    }
   } else {
     registrarAuditoria_(usuario, 'RECHAZAR_CAMBIO_CLIENTE', ref, cambio[CC_.ETIQUETA], cambio[CC_.ANTERIOR], cambio[CC_.PROPUESTO]);
   }
-  sheetCambios.getRange(filaCambio + 1, CC_.ESTATUS + 1, 1, 3).setValues([[
-    decision === 'APROBAR' ? 'APROBADO' : 'RECHAZADO',
+  marcarCambioResuelto_(sheetCambios, filaCambio, decision === 'APROBAR' ? 'APROBADO' : 'RECHAZADO', usuario);
+  return { success: true };
+}
+
+// filaIdx es 0-based sobre getDataRange() (la fila 0 son los encabezados).
+function marcarCambioResuelto_(sheetCambios, filaIdx, estatus, usuario) {
+  sheetCambios.getRange(filaIdx + 1, CC_.ESTATUS + 1, 1, 3).setValues([[
+    estatus,
     textoSeguroSheet_(usuario || 'desconocido'),
     Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'dd/MM/yyyy HH:mm:ss')
   ]]);
-  return { success: true };
 }
 
 // =========================================================================
