@@ -451,7 +451,6 @@
     
     <script>
         const API_URL = 'https://script.google.com/macros/s/AKfycby8t7Py-cilePxLiGa-Lq7Df73XaRlmkRYV_kXbTs79HFydaJyub8muA0PBLRkPevUuXg/exec';
-        const CSV_URL_INFORMES = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTl2L2xQjqks4NnlPYq5VqvVt1EXcrP8I3qujcAXtsWeZKJsNb6j2prwu6lW5zGLm5Gj-O3AG5aOReZ/pub?output=csv&gid=808750033';
         
         let allData = [];
         let filteredData = [];
@@ -648,18 +647,6 @@
         }
         function cerrarEventoModal() { const modal = document.getElementById('eventoModal'); if (modal) { modal.style.animation = 'fadeIn 0.3s ease-out reverse'; setTimeout(() => modal.remove(), 300); } }
 
-        function parseCSV(text) {
-            const rows = []; let currentRow = []; let currentField = ''; let inQuotes = false;
-            for (let i = 0; i < text.length; i++) {
-                const char = text[i]; const nextChar = text[i + 1];
-                if (char === '"' && inQuotes && nextChar === '"') { currentField += '"'; i++; }
-                else if (char === '"') { inQuotes = !inQuotes; }
-                else if (char === ',' && !inQuotes) { currentRow.push(currentField); currentField = ''; }
-                else if ((char === '\n' || char === '\r') && !inQuotes) { if (currentField || currentRow.length > 0) { currentRow.push(currentField); rows.push(currentRow); currentRow = []; currentField = ''; } if (char === '\r' && nextChar === '\n') i++; } else { currentField += char; }
-            }
-            if (currentField || currentRow.length > 0) { currentRow.push(currentField); rows.push(currentRow); }
-            return rows;
-        }
 
         function getStatusCategory(row) {
             if (row.estatusRaw === 'EN PAUSA') return 'PAUSA';
@@ -759,24 +746,24 @@
             const dias = calcularDiasEntrega(row);
             const isEntregado = row.entregadoManual.toUpperCase().includes('ENTREGADO');
             const isPausa = row.estatusRaw === 'EN PAUSA';
-            const otEsc  = escapeQuotes(row.ot);
+            const otArg  = jsArg(row.ot);
 
             const botonesAccion = isEntregado
                 ? `<span style="color: #27ae60; font-size: 0.75rem; font-weight: 600;">✅ Entregado</span>`
                 : isPausa
-                    ? `<button class="action-btn btn-reanudar" onclick="abrirModalReanudar('${otEsc}', '${escapeQuotes(row.tipoOrden)}')">▶ Reanudar</button>`
-                    : `<button class="action-btn btn-entregado" onclick="marcarEntregado('${otEsc}')">✅ Entregado</button>
-                       <button class="action-btn btn-pausar" onclick="abrirModalPausar('${otEsc}')">⏸ Pausar</button>`;
+                    ? `<button class="action-btn btn-reanudar" onclick="abrirModalReanudar(${otArg}, ${jsArg(row.tipoOrden)})">▶ Reanudar</button>`
+                    : `<button class="action-btn btn-entregado" onclick="marcarEntregado(${otArg})">✅ Entregado</button>
+                       <button class="action-btn btn-pausar" onclick="abrirModalPausar(${otArg})">⏸ Pausar</button>`;
 
             tr.innerHTML = `
                 <td><strong>${escHtml(row.ot)}</strong></td><td>${escHtml(row.clienteInicial)}</td><td>${escHtml(row.clienteFinal)}</td><td>${escHtml(row.nom)}</td><td>${escHtml(row.personal)}</td>
                 <td>${escHtml(row.fechaVisita)}</td><td><strong>${escHtml(row.fechaDigital)}</strong></td><td><strong>${escHtml(row.fechaFisico)}</strong></td><td>${dias !== null ? dias : '-'}</td><td>${escHtml(row.estatusAuto)}</td><td>${escHtml(row.asesorConsultor)}</td>
                 <td>
                     <div class="table-action-btns">
-                        <button class="action-btn whatsapp" onclick="compartirOT('${otEsc}', '${escapeQuotes(row.nom)}', '${escapeQuotes(row.fechaVisita)}', '${escapeQuotes(row.personal)}', '${escapeQuotes(row.clienteFinal)}')">📤 Compartir</button>
+                        <button class="action-btn whatsapp" onclick="compartirOT(${otArg}, ${jsArg(row.nom)}, ${jsArg(row.fechaVisita)}, ${jsArg(row.personal)}, ${jsArg(row.clienteFinal)})">📤 Compartir</button>
                         ${botonesAccion}
                         ${safeDriveUrl(row.linkOT) !== '#'
-                            ? `<button class="action-btn drive" onclick="openDrive('${escapeQuotes(safeDriveUrl(row.linkOT))}')">📁 Drive</button>`
+                            ? `<button class="action-btn drive" onclick="openDrive(${jsArg(safeDriveUrl(row.linkOT))})">📁 Drive</button>`
                             : `<button class="action-btn drive" disabled title="Sin enlace de Drive">📁 Drive</button>`
                         }
                     </div>
@@ -1000,7 +987,8 @@
             if (modal) { modal.style.animation = 'fadeIn 0.3s ease-out reverse'; setTimeout(() => modal.remove(), 300); }
         }
 
-        function escapeQuotes(str) { return str.replace(/'/g, "\\'").replace(/"/g, '\\"'); }
+        // Argumento seguro para un onclick="...": literal JS (JSON) escapado para el atributo HTML.
+        function jsArg(v) { return escHtml(JSON.stringify(v == null ? '' : v)); }
         function escHtml(s) {
           return String(s == null ? '' : s)
             .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
@@ -1015,15 +1003,17 @@
 
         async function loadInformes() {
             try {
-                const response = await fetch(CSV_URL_INFORMES); const csvText = await response.text(); const rows = parseCSV(csvText);
-                allInformes = rows.slice(1).map(row => ({ fecha: row[0] || '', empresa: row[1] || '', nom: row[2] || '', persona: row[3] || '', correo: row[4] || '', link: row[5] || '', remitente: row[6] || '', rfc: row[7] || '', sucursal: row[11] || '' })).filter(row => row.empresa && row.link); // sucursal = col L (índice 11)
+                // Se leen por el backend con sesión de Google; la hoja ya no se publica en la web.
+                const response = await SEAAuth.wrapFetch(`${API_URL}?action=getInformesEnviados`); const result = await response.json();
+                if (!result || !result.success) throw new Error((result && (result.message || result.error)) || 'Respuesta inválida');
+                allInformes = result.data;
                 filteredInformes = [...allInformes]; sortInformes('fecha-desc'); updateInformesFilters(); renderInformes();
             } catch (error) { document.getElementById('informesContainer').innerHTML = `<div class="no-results"><div class="no-results-icon">⚠️</div><p>Error al cargar los informes</p></div>`; }
         }
 
         function updateInformesFilters() {
             const empresas = [...new Set(allInformes.map(inf => inf.empresa.trim()))].filter(Boolean).sort();
-            document.getElementById('empresa-datalist').innerHTML = empresas.map(e => `<option value="${e}">`).join('');
+            document.getElementById('empresa-datalist').innerHTML = empresas.map(e => `<option value="${escHtml(e)}">`).join('');
             updateNomDatalist();
         }
 
@@ -1032,7 +1022,7 @@
             const empresa = document.getElementById('filter-informe-empresa').value.toLowerCase();
             const fuente = empresa ? allInformes.filter(inf => inf.empresa.toLowerCase().includes(empresa)) : allInformes;
             const noms = [...new Set(fuente.map(inf => inf.nom.trim()))].filter(Boolean).sort();
-            document.getElementById('nom-datalist').innerHTML = noms.map(n => `<option value="${n}">`).join('');
+            document.getElementById('nom-datalist').innerHTML = noms.map(n => `<option value="${escHtml(n)}">`).join('');
         }
 
         function applyInformesFilters() {
@@ -1083,10 +1073,6 @@
                 const card = document.createElement('div');
                 card.className = 'inf-card';
                 const nomColor = getNomColor(informe.nom);
-                const tags = [
-                    informe.sucursal ? `<span class="inf-tag">${informe.sucursal}</span>` : '',
-                    informe.rfc ? `<span class="inf-tag">${informe.rfc}</span>` : ''
-                ].filter(Boolean).join('');
                 const safeLink = safeDriveUrl(informe.link);
                 card.innerHTML = `
                     <div class="inf-card-head">
@@ -1103,10 +1089,10 @@
                         <div class="inf-contact-row"><span class="inf-contact-key">Correo</span><span class="inf-contact-val">${escHtml(informe.correo || '—')}</span></div>
                     </div>
                     <div class="inf-card-foot">
-                        <button class="inf-btn-drive" onclick="openDrive('${escapeQuotes(safeLink)}')">📁 Ver informe</button>
-                        <button class="inf-btn-icon" title="WhatsApp" onclick="shareWhatsApp('${escapeQuotes(informe.empresa)}', '${escapeQuotes(safeLink)}')">💬</button>
-                        <button class="inf-btn-icon" title="Enviar por email" onclick="shareEmail('${escapeQuotes(informe.empresa)}', '${escapeQuotes(safeLink)}', '${escapeQuotes(informe.correo)}')">✉️</button>
-                        <button class="inf-btn-icon" title="Copiar enlace" onclick="copyLink('${escapeQuotes(safeLink)}')">📋</button>
+                        <button class="inf-btn-drive" onclick="openDrive(${jsArg(safeLink)})">📁 Ver informe</button>
+                        <button class="inf-btn-icon" title="WhatsApp" onclick="shareWhatsApp(${jsArg(informe.empresa)}, ${jsArg(safeLink)})">💬</button>
+                        <button class="inf-btn-icon" title="Enviar por email" onclick="shareEmail(${jsArg(informe.empresa)}, ${jsArg(safeLink)}, ${jsArg(informe.correo)})">✉️</button>
+                        <button class="inf-btn-icon" title="Copiar enlace" onclick="copyLink(${jsArg(safeLink)})">📋</button>
                     </div>
                 `;
                 grid.appendChild(card);
@@ -1120,7 +1106,7 @@
             const tbody = document.getElementById('informesTableBody');
             filteredInformes.forEach(informe => {
                 const tr = document.createElement('tr');
-                tr.innerHTML = `<td>${informe.fecha}</td><td><strong>${informe.empresa}</strong></td><td><span class="nom-badge" style="background: ${getNomColor(informe.nom)}">${informe.nom || 'N/A'}</span></td><td>${informe.sucursal ? `<span class="sucursal-badge">${informe.sucursal}</span>` : '-'}</td><td>${informe.persona}</td><td>${informe.correo}</td><td>${informe.rfc || '-'}</td><td><div class="table-action-btns"><button class="action-btn drive" onclick="openDrive('${escapeQuotes(informe.link)}')">📁</button><button class="action-btn whatsapp" onclick="shareWhatsApp('${escapeQuotes(informe.empresa)}', '${escapeQuotes(informe.link)}')">💬</button><button class="action-btn email" onclick="shareEmail('${escapeQuotes(informe.empresa)}', '${escapeQuotes(informe.link)}', '${escapeQuotes(informe.correo)}')">✉️</button><button class="action-btn copy" onclick="copyLink('${escapeQuotes(informe.link)}')">📋</button></div></td>`;
+                tr.innerHTML = `<td>${escHtml(informe.fecha)}</td><td><strong>${escHtml(informe.empresa)}</strong></td><td><span class="nom-badge" style="background: ${escHtml(getNomColor(informe.nom))}">${escHtml(informe.nom || 'N/A')}</span></td><td>${informe.sucursal ? `<span class="sucursal-badge">${escHtml(informe.sucursal)}</span>` : '-'}</td><td>${escHtml(informe.persona)}</td><td>${escHtml(informe.correo)}</td><td>${escHtml(informe.rfc || '-')}</td><td><div class="table-action-btns"><button class="action-btn drive" onclick="openDrive(${jsArg(safeDriveUrl(informe.link))})">📁</button><button class="action-btn whatsapp" onclick="shareWhatsApp(${jsArg(informe.empresa)}, ${jsArg(safeDriveUrl(informe.link))})">💬</button><button class="action-btn email" onclick="shareEmail(${jsArg(informe.empresa)}, ${jsArg(safeDriveUrl(informe.link))}, ${jsArg(informe.correo)})">✉️</button><button class="action-btn copy" onclick="copyLink(${jsArg(safeDriveUrl(informe.link))})">📋</button></div></td>`;
                 tbody.appendChild(tr);
             });
         }
@@ -1186,10 +1172,6 @@
 
         // ── Renovaciones ─────────────────────────────────────────────────────
         let renovacionesData = [];
-
-        function escHtml(str) {
-            return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-        }
 
         function getRenUrgencia(dias) {
             if (dias < 0)  return 'vencido';
@@ -1322,7 +1304,7 @@
                     <td>${escHtml(r.proximaRenovacion)}</td>
                     <td><span class="ren-badge ${badgeClass}">${escHtml(diasLabel)}</span></td>
                     <td>${r.cicloAnios === 1 ? 'Anual' : 'Bienal'}</td>
-                    <td><button class="ren-btn-email" onclick='abrirMailtoRenovacion(${JSON.stringify(r)})'>✉️ Contactar</button></td>
+                    <td><button class="ren-btn-email" onclick="abrirMailtoRenovacion(${jsArg(r)})">✉️ Contactar</button></td>
                 `;
                 tbody.appendChild(tr);
             });

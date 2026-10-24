@@ -1768,6 +1768,7 @@ function runUnitTests() {
   _eq_('U111: SIN_RFC con la misma razón social sí la encuentra',
     buscarFilaClienteExistente_(maestroSinRfc, 'SIN_RFC', 'Matriz', 'empresa a'), 2);
   _eq_('U112: buscarClienteNombre exige Google', AUTH_MODE.buscarClienteNombre, 'GOOGLE');
+  _eq_('U113: informes enviados exigen Google (ya no hay CSV público)', AUTH_MODE.getInformesEnviados, 'GOOGLE');
 
   var pass = _results_.filter(function(r){ return r.indexOf('PASS') === 0; }).length;
   var fail = _results_.filter(function(r){ return r.indexOf('FAIL') === 0; }).length;
