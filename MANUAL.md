@@ -378,9 +378,49 @@ Ambas pestañas leen la pestaña `INFORMES` del archivo **PANEL DE EJECUTIVA** (
 |---|---|
 | NO INICIADO | La OT está creada pero no se ha comenzado |
 | EN PROCESO | Se está trabajando en el informe |
-| ENTREGADO | Informe digital entregado |
-| FINALIZADO | Informe físico y digital entregados |
+| EN PAUSA | Detenida por información pendiente del cliente (se reanuda desde SEADB) |
+| ENTREGADO | Entrega marcada manualmente en SEADB (botón **✅ Entregado**) |
+| FINALIZADO | Cerrada automáticamente al enviar el informe digital desde EjecutivaEnvios. Es definitiva |
 | CANCELADO | OT cancelada |
+
+SEADB cuenta `ENTREGADO` y `FINALIZADO` como entregadas en KPIs, semáforos y gráficas.
+
+#### Cierre automático por envío digital
+
+**Regla de negocio:** una OT se considera entregada cuando su informe se envía digitalmente al cliente, también en la serie OTB. La entrega física posterior no cambia el estatus, porque el cliente puede tardar en recibirla. Cada OT tiene un solo informe.
+
+El cierre lo hace el programa local de envío de informes (**EjecutivaEnvios**: `send_informes.py` + `sea_integration.py`), no el Apps Script. Su código **no** está en este repositorio: vive solo en la carpeta `EjecutivaEnvios\` de la PC de envíos (instalación en `Cómo_instalar.txt`, uso en `LEEME_SEA.txt`, dentro de esa carpeta). Conviene respaldar esa carpeta, sin `credentials.json`, `token.json` ni `.venv`. Las hojas se escriben con la conexión OAuth de Google Sheets del propio programa:
+
+1. Se selecciona el Excel del cliente. El programa consulta SEA y muestra **solo** las OTs de ese RFC que todavía no tienen un envío registrado.
+2. El usuario elige la OT. Folio, número de informe, NOM, cliente y sucursal se toman del registro de SEA y no se escriben a mano.
+3. Al confirmarse que Gmail (SMTP) aceptó el correo del destinatario principal:
+   - **PANEL DE EJECUTIVA → INFORMES**: se agrega la fila del envío con `L = Sucursal`, `M = OT` y `N = Número de informe`.
+   - **INFORMES (SEA)**: columna N (Estatus) pasa a `FINALIZADO`.
+   - **ORDENES_TRABAJO**: columna L (Estatus externo) pasa a `FINALIZADO`. La columna K (Fecha real de entrega) se llena con la **fecha del envío** si estaba vacía. Si ya tenía una fecha por un cierre manual, se conserva.
+   - **AUDITORIA**: una fila por campo modificado, con acción `CIERRE_POR_ENVIO_PYTHON` y la cuenta que envió.
+
+**Validaciones (bloquean el envío, no lo adivinan):**
+
+- La OT debe existir una sola vez en `ORDENES_TRABAJO` y en `INFORMES`, con la misma serie (OT/OTB/OTC). Las OTC no llevan número de informe; las OT/OTB sí.
+- RFC, cliente, sucursal y NOM deben coincidir entre `ORDENES_TRABAJO` e `INFORMES`. Si no coinciden, el programa muestra la OT excluida y el motivo. Se corrige el registro en SEA y se vuelve a intentar.
+- Las OTs o informes `CANCELADO` no se cierran.
+- La cuenta Google debe poder editar ambos archivos y estar activa en `USUARIOS_AUTORIZADOS` con `SEADB` y `SEAINF` en `TRUE`.
+- Los encabezados de las hojas se verifican antes de escribir. Si alguien mueve o renombra columnas de `ORDENES_TRABAJO`, `INFORMES` o `AUDITORIA`, el programa se detiene sin modificar nada. **Cualquier cambio de columnas en SEA debe reflejarse también en `sea_integration.py`.**
+
+**Fallas y recuperación:**
+
+- Si SMTP no confirma el envío (por ejemplo, un timeout), la OT **no** se cierra ni se reenvía. Se revisa manualmente.
+- Si el correo fue aceptado pero falló la escritura en Sheets, la evidencia queda en la carpeta local `pendientes_sea`. `Sincronizar_pendientes.bat` (o volver a abrir el programa) completa el registro y el cierre **sin volver a enviar el correo**. No se debe borrar esa carpeta.
+- Una OT con envío registrado ya no aparece para un nuevo envío.
+
+**Cómo distinguir los cierres en la auditoría:** `CIERRE_POR_ENVIO_PYTHON` es un cierre automático por envío; `UPDATE_ESTATUS_EXTERNO` es una marca manual desde SEADB.
+
+**Información sensible del programa (revisión del 24/10/2026):**
+
+- El código **no** contiene contraseñas ni llaves. La contraseña de aplicación de Gmail se lee de la variable de entorno de Windows `EJECUTIVA_GMAIL_APP_PASSWORD`.
+- Son confidenciales y **nunca** deben compartirse ni subirse a un repositorio: `credentials.json` (cliente OAuth de Google), `token.json` (sesión de Google) y la carpeta `pendientes_sea/` (evidencia de envíos con datos de clientes). Si alguno se expone: se revoca la sesión en la cuenta de Google y, en el caso de `credentials.json`, se genera un cliente OAuth nuevo en Google Cloud.
+- El código contiene IDs de archivos de Sheets y Drive (SEA, PANEL DE EJECUTIVA, carpeta de informes) y correos corporativos de remitente y copia. No son credenciales: el acceso lo controlan los permisos de Google.
+- Las pruebas (`python -m unittest -v test_sea_integration`, desde la carpeta del programa) usan APIs simuladas y correos `@example.com`: no envían correos ni tocan hojas reales.
 
 ---
 
@@ -478,6 +518,8 @@ Los datos propios del expediente —número de informe, estatus interno y enlace
 ### 4.4 Hoja AUDITORIA
 
 Registro automático de todos los cambios de estatus. Se crea automáticamente al primer cambio. Campos: Timestamp, Usuario, Acción, OT, Campo, Valor Anterior, Valor Nuevo.
+
+Además del backend, el programa local EjecutivaEnvios escribe en esta hoja con la acción `CIERRE_POR_ENVIO_PYTHON` (campos `estatus_informe`, `estatus_externo` y `fecha_real_entrega`). Ver [Cierre automático por envío digital](#cierre-automático-por-envío-digital). Los encabezados deben conservar exactamente este orden: si cambian, el programa no escribe el cierre.
 
 ---
 
