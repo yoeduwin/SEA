@@ -389,7 +389,7 @@ SEADB cuenta `ENTREGADO` y `FINALIZADO` como entregadas en KPIs, semáforos y gr
 
 **Regla de negocio:** una OT se considera entregada cuando su informe se envía digitalmente al cliente, también en la serie OTB. La entrega física posterior no cambia el estatus, porque el cliente puede tardar en recibirla. Cada OT tiene un solo informe.
 
-El cierre lo hace el programa local de envío de informes (**EjecutivaEnvios**: `send_informes.py` + `sea_integration.py`), no el Apps Script. Las hojas se escriben con la conexión OAuth de Google Sheets del propio programa:
+El cierre lo hace el programa local de envío de informes (**EjecutivaEnvios**: `send_informes.py` + `sea_integration.py`), no el Apps Script. Su código **no** está en este repositorio: vive solo en la carpeta `EjecutivaEnvios\` de la PC de envíos (instalación en `Cómo_instalar.txt`, uso en `LEEME_SEA.txt`, dentro de esa carpeta). Conviene respaldar esa carpeta, sin `credentials.json`, `token.json` ni `.venv`. Las hojas se escriben con la conexión OAuth de Google Sheets del propio programa:
 
 1. Se selecciona el Excel del cliente. El programa consulta SEA y muestra **solo** las OTs de ese RFC que todavía no tienen un envío registrado.
 2. El usuario elige la OT. Folio, número de informe, NOM, cliente y sucursal se toman del registro de SEA y no se escriben a mano.
@@ -414,6 +414,13 @@ El cierre lo hace el programa local de envío de informes (**EjecutivaEnvios**: 
 - Una OT con envío registrado ya no aparece para un nuevo envío.
 
 **Cómo distinguir los cierres en la auditoría:** `CIERRE_POR_ENVIO_PYTHON` es un cierre automático por envío; `UPDATE_ESTATUS_EXTERNO` es una marca manual desde SEADB.
+
+**Información sensible del programa (revisión del 24/10/2026):**
+
+- El código **no** contiene contraseñas ni llaves. La contraseña de aplicación de Gmail se lee de la variable de entorno de Windows `EJECUTIVA_GMAIL_APP_PASSWORD`.
+- Son confidenciales y **nunca** deben compartirse ni subirse a un repositorio: `credentials.json` (cliente OAuth de Google), `token.json` (sesión de Google) y la carpeta `pendientes_sea/` (evidencia de envíos con datos de clientes). Si alguno se expone: se revoca la sesión en la cuenta de Google y, en el caso de `credentials.json`, se genera un cliente OAuth nuevo en Google Cloud.
+- El código contiene IDs de archivos de Sheets y Drive (SEA, PANEL DE EJECUTIVA, carpeta de informes) y correos corporativos de remitente y copia. No son credenciales: el acceso lo controlan los permisos de Google.
+- Las pruebas (`python -m unittest -v test_sea_integration`, desde la carpeta del programa) usan APIs simuladas y correos `@example.com`: no envían correos ni tocan hojas reales.
 
 ---
 
