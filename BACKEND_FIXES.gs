@@ -23,6 +23,12 @@ const CONFIG = {
   SHEET_AUDITORIA: 'AUDITORIA',
   SHEET_CAMBIOS:   'CAMBIOS_PENDIENTES',
 
+  // ── Registro de informes enviados (lo escribe el script local de envíos) ──
+  // Archivo "PANEL DE EJECUTIVA". SEADB lo lee por getInformesEnviados en lugar
+  // del CSV publicado en la web.
+  INFORMES_ENVIADOS_SPREADSHEET_ID: '1pWIzrtLAh_YHow1LH55tIfgsCUoct-64JjPaBk5u10U',
+  SHEET_INFORMES_ENVIADOS:          'INFORMES',
+
   // ── Zona horaria ─────────────────────────────────────────────────────────
   TIMEZONE: 'GMT-6',
 
@@ -209,6 +215,7 @@ const AUTH_MODE = {
   addFilesToExpediente:   'GOOGLE',
   updateEstatusInforme:   'GOOGLE',
   getRenovaciones:        'GOOGLE',
+  getInformesEnviados:    'GOOGLE',   // SEADB: Informes y Renovaciones (antes CSV público)
   // ── Requiere reCAPTCHA (portales públicos de registro de clientes) ────────
   // PAIC.html y SEAPD.html son portales donde los CLIENTES se registran
   registrarCliente:       'RECAPTCHA',
@@ -238,7 +245,8 @@ const ACTION_MODULE = {
   createExpediente:       'SEAINF',
   addFilesToExpediente:   'SEAINF',
   updateEstatusInforme:   'SEAINF',
-  getRenovaciones:        'SEADB'
+  getRenovaciones:        'SEADB',
+  getInformesEnviados:    'SEADB'
 };
 
 // ── verificarIdToken_ ──────────────────────────────────────────────────────
@@ -670,6 +678,7 @@ function doPost(e) {
       case 'getConsecutivo': return output_(getConsecutivoSafe_(data));
       case 'updateRespInf': return output_(updateResponsableInformeSafe_(data, _usuario));
       case 'getRenovaciones': return output_(getRenovaciones());
+      case 'getInformesEnviados': return output_(getInformesEnviados_());
       default: return output_({ success: false, error: 'Acción POST no reconocida.' });
     }
   } catch (err) {
@@ -707,6 +716,7 @@ function doGet(e) {
       case 'getInformes': return output_(getInformesSafe_());
       case 'getConsecutivo': return output_(getConsecutivoSafe_(e.parameter));
       case 'getRenovaciones': return output_(getRenovaciones());
+      case 'getInformesEnviados': return output_(getInformesEnviados_());
       default: return output_({ success: false, error: 'Acción GET no reconocida.' });
     }
   } catch (err) {
@@ -2299,6 +2309,28 @@ function getInformesSafe_() {
     link_drive:     row[CI.LINK_DRIVE],
     responsable:    row[CI.RESPONSABLE]
   })).filter(inf => inf.ot && inf.ot.trim() !== '');
+  return { success: true, data: informes };
+}
+// Informes enviados por el script local de envíos (pestaña INFORMES del archivo
+// PANEL DE EJECUTIVA). Columnas: A fecha · B empresa · C NOM · D persona ·
+// E correo · F link · G remitente · H RFC · L sucursal. Se usan los valores
+// mostrados, igual que el CSV publicado al que reemplaza.
+function getInformesEnviados_() {
+  const sheet = SpreadsheetApp.openById(CONFIG.INFORMES_ENVIADOS_SPREADSHEET_ID)
+    .getSheetByName(CONFIG.SHEET_INFORMES_ENVIADOS);
+  if (!sheet) return { success: false, error: 'No se encontró la pestaña ' + CONFIG.SHEET_INFORMES_ENVIADOS + ' de informes enviados.' };
+  const values = sheet.getDataRange().getDisplayValues();
+  const informes = values.slice(1).map(row => ({
+    fecha:     row[0] || '',
+    empresa:   row[1] || '',
+    nom:       row[2] || '',
+    persona:   row[3] || '',
+    correo:    row[4] || '',
+    link:      row[5] || '',
+    remitente: row[6] || '',
+    rfc:       row[7] || '',
+    sucursal:  row[11] || ''
+  })).filter(inf => inf.empresa && inf.link);
   return { success: true, data: informes };
 }
 function fase4_GetTableroInf() {

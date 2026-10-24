@@ -351,6 +351,12 @@ Para clientes con el centinela `SIN_RFC`, la carpeta padre solo se reutiliza cua
 | Órdenes | Tabla filtrable con todas las OTs, semáforos de estatus |
 | Reportes | Gráficas y estadísticas de cumplimiento |
 | Calendario | Vista mensual de fechas de visita y entrega |
+| Informes | Informes enviados a clientes (consulta, compartir, exportar) |
+| Renovaciones | Próximos vencimientos calculados a partir de los informes enviados |
+
+#### Origen de Informes y Renovaciones
+
+Ambas pestañas leen la pestaña `INFORMES` del archivo **PANEL DE EJECUTIVA** (`CONFIG.INFORMES_ENVIADOS_SPREADSHEET_ID`), que llena el script local de envío de informes (`send_informes.py`). La lectura es por el backend (`getInformesEnviados`, Google Auth, módulo SEADB); la cuenta que ejecuta el Apps Script debe tener acceso a ese archivo. La hoja **no** debe estar publicada en la web: antes se leía como CSV público y cualquiera con la liga podía descargarla.
 
 #### Sistema de semáforos
 
@@ -770,6 +776,7 @@ Estas funciones son invocadas desde `doPost()` después de validar autenticació
 | `addFilesToExpediente` | GOOGLE | SEAINF |
 | `updateEstatusInforme` | GOOGLE | SEAINF |
 | `getTablero` | GOOGLE | SEADB |
+| `getInformesEnviados` | GOOGLE | SEADB |
 | `updateEstatus` | GOOGLE | SEADB |
 | `updateResponsable` | GOOGLE | SEADB |
 | `verificarAcceso` | GOOGLE | Todos los internos |
