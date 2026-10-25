@@ -601,6 +601,7 @@
       if (input) input.value = '';
       preview?.classList.remove('active');
       group?.classList.remove('has-file');
+      window.paicActualizarProgreso?.();
     }
     function clearConditionalFilesByAttr(attrValue) {
       document.querySelectorAll(`[data-conditional-required="${attrValue}"]`).forEach(field => {
@@ -652,6 +653,7 @@
       document.querySelectorAll('.file-preview').forEach(p => p.classList.remove('active'));
       document.querySelectorAll('.file-upload-group').forEach(g => g.classList.remove('has-file'));
       resetConditionalRegistrationSections();
+      window.paicActualizarProgreso?.();
     }
 
     document.querySelectorAll('input[name="aplica_nom020"]').forEach(r => r.addEventListener('change', function() {
@@ -804,7 +806,7 @@
             : '';
         }
         const successCorreo=document.getElementById('successCorreo');
-        if (successCorreo) successCorreo.textContent = correoAcuse ? `Enviamos la confirmación a ${enmascararCorreo(correoAcuse)}. ` : '';
+        if (successCorreo) successCorreo.textContent = correoAcuse ? `La confirmación llegará a ${enmascararCorreo(correoAcuse)}; si no la recibe en unos minutos, revise su carpeta de spam o contáctenos. ` : '';
         if (successMsg) { successMsg.style.display='block'; successMsg.scrollIntoView({behavior:'smooth',block:'center'}); }
         setModoActualizacion(false);
         form.reset();
@@ -903,6 +905,7 @@
       if (fileInput) { fileInput.style.display=''; if (key==='planos') fileInput.required=true; }
       const helper=group.querySelector('.helper-text');
       if (helper) helper.style.display='';
+      window.paicActualizarProgreso?.();
     }
     window.showFileInput=showFileInput;
 
