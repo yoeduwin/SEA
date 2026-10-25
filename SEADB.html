@@ -113,6 +113,13 @@
         .modal-header { background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); color: white; padding: 1.5rem; display: flex; align-items: center; gap: 1rem; }
         .modal-header h2 { font-size: 1.3rem; font-weight: 600; margin: 0; }
         .modal-body { padding: 1.5rem; max-height: 400px; overflow-y: auto; }
+        .barra-vencidas { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; background: #fdecea; border: 1px solid #f5c6cb; border-left: 5px solid #e74c3c; color: #842029; padding: 0.7rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.9rem; }
+        .barra-vencidas[hidden] { display: none; }
+        .barra-vencidas strong { white-space: nowrap; }
+        .barra-vencidas .bv-lista { flex: 1; min-width: 200px; color: #6c2a2a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .barra-vencidas button { border: none; border-radius: 6px; padding: 0.4rem 0.8rem; font-weight: 600; cursor: pointer; font-size: 0.8rem; }
+        .barra-vencidas .bv-ver { background: #e74c3c; color: #fff; }
+        .barra-vencidas .bv-cerrar { background: transparent; color: #842029; font-size: 1.1rem; padding: 0.2rem 0.5rem; }
         .alert-message { background: #fff3cd; border-left: 4px solid #ffc107; padding: 1rem; margin-bottom: 1rem; border-radius: 4px; font-size: 0.95rem; color: #856404; }
         .ot-vencida-item { background: #f8f9fa; border-left: 4px solid #e74c3c; padding: 1rem; margin-bottom: 0.8rem; border-radius: 6px; transition: all 0.3s; }
         .ot-vencida-item:hover { background: #ecf0f1; transform: translateX(5px); }
@@ -254,6 +261,7 @@
     </div>
     <div id="tab-ordenes" class="tab-content active">
         <div class="container">
+            <div id="barra-vencidas" class="barra-vencidas" role="status" hidden></div>
             <div class="kpi-grid">
                 <div class="kpi-card"><div class="kpi-label">Total OTs</div><div class="kpi-value" id="kpi-total">0</div><div class="kpi-subtitle">Órdenes de Trabajo</div></div>
                 <div class="kpi-card"><div class="kpi-label">✅ Entregadas</div><div class="kpi-value" id="kpi-entregadas" style="color: #27ae60;">0</div><div class="kpi-subtitle"><span id="kpi-entregadas-pct">0%</span> del total</div></div>
@@ -571,45 +579,29 @@
                 row.estatusRaw !== 'EN PAUSA' &&
                 getStatusCategory(row) === 'ALERTA'
             );
-            if (otsVencidas.length > 0) { mostrarAlertaVencidas(otsVencidas); }
+            if (otsVencidas.length > 0) { mostrarAlertaVencidas(otsVencidas); } else { cerrarAlertaVencidas(); }
         }
 
+        // Barra arriba del tablero (antes era una ventana que bloqueaba al entrar).
+        // Se actualiza en cada carga; la "×" la oculta hasta la siguiente.
         function mostrarAlertaVencidas(otsVencidas) {
-            const overlay = document.createElement('div'); overlay.className = 'modal-overlay'; overlay.id = 'alertModal';
-            const modalContent = document.createElement('div'); modalContent.className = 'modal-content';
-            const header = document.createElement('div'); header.className = 'modal-header';
-            header.innerHTML = `<span style="font-size: 2rem;">🔴</span><h2>¡ATENCIÓN! OTs Vencidas Detectadas</h2>`;
-            const body = document.createElement('div'); body.className = 'modal-body';
-            const alertMessage = document.createElement('div'); alertMessage.className = 'alert-message';
-            alertMessage.innerHTML = `<strong>⚠️ Acción Requerida:</strong><br>Se ${otsVencidas.length === 1 ? 'ha detectado 1 orden de trabajo vencida' : `han detectado ${otsVencidas.length} órdenes de trabajo vencidas`} que requieren atención inmediata.`;
-            body.appendChild(alertMessage);
-            otsVencidas.forEach(ot => {
-                const item = document.createElement('div'); item.className = 'ot-vencida-item';
-                const diasMatch = ot.estatusAuto.match(/Atrasada (\d+)\s+día/);
-                const diasTexto = diasMatch ? `${diasMatch[1]} día${diasMatch[1] !== '1' ? 's' : ''}` : 'Revisar';
-                // Usar textContent para evitar XSS con datos del API
-                const header2 = document.createElement('div'); header2.className = 'ot-vencida-header';
-                const numSpan = document.createElement('span'); numSpan.className = 'ot-vencida-numero'; numSpan.textContent = ot.ot;
-                const diasSpan = document.createElement('span'); diasSpan.className = 'ot-vencida-dias'; diasSpan.textContent = `Vencida hace ${diasTexto}`;
-                header2.appendChild(numSpan); header2.appendChild(diasSpan);
-                const mkInfo = (label, val) => { const d = document.createElement('div'); d.className = 'ot-vencida-info'; const b = document.createElement('strong'); b.textContent = label; d.appendChild(b); d.appendChild(document.createTextNode(' ' + (val || '-'))); return d; };
-                item.appendChild(header2);
-                item.appendChild(mkInfo('Cliente Inicial:', ot.clienteInicial));
-                item.appendChild(mkInfo('Sucursal:', ot.clienteFinal));
-                item.appendChild(mkInfo('NOM:', ot.nom));
-                item.appendChild(mkInfo('Fecha Visita:', ot.fechaVisita));
-                item.appendChild(mkInfo('Responsable:', ot.personal));
-                item.appendChild(mkInfo('Estatus:', ot.estatusAuto));
-                body.appendChild(item);
-            });
-            const footer = document.createElement('div'); footer.className = 'modal-footer';
-            footer.innerHTML = `<button class="modal-btn modal-btn-secondary" onclick="cerrarAlertaVencidas()">Cerrar</button><button class="modal-btn modal-btn-primary" onclick="filtrarVencidas()">Ver OTs Vencidas en Tabla</button>`;
-            modalContent.appendChild(header); modalContent.appendChild(body); modalContent.appendChild(footer);
-            overlay.appendChild(modalContent); document.body.appendChild(overlay);
-            overlay.addEventListener('click', function(e) { if (e.target === overlay) { cerrarAlertaVencidas(); } });
+            const barra = document.getElementById('barra-vencidas');
+            if (!barra) return;
+            const dias = ot => { const m = ot.estatusAuto.match(/Atrasada (\d+)/); return m ? Number(m[1]) : 0; };
+            const ordenadas = [...otsVencidas].sort((a, b) => dias(b) - dias(a));
+            const lista = ordenadas.map(ot => `${ot.ot} (${dias(ot)} d)`).join(' · ');
+            barra.innerHTML = '';
+            const titulo = document.createElement('strong');
+            titulo.textContent = `🔴 ${otsVencidas.length} ${otsVencidas.length === 1 ? 'OT atrasada' : 'OT atrasadas'}`;
+            const detalle = document.createElement('span'); detalle.className = 'bv-lista'; detalle.textContent = lista; detalle.title = lista;
+            const ver = document.createElement('button'); ver.className = 'bv-ver'; ver.textContent = 'Ver en tabla'; ver.addEventListener('click', filtrarVencidas);
+            const cerrar = document.createElement('button'); cerrar.className = 'bv-cerrar'; cerrar.textContent = '×'; cerrar.title = 'Ocultar'; cerrar.setAttribute('aria-label', 'Ocultar aviso');
+            cerrar.addEventListener('click', cerrarAlertaVencidas);
+            barra.append(titulo, detalle, ver, cerrar);
+            barra.hidden = false;
         }
 
-        function cerrarAlertaVencidas() { const modal = document.getElementById('alertModal'); if (modal) { modal.style.animation = 'fadeIn 0.3s ease-out reverse'; setTimeout(() => modal.remove(), 300); } }
+        function cerrarAlertaVencidas() { const barra = document.getElementById('barra-vencidas'); if (barra) barra.hidden = true; }
         function filtrarVencidas() { cerrarAlertaVencidas(); document.getElementById('filter-estatus').value = 'ALERTA'; applyFilters(); document.querySelector('.table-container').scrollIntoView({ behavior: 'smooth' }); showToast('🔴 Mostrando solo OTs vencidas'); }
 
         let textoEventoActual = '';
