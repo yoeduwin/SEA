@@ -748,19 +748,21 @@
 
         function updateMesChart() {
             const meses = mesesRecientes(datosSinEstatus);
-            const serie = { aTiempo: [], tarde: [], pendientes: [] };
+            const serie = { aTiempo: [], tarde: [], sinFecha: [], pendientes: [] };
             meses.forEach(({ clave }) => {
                 const delMes = datosSinEstatus.filter(r => claveMes(r.fechaVisita) === clave);
                 const entregadas = delMes.filter(r => r.entregadoManual.toUpperCase().includes('ENTREGADO'));
-                const tarde = entregadas.filter(r => entregadaATiempo(r) === false).length;
-                serie.tarde.push(tarde);
-                serie.aTiempo.push(entregadas.length - tarde);
+                // Sin fecha real (p. ej. OT migradas) no se sabe si fue a tiempo: va aparte.
+                serie.aTiempo.push(entregadas.filter(r => entregadaATiempo(r) === true).length);
+                serie.tarde.push(entregadas.filter(r => entregadaATiempo(r) === false).length);
+                serie.sinFecha.push(entregadas.filter(r => entregadaATiempo(r) === null).length);
                 serie.pendientes.push(delMes.length - entregadas.length);
             });
             if (charts.mes) charts.mes.destroy();
             charts.mes = new Chart(document.getElementById('chartMes'), { type: 'bar', data: { labels: meses.map(m => m.etiqueta), datasets: [
                 { label: 'Entregadas a tiempo', data: serie.aTiempo, backgroundColor: '#27ae60', borderRadius: 3 },
                 { label: 'Entregadas tarde', data: serie.tarde, backgroundColor: '#e74c3c', borderRadius: 3 },
+                { label: 'Entregadas sin fecha real', data: serie.sinFecha, backgroundColor: '#85c1e9', borderRadius: 3 },
                 { label: 'Sin entregar', data: serie.pendientes, backgroundColor: '#bdc3c7', borderRadius: 3 }
             ] }, options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, boxWidth: 12 } } }, scales: { x: { stacked: true, grid: { display: false }, ticks: { font: { size: 10 } } }, y: { stacked: true, beginAtZero: true, ticks: { font: { size: 10 }, precision: 0 } } } } });
         }
