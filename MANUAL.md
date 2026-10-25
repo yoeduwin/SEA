@@ -303,6 +303,8 @@ En el tablero, la columna **Entrega** muestra «Faltan N días», «Se entrega h
 
 Una OT de la serie OTC crea su expediente sin número de informe: el campo aparece deshabilitado («No aplica») y SEAINF no solicita consecutivo. El backend decide la serie con la columna Tipo de la OT registrada (no con el payload), rechaza cualquier número enviado para una OTC y sigue exigiéndolo para OT/OTB. La carpeta se nombra por el folio (`02_Expediente_{FOLIO_OT}_{SERVICIO}`) y la fila de INFORMES queda con el número vacío y la serie `OTC`. La OT sale del selector de pendientes en cuanto tiene esa fila, y el tablero de SEAINF la muestra como «Sin informe (OTC)».
 
+El selector de OT de SEAINF tampoco muestra órdenes cerradas: si cualquier fila de la OT en `ORDENES_TRABAJO` tiene Estatus Externo (col L) `ENTREGADO`, `FINALIZADO` o `CANCELADO`, la OT desaparece, y cada folio aparece una sola vez. Esto cubre las OT migradas del sistema anterior, que tienen una fila por informe bajo el mismo folio; al cambiar el estatus desde SEADB se actualizan todas las filas de esa OT.
+
 #### Formato del número de informe
 
 ```

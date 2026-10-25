@@ -145,7 +145,9 @@ const ESTATUS_INFORME_TERMINALES_ = ['FINALIZADO', 'CANCELADO'];
 // Valores válidos para ORDENES_TRABAJO.EstatusExterno (col L)
 // EN PAUSA es reversible — NO se agrega a la lista de terminales
 const ESTATUS_EXTERNO_VALIDOS_   = ['NO INICIADO', 'EN PROCESO', 'EN PAUSA', 'ENTREGADO', 'FINALIZADO', 'CANCELADO'];
-const ESTATUS_EXTERNO_TERMINALES_ = ['FINALIZADO', 'CANCELADO'];
+// Estatus externos con los que la OT ya no admite registrar número de informe
+// en SEAINF: el servicio está cerrado (entregado, finalizado o cancelado).
+const ESTATUS_EXTERNO_CERRADOS_SEAINF_ = ['ENTREGADO', 'FINALIZADO', 'CANCELADO'];
 // Estatus desde los que se puede pausar una OT
 const ESTATUS_PAUSABLES_          = ['NO INICIADO', 'EN PROCESO'];
 // Series de OT (col C de ORDENES_TRABAJO y prefijo del folio):
@@ -1915,6 +1917,19 @@ function getOrdenesSafe_() {
     Logger.log('getOrdenesSafe_: no se pudo leer INFORMES para filtrar OTs con expediente: ' + e.message);
   }
 
+  // OTs cerradas (entregadas, finalizadas o canceladas). Las órdenes migradas
+  // del sistema anterior quedaron con una fila por informe/NOM bajo el mismo
+  // folio, y cambiar el estatus solo actualizaba una de ellas: basta con que
+  // cualquier fila de la OT esté cerrada para sacarla del selector.
+  const otsCerradas = {};
+  values.slice(1).forEach(row => {
+    const estatus = String(row[CO.ESTATUS_EXTERNO] || '').trim().toUpperCase();
+    if (ESTATUS_EXTERNO_CERRADOS_SEAINF_.indexOf(estatus) !== -1) {
+      otsCerradas[normalizeOtForSeainf_(row[CO.OT])] = true;
+    }
+  });
+
+  const vistas = {};
   const ordenes = values.slice(1).map(row => ({
     ot:             row[CO.OT],
     tipo_orden:     row[CO.TIPO],
@@ -1929,11 +1944,12 @@ function getOrdenesSafe_() {
     fecha_entrega:  row[CO.FECHA_ENTREGA],
     link_drive:     row[CO.LINK_DRIVE],
     estatus_externo: row[CO.ESTATUS_EXTERNO]
-  })).filter(orden =>
-    orden.ot && orden.ot.trim() !== '' &&
-    ESTATUS_EXTERNO_TERMINALES_.indexOf(String(orden.estatus_externo || '').toUpperCase()) === -1 &&
-    !otsConInforme[normalizeOtForSeainf_(orden.ot)]
-  );
+  })).filter(orden => {
+    const otKey = normalizeOtForSeainf_(orden.ot);
+    if (!otKey || otsCerradas[otKey] || otsConInforme[otKey] || vistas[otKey]) return false;
+    vistas[otKey] = true; // una opción por OT aunque la hoja tenga filas repetidas
+    return true;
+  });
   return { success: true, data: ordenes };
 }
 /**
@@ -2085,19 +2101,21 @@ function updateEstatusSafe_(data, usuario) {
   if (!data || !data.ot || !data.estatus) return { success: false, error: 'Faltan campos requeridos: ot, estatus.' };
   const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
   const values = sheet.getDataRange().getValues();
+  const nuevoEstatus = data.estatus.toUpperCase();
+  let valorAnterior = null;
+  // Las OT migradas pueden tener varias filas con el mismo folio: se actualizan todas.
   for (let i = 1; i < values.length; i++) {
     if (String(values[i][CO.OT]).trim() === String(data.ot).trim()) {
-      const valorAnterior = String(values[i][CO.ESTATUS_EXTERNO]);
-      const nuevoEstatus = data.estatus.toUpperCase();
+      if (valorAnterior === null) valorAnterior = String(values[i][CO.ESTATUS_EXTERNO]);
       sheet.getRange(i + 1, CO.ESTATUS_EXTERNO + 1).setValue(nuevoEstatus);
       if(nuevoEstatus === 'ENTREGADO' || nuevoEstatus === 'FINALIZADO') {
          sheet.getRange(i + 1, CO.FECHA_REAL + 1).setValue(Utilities.formatDate(new Date(), CONFIG.TIMEZONE, "dd/MM/yyyy"));
       }
-      registrarAuditoria_(usuario || 'desconocido', 'UPDATE_ESTATUS_EXTERNO', data.ot, 'estatus_externo', valorAnterior, nuevoEstatus);
-      return { success: true, message: 'Actualizado' };
     }
   }
-  return { success: false, error: 'OT no encontrada' };
+  if (valorAnterior === null) return { success: false, error: 'OT no encontrada' };
+  registrarAuditoria_(usuario || 'desconocido', 'UPDATE_ESTATUS_EXTERNO', data.ot, 'estatus_externo', valorAnterior, nuevoEstatus);
+  return { success: true, message: 'Actualizado' };
 }
 // ── pausarOT_ ────────────────────────────────────────────────────────────────
 /**
