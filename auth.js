@@ -35,10 +35,19 @@ const SEAAuth = (() => {
   /**
    * Retorna true si el token está expirado o vence en menos de 60 segundos.
    */
+  // El payload del JWT viene en base64url y UTF-8; atob() solo no respeta
+  // los acentos (IVÁN se veía como IVÃN).
+  function decodePayload(token) {
+    const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const bin = atob(b64 + '='.repeat((4 - b64.length % 4) % 4));
+    const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+    return JSON.parse(new TextDecoder('utf-8').decode(bytes));
+  }
+
   function isExpired(token) {
     if (!token) return true;
     try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
+      const payload = decodePayload(token);
       return payload.exp < Math.floor(Date.now() / 1000) + 60;
     } catch (_) {
       return true;
@@ -50,7 +59,7 @@ const SEAAuth = (() => {
    */
   function getPayload(token) {
     try {
-      return JSON.parse(atob(token.split('.')[1]));
+      return decodePayload(token);
     } catch (_) {
       return null;
     }

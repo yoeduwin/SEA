@@ -294,7 +294,7 @@
                                 <th onclick="sortTable(0)">OT</th><th onclick="sortTable(1)">Cliente Inicial</th>
                                 <th onclick="sortTable(2)">Sucursal</th><th onclick="sortTable(3)">NOM</th><th onclick="sortTable(4)">Personal</th>
                                 <th onclick="sortTable(5)">F. Visita</th><th onclick="sortTable(6)">F. Digital (+20d)</th><th onclick="sortTable(7)">F. Físico (+25d)</th>
-                                <th onclick="sortTable(8)">Días</th><th onclick="sortTable(9)">Estatus</th><th>Asesor/Consultor</th><th>Acciones</th>
+                                <th onclick="sortTable(8)" title="Días desde la visita hasta la entrega real">Días que tardó</th><th onclick="sortTable(9)">Estatus</th><th>Asesor/Consultor</th><th>Acciones</th>
                             </tr>
                         </thead>
                         <tbody id="tableBody">
@@ -519,11 +519,11 @@
                             hoy.setHours(0, 0, 0, 0);
                             const diffDias = Math.ceil((fechaLimite - hoy) / (1000 * 60 * 60 * 24));
                             if (diffDias < 0) {
-                                estatusAuto = `🔴 Alerta [${Math.abs(diffDias)} días]`;
+                                estatusAuto = `🔴 Atrasada ${Math.abs(diffDias) === 1 ? '1 día' : Math.abs(diffDias) + ' días'}`;
                             } else if (diffDias <= 7) {
-                                estatusAuto = `🟠 En límite [${diffDias} días]`;
+                                estatusAuto = diffDias === 0 ? '🟠 En límite · vence hoy' : `🟠 En límite · faltan ${diffDias === 1 ? '1 día' : diffDias + ' días'}`;
                             } else {
-                                estatusAuto = `🟢 En tiempo [${diffDias} días]`;
+                                estatusAuto = `🟢 En tiempo · faltan ${diffDias} días`;
                             }
                         } else {
                             estatusAuto = '🟡 Pendiente';
@@ -585,7 +585,7 @@
             body.appendChild(alertMessage);
             otsVencidas.forEach(ot => {
                 const item = document.createElement('div'); item.className = 'ot-vencida-item';
-                const diasMatch = ot.estatusAuto.match(/\[(\d+)\s+día/);
+                const diasMatch = ot.estatusAuto.match(/Atrasada (\d+)\s+día/);
                 const diasTexto = diasMatch ? `${diasMatch[1]} día${diasMatch[1] !== '1' ? 's' : ''}` : 'Revisar';
                 // Usar textContent para evitar XSS con datos del API
                 const header2 = document.createElement('div'); header2.className = 'ot-vencida-header';
@@ -652,7 +652,7 @@
             if (row.estatusRaw === 'EN PAUSA') return 'PAUSA';
             const estatus = row.estatusAuto || '';
             if (estatus.includes('✅') || estatus.includes('Entregado')) return 'ENTREGADO';
-            if (estatus.includes('🔴') || estatus.includes('Alerta')) return 'ALERTA';
+            if (estatus.includes('🔴') || estatus.includes('Atrasada') || estatus.includes('Alerta')) return 'ALERTA';
             if (estatus.includes('🟠') || estatus.includes('límite')) return 'LIMITE';
             if (estatus.includes('🟢') || estatus.includes('tiempo')) return 'TIEMPO';
             if (estatus.includes('🟡') || estatus.includes('Pendiente')) return 'PENDIENTE';
@@ -764,7 +764,7 @@
                         ${botonesAccion}
                         ${safeDriveUrl(row.linkOT) !== '#'
                             ? `<button class="action-btn drive" onclick="openDrive(${jsArg(safeDriveUrl(row.linkOT))})">📁 Drive</button>`
-                            : `<button class="action-btn drive" disabled title="Sin enlace de Drive">📁 Drive</button>`
+                            : ''
                         }
                     </div>
                 </td>
@@ -789,7 +789,7 @@
         }
 
         function exportToCSV() {
-            const headers = ['OT', 'Cliente Inicial', 'Sucursal', 'NOM', 'Personal', 'F. Visita', 'F. Digital (+20d)', 'F. Físico (+25d)', 'Días', 'Estatus', 'Asesor/Consultor'];
+            const headers = ['OT', 'Cliente Inicial', 'Sucursal', 'NOM', 'Personal', 'F. Visita', 'F. Digital (+20d)', 'F. Físico (+25d)', 'Días que tardó', 'Estatus', 'Asesor/Consultor'];
             const rows = filteredData.map(row => [row.ot, row.clienteInicial, row.clienteFinal, row.nom, row.personal, row.fechaVisita, row.fechaDigital, row.fechaFisico, calcularDiasEntrega(row) || '', row.estatusAuto, row.asesorConsultor]);
             const csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `ejecutiva_ambiental_${new Date().toISOString().split('T')[0]}.csv`; link.click();
