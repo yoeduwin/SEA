@@ -8,7 +8,7 @@
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     body { font-family:Arial,sans-serif; background:#f5f5f5; padding:20px; font-size:12px; }
-    .main-container { max-width:1200px; margin:0 auto; background:#fff; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,.1); overflow:hidden; }
+    .main-container { max-width:1200px; margin:0 auto; background:#fff; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,.1); overflow:clip; }
     .header { background:linear-gradient(135deg,#1e5a3e,#2d7a4f); color:#fff; padding:25px 30px; display:flex; justify-content:space-between; align-items:center; gap:20px; }
     .logo-section { display:flex; align-items:center; gap:15px; }
     .logo { width:50px; height:50px; background:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#1e5a3e; font-weight:bold; font-size:20px; flex-shrink:0; }
@@ -21,6 +21,16 @@
     .btn-returning { margin-top:10px; background:rgba(255,255,255,.15); color:#fff; border:1px solid rgba(255,255,255,.45); padding:8px 14px; border-radius:5px; cursor:pointer; font-size:10px; font-weight:600; text-transform:uppercase; }
     .btn-returning:hover { background:rgba(255,255,255,.25); }
     .form-content { padding:30px 40px; }
+    .paic-progreso { position:sticky; top:0; z-index:50; background:#fff; margin:-30px -40px 25px; padding:10px 40px; border-bottom:1px solid #e0e0e0; box-shadow:0 2px 6px rgba(0,0,0,.05); display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .paic-progreso ol { list-style:none; display:flex; gap:6px; flex-wrap:wrap; margin:0; padding:0; flex:1; }
+    .paic-progreso button { border:1px solid #cfd8d3; background:#f6f8f7; color:#4a5a51; border-radius:14px; padding:5px 11px; font-size:11px; font-weight:600; cursor:pointer; white-space:nowrap; }
+    .paic-progreso button.actual { border-color:#1e5a3e; color:#1e5a3e; background:#fff; box-shadow:0 0 0 1px #1e5a3e inset; }
+    .paic-progreso button.completa { background:#e6f4ec; border-color:#9fd0b3; color:#1e5a3e; }
+    .paic-progreso button.completa::before { content:'✓ '; }
+    .paic-progreso .faltan { font-size:11px; color:#8a5a00; font-weight:600; white-space:nowrap; }
+    .paic-progreso .faltan.listo { color:#1e5a3e; }
+    .aviso-privacidad { font-size:11px; color:#666; margin:0 0 12px; }
+    .aviso-privacidad a { color:#1e5a3e; font-weight:600; }
     .section { border-bottom:1px solid #e0e0e0; margin-bottom:30px; padding-bottom:25px; }
     .section:last-child { border-bottom:none; }
     .section-header { background:#1e5a3e; color:#fff; padding:10px 20px; margin:0 -40px 25px; font-weight:bold; font-size:12px; text-transform:uppercase; letter-spacing:.5px; }
@@ -102,6 +112,8 @@
       .header { flex-direction:column; text-align:center; }
       .document-info { text-align:center; }
       .form-content { padding:20px; }
+      .paic-progreso { margin:-20px -20px 20px; padding:8px 12px; }
+      .paic-progreso ol { flex:1 1 100%; flex-wrap:nowrap; overflow-x:auto; }
       .section-header, .returning-banner { margin-left:-20px; margin-right:-20px; }
       .form-grid { grid-template-columns:1fr; }
       .modal-body { padding:20px; }
@@ -166,6 +178,10 @@
 
     <div class="form-content">
       <form id="paicForm">
+        <nav class="paic-progreso" id="paicProgreso" aria-label="Avance del registro">
+          <ol id="paicProgresoPasos"></ol>
+          <span class="faltan" id="paicFaltan" aria-live="polite"></span>
+        </nav>
         <div class="section">
           <div class="section-header">Datos del asesor / intermediario</div>
           <div class="section-note">Estos datos identifican a quien realiza el registro. El correo de confirmación del PAIC se enviará al asesor, no al cliente final.</div>
@@ -529,9 +545,10 @@
         </div>
 
         <div class="submit-section">
+          <p class="aviso-privacidad">Al enviar, acepta nuestro <a href="https://ejecutivambiental.com/aviso-de-privacidad/" target="_blank" rel="noopener">Aviso de privacidad</a>.</p>
           <button type="submit" class="btn-submit" id="submitBtn">Revisar y enviar información</button>
           <div class="loading" id="loading"><div class="loading-spinner"></div><p class="loading-text">Guardando información del cliente...</p></div>
-          <div class="message success-message" id="successMsg"><strong>Cliente/sucursal guardado correctamente.</strong><br>El registro quedó guardado o actualizado. La orden de trabajo se gestiona por separado en SEAOT.<div id="successRevision" style="display:none;margin-top:10px;"></div></div>
+          <div class="message success-message" id="successMsg"><strong>Cliente/sucursal guardado correctamente.</strong><br>El registro quedó guardado o actualizado. <span id="successCorreo"></span>La orden de trabajo se gestiona por separado en SEAOT.<div id="successRevision" style="display:none;margin-top:10px;"></div></div>
           <div class="message error-message" id="errorMsg">✗ <span id="errorMsgText">Error al enviar la información.</span></div>
         </div>
       </form>
@@ -751,6 +768,7 @@
       if (loading) loading.style.display='block';
       try {
         const fd = new FormData(form);
+        const correoAcuse = String(fd.get('correo_acuse') || '').trim();
         const data = { action:'registrarCliente', portal_origen:'PAIC' };
         let total = 0;
         for (const [key,value] of fd.entries()) {
@@ -774,7 +792,8 @@
         const text = await response.text();
         let result;
         try { result = JSON.parse(text); } catch (_) { throw new Error('RESPUESTA_INVALIDA'); }
-        if (!result || result.success === false) throw new Error(result?.error || 'ERROR_SERVIDOR');
+        // Un rechazo de la verificación de seguridad llega como AUTH_REQUIRED con la explicación en message.
+        if (!result || result.success === false) throw new Error((result?.error === 'AUTH_REQUIRED' && result?.message) || result?.error || 'ERROR_SERVIDOR');
         if (loading) loading.style.display='none';
         const revision=document.getElementById('successRevision');
         if (revision) {
@@ -784,6 +803,8 @@
             ? `<strong>En revisión:</strong> ${campos.map(escHtml).join(', ')}. Por seguridad, estos datos se aplicarán cuando Ejecutiva Ambiental los confirme; avisamos al correo registrado del cliente.`
             : '';
         }
+        const successCorreo=document.getElementById('successCorreo');
+        if (successCorreo) successCorreo.textContent = correoAcuse ? `Enviamos la confirmación a ${enmascararCorreo(correoAcuse)}. ` : '';
         if (successMsg) { successMsg.style.display='block'; successMsg.scrollIntoView({behavior:'smooth',block:'center'}); }
         setModoActualizacion(false);
         form.reset();
@@ -792,10 +813,11 @@
         if (rfcInput) rfcInput.style.borderColor='';
       } catch (error) {
         if (loading) loading.style.display='none';
-        if (error.name === 'AbortError') showError('La solicitud tardó demasiado tiempo.','Intente nuevamente o contáctenos.');
+        const conservado = ' Lo capturado y los archivos se conservan en el formulario.';
+        if (error.name === 'AbortError') showError('La solicitud tardó demasiado tiempo.','Revise su conexión.' + conservado + ' Si el problema sigue, contáctenos.');
         else if (error.message === 'ARCHIVOS_MUY_GRANDES') showError('Los archivos adjuntos superan 25 MB en total.','Comprima los archivos o reduzca su tamaño.');
-        else if (error.message.startsWith('HTTP_ERROR_')) showError('El servidor devolvió un error.','Por favor intente nuevamente.');
-        else showError('No fue posible guardar la información.',error.message || 'Error desconocido');
+        else if (error.message.startsWith('HTTP_ERROR_')) showError('El servidor devolvió un error.','Intente nuevamente.' + conservado);
+        else showError('No fue posible guardar la información.',(error.message || 'Error desconocido') + conservado);
       } finally {
         if (submitBtn) submitBtn.disabled=false;
       }
@@ -954,11 +976,13 @@
         const el=form.querySelector(`[name="${n}"]`);
         if (el) el.readOnly=activo;
       });
+      if (window.paicActualizarProgreso) window.paicActualizarProgreso();
     }
     window.applyClientData=applyClientData;
 
 
     function clearPrefill() {
+      if (!confirm('¿Borrar todo lo capturado y los archivos adjuntos? Esta acción no se puede deshacer.')) return;
       setModoActualizacion(false);
       document.getElementById('paicForm')?.reset();
       document.getElementById('returningBanner')?.classList.remove('active');
@@ -966,6 +990,68 @@
       if (rfcInput) rfcInput.style.borderColor='';
     }
     window.clearPrefill=clearPrefill;
+
+    // a***@dominio.com: confirma el destino sin exhibir el correo completo en pantalla.
+    function enmascararCorreo(correo) {
+      const [usuario, dominio] = String(correo).split('@');
+      if (!dominio) return '';
+      return `${usuario.slice(0, 1)}***@${dominio}`;
+    }
+
+    // Barra de avance: una etiqueta por sección; se marca completa cuando sus
+    // campos obligatorios visibles son válidos. Sección sin obligatorios = opcional.
+    (function iniciarProgreso() {
+      const form = document.getElementById('paicForm');
+      const lista = document.getElementById('paicProgresoPasos');
+      const faltanEl = document.getElementById('paicFaltan');
+      if (!form || !lista) return;
+      const NOMBRES = ['Asesor', 'Cliente y sucursal', 'Informes', 'Descripción', 'Documentos', 'NOM-020'];
+      const secciones = [...form.querySelectorAll(':scope > .section')];
+      const botones = secciones.map((sec, i) => {
+        const li = document.createElement('li');
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = `${i + 1}. ${NOMBRES[i] || 'Sección'}`;
+        b.addEventListener('click', () => {
+          const alto = document.getElementById('paicProgreso').offsetHeight;
+          window.scrollTo({ top: sec.getBoundingClientRect().top + window.scrollY - alto - 8, behavior: 'smooth' });
+        });
+        li.appendChild(b); lista.appendChild(li);
+        return b;
+      });
+      const obligatorios = sec => [...sec.querySelectorAll('[required]')].filter(el => !el.disabled && el.offsetParent !== null);
+      function actualizar() {
+        let faltan = 0;
+        secciones.forEach((sec, i) => {
+          const req = obligatorios(sec);
+          // Un grupo de radios cuenta una sola vez.
+          const vistos = new Set();
+          const pendientes = req.filter(el => {
+            const clave = el.type === 'radio' ? 'radio:' + el.name : el;
+            if (vistos.has(clave)) return false;
+            vistos.add(clave);
+            return !el.checkValidity();
+          }).length;
+          faltan += pendientes;
+          botones[i].classList.toggle('completa', req.length > 0 && pendientes === 0);
+          botones[i].title = req.length === 0 ? 'Sección opcional' : (pendientes ? `Faltan ${pendientes} campo(s) obligatorio(s)` : 'Completa');
+        });
+        faltanEl.textContent = faltan ? `Faltan ${faltan} campo${faltan === 1 ? '' : 's'} obligatorio${faltan === 1 ? '' : 's'}` : '✓ Todo lo obligatorio está listo';
+        faltanEl.classList.toggle('listo', faltan === 0);
+      }
+      function marcarActual() {
+        const alto = document.getElementById('paicProgreso').offsetHeight + 20;
+        let actual = 0;
+        secciones.forEach((sec, i) => { if (sec.getBoundingClientRect().top - alto <= 0) actual = i; });
+        botones.forEach((b, i) => b.classList.toggle('actual', i === actual));
+      }
+      form.addEventListener('input', actualizar);
+      form.addEventListener('change', () => setTimeout(actualizar, 0));
+      form.addEventListener('reset', () => setTimeout(actualizar, 0));
+      window.addEventListener('scroll', marcarActual, { passive: true });
+      window.paicActualizarProgreso = actualizar;
+      actualizar(); marcarActual();
+    })();
   </script>
 
   <script src="https://www.google.com/recaptcha/enterprise.js?render=6LdIq4csAAAAAHCggurLxQbsc15M8MnAD8UIOR1E" async defer></script>
