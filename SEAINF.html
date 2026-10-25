@@ -504,18 +504,6 @@
   let filtroMetricaActivo = null;
   let ordenesMap = {}; 
 
-  // Clave ordenable de un folio de OT. Formato actual: SERIE+AAMM-N (OTB2604-171);
-  // formato anterior: SERIE+AA-MMDD-N (OTB26-0109-123).
-  function claveFolioOT(folio) {
-    const f = String(folio || '').trim().toUpperCase();
-    const pad = (n) => String(n).padStart(6, '0');
-    let m = f.match(/^OT[BC]?(\d{2})(\d{2})-(\d+)$/);
-    if (m) return { anterior: false, clave: `${m[1]}${m[2]}00-${pad(m[3])}` };
-    m = f.match(/^OT[BC]?(\d{2})-(\d{2})(\d{2})-(\d+)$/);
-    if (m) return { anterior: true, clave: `${m[1]}${m[2]}${m[3]}-${pad(m[4])}` };
-    return { anterior: false, clave: '' }; // folio no reconocido: al final de recientes
-  }
-
   async function cargarOrdenesDisponibles() {
     try {
       const response = await SEAAuth.wrapFetch(`${SCRIPT_URL}?action=getOrdenes`);
@@ -539,29 +527,11 @@
             nom: orden.nom_servicio || orden.nom || '',
             tipo_orden: orden.tipo_orden || ''
           };
+          const option = document.createElement('option');
+          option.value = otKey;
+          option.textContent = `${otKey} - ${ordenesMap[otKey].cliente}`;
+          select.appendChild(option);
         });
-        // Más recientes primero; las OT con folio del formato anterior
-        // (SERIE+AA-MMDD-N, de antes del sistema) van en su propio grupo al final.
-        const actuales = [], anteriores = [];
-        [...new Set(result.data.map(o => o.ot || '').filter(Boolean))].forEach(otKey => {
-          const f = claveFolioOT(otKey);
-          (f.anterior ? anteriores : actuales).push({ otKey, clave: f.clave });
-        });
-        const agregarGrupo = (lista, etiqueta) => {
-          if (!lista.length) return;
-          lista.sort((a, b) => b.clave.localeCompare(a.clave));
-          const grupo = document.createElement('optgroup');
-          grupo.label = etiqueta;
-          lista.forEach(({ otKey }) => {
-            const option = document.createElement('option');
-            option.value = otKey;
-            option.textContent = `${otKey} - ${ordenesMap[otKey].cliente}`;
-            grupo.appendChild(option);
-          });
-          select.appendChild(grupo);
-        };
-        agregarGrupo(actuales, 'OT recientes');
-        agregarGrupo(anteriores, 'OT anteriores al sistema (folio con formato viejo)');
       }
     } catch (e) {
       console.error('Error cargando órdenes', e);
