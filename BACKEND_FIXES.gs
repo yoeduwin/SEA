@@ -1678,6 +1678,24 @@ function uploadValidatedFiles_(expedienteFolder, folders, validFiles) {
   return summary;
 }
 
+// Fecha de entrega capturada en SEAINF (propuesta: visita + 20 días, editable
+// porque algunos servicios tienen otro plazo). Acepta yyyy-MM-dd (input date)
+// o dd/MM/yyyy y la guarda como dd/MM/yyyy; si no es válida devuelve ''.
+function fechaEntregaInforme_(valor) {
+  const s = String(valor == null ? '' : valor).trim();
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  let y, mo, d;
+  if (m) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+  else {
+    m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!m) return '';
+    d = +m[1]; mo = +m[2]; y = +m[3];
+  }
+  const fecha = new Date(y, mo - 1, d);
+  if (fecha.getFullYear() !== y || fecha.getMonth() !== mo - 1 || fecha.getDate() !== d) return '';
+  return Utilities.formatDate(fecha, CONFIG.TIMEZONE, 'dd/MM/yyyy');
+}
+
 function fase3_CrearExpediente(payload) {
   const info = payload && payload.data ? payload.data : {};
   const files = payload && payload.files ? payload.files : [];
@@ -1798,7 +1816,7 @@ function fase3_CrearExpediente(payload) {
     info.telefono || '',
     info.direccion || '',
     info.fechaServicio || otRow[CO.FECHA_VISITA] || '',
-    otRow[CO.FECHA_ENTREGA] || '',
+    fechaEntregaInforme_(info.entrega) || otRow[CO.FECHA_ENTREGA] || '',
     info.esCapacitacion || 'NO',
     'NO INICIADO',
     expedienteFolder.getUrl(),
