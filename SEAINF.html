@@ -545,6 +545,11 @@
     const infoBox = document.getElementById('ot-autofill-box');
     const infoMsg = document.getElementById('ot-autofill-msg');
 
+    // Una fecha de entrega cambiada a mano pertenece a la OT anterior.
+    const entrega = document.getElementById('field-entrega');
+    entrega.value = '';
+    entrega.dataset.manual = '';
+
     if (otData && otKey) {
       document.getElementById('field-cliente-inicial').value = otData.cliente || '';
       document.getElementById('field-cliente-final').value = otData.sucursal || '';
@@ -561,8 +566,9 @@
           if (parts.length === 3) fechaISO = `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
         }
         fechaField.value = fechaISO;
-        fechaField.dispatchEvent(new Event('change'));
       }
+      // Propone la entrega desde la visita (la de esta OT, o la ya capturada si la OT no trae).
+      document.getElementById('field-fecha').dispatchEvent(new Event('change'));
 
       if (otData.personal) {
         const respSelect = document.getElementById('field-responsable');
