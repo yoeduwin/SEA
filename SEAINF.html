@@ -337,8 +337,8 @@
                 <input type="date" id="field-fecha" class="ea-input" required>
               </div>
               <div class="ea-form-group">
-                <label class="ea-label">Fecha Compromiso (+15 días)<span class="tt" tabindex="0" data-tip="Se calcula automáticamente como 15 días a partir de la fecha de emisión de la OT. Es la fecha límite de entrega del informe al cliente.">i</span></label>
-                <input type="date" id="field-entrega" class="ea-input" readonly>
+                <label class="ea-label">Fecha de entrega al cliente <span class="ea-required">*</span><span class="tt" tabindex="0" data-tip="Se propone sola: 20 días después de la visita. Si este servicio tiene otro plazo, cámbiala aquí. Con esta fecha el tablero avisa qué informes van atrasados.">i</span></label>
+                <input type="date" id="field-entrega" class="ea-input" required>
               </div>
               <div class="ea-form-group full-width">
                 <label class="ea-label">Responsable del Informe <span class="ea-required">*</span></label>
@@ -440,7 +440,7 @@
           <div class="kpi-value" id="kpi-por-vencer" style="color: #f39c12;">0</div>
         </div>
         <div class="kpi-card" data-metric="vencidos" onclick="filtrarPorMetrica('vencidos')">
-          <div class="kpi-label">🔴 Vencidos</div>
+          <div class="kpi-label">🔴 Atrasados</div>
           <div class="kpi-value" id="kpi-vencidos" style="color: #e74c3c;">0</div>
         </div>
       </div>
@@ -467,7 +467,7 @@
           </select>
           <select id="filter-vencimiento">
             <option value="">Todos los Vencimientos</option>
-            <option value="vencidos">🔴 Vencidos</option>
+            <option value="vencidos">🔴 Atrasados</option>
             <option value="proximos">🟠 En límite (0-7 días)</option>
             <option value="en-plazo">🟢 En tiempo</option>
           </select>
@@ -482,7 +482,7 @@
                 <th>Cliente Final (Sucursal)</th>
                 <th>Responsable</th>
                 <th>Estatus Operativo</th>
-                <th>SLA</th>
+                <th>Entrega</th>
                 <th>Acciones</th>
               </tr>
             </thead>
@@ -490,6 +490,7 @@
               <tr><td colspan="8"><div class="loader" style="display:block;"><div class="spinner"></div></div></td></tr>
             </tbody>
           </table>
+          <p style="font-size:11px; color:var(--muted); margin:8px 4px 0;">* Fecha estimada (visita + 20 días): el informe se registró sin fecha de entrega.</p>
         </div>
       </div>
     </div>
@@ -718,12 +719,19 @@
   document.getElementById('field-responsable').addEventListener('change', () => validarProgreso());
   
   document.getElementById('field-fecha').addEventListener('change', function() {
-    if (this.value) {
+    const entrega = document.getElementById('field-entrega');
+    // Propone visita + 20 días, salvo que la fecha de entrega se haya cambiado a mano.
+    if (this.value && (!entrega.value || entrega.dataset.manual !== '1')) {
       const [y, m, d] = this.value.split('-').map(Number);
-      const date = new Date(y, m - 1, d + 20); // local time, sin desfase UTC; 20 días SLA
-      document.getElementById('field-entrega').value =
+      const date = new Date(y, m - 1, d + DIAS_ENTREGA_DEFAULT); // local time, sin desfase UTC
+      entrega.value =
         `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+      entrega.dataset.manual = '';
     }
+    validarProgreso();
+  });
+  document.getElementById('field-entrega').addEventListener('input', function() {
+    this.dataset.manual = '1';
     validarProgreso();
   });
 
@@ -932,29 +940,36 @@
   }
   function safeDriveUrl(u) { return (typeof u === 'string' && u.startsWith('https://')) ? u : '#'; }
 
-  function calcularDiasVencimiento(fechaEntrega) {
-    if (!fechaEntrega) return null;
-    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-    const fe = String(fechaEntrega).trim();
-    // DD/MM/YYYY (Sheets, formato mexicano)
-    const dmy_slash = fe.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (dmy_slash) {
-      const entrega = new Date(Number(dmy_slash[3]), Number(dmy_slash[2]) - 1, Number(dmy_slash[1]));
-      return Math.ceil((entrega - hoy) / 86400000);
-    }
-    // DD-MM-YYYY (formato generado por formatearFechaSLA)
-    const dmy_dash = fe.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
-    if (dmy_dash) {
-      const entrega = new Date(Number(dmy_dash[3]), Number(dmy_dash[2]) - 1, Number(dmy_dash[1]));
-      return Math.ceil((entrega - hoy) / 86400000);
-    }
-    // YYYY-MM-DD — parsear como fecha local (no UTC) para evitar desfase de timezone
+  // Días que se proponen entre la visita y la entrega del informe.
+  const DIAS_ENTREGA_DEFAULT = 20;
+
+  // Convierte DD/MM/YYYY, DD-MM-YYYY o YYYY-MM-DD a fecha local (sin desfase UTC).
+  function parseFechaLocal(valor) {
+    if (!valor) return null;
+    const fe = String(valor).trim();
+    const dmy = fe.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+    if (dmy) return new Date(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
     const iso = fe.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (iso) {
-      const entrega = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
-      return Math.ceil((entrega - hoy) / 86400000);
-    }
+    if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
     return null;
+  }
+
+  function calcularDiasVencimiento(fechaLimite) {
+    const entrega = parseFechaLocal(fechaLimite);
+    if (!entrega) return null;
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+    return Math.ceil((entrega - hoy) / 86400000);
+  }
+
+  // Fecha límite para el tablero: la capturada o, si el informe no la tiene,
+  // la visita + 20 días (marcada como estimada). La fecha capturada no se toca.
+  function fechaLimiteInforme(r) {
+    if (parseFechaLocal(r.fechaEntrega)) return { fecha: r.fechaEntrega, estimada: false };
+    const visita = parseFechaLocal(r.fecha);
+    if (!visita) return { fecha: '', estimada: false };
+    visita.setDate(visita.getDate() + DIAS_ENTREGA_DEFAULT);
+    const dd = String(visita.getDate()).padStart(2, '0'), mm = String(visita.getMonth() + 1).padStart(2, '0');
+    return { fecha: `${dd}/${mm}/${visita.getFullYear()}`, estimada: true };
   }
 
   async function cargarTablero() {
@@ -962,9 +977,6 @@
       const response = await SEAAuth.wrapFetch(`${SCRIPT_URL}?action=getTableroInf&_t=${Date.now()}`);
       const result = await response.json();
       if (result && result.success) {
-        if (result.data && result.data.length > 0) {
-          console.log('[SEAINF] Muestra API (1er registro):', JSON.stringify(result.data[0]));
-        }
         allTableroData = (result.data || []).map(r => ({
           ...r,
           numInforme: r.numInforme || r.num_informe || '',
@@ -983,6 +995,11 @@
           linkDrive: r.linkDrive || r.link_drive || r.link_drive_cliente || '',
           tipoOrden: r.tipoOrden || r.tipo_orden || ''
         }));
+        allTableroData.forEach(r => {
+          const lim = fechaLimiteInforme(r);
+          r.fechaLimite = lim.fecha;
+          r.fechaLimiteEstimada = lim.estimada;
+        });
         aplicarFiltros();
         checkInformesVencidos();
       }
@@ -999,14 +1016,14 @@
     const vencidos = allTableroData.filter(r => {
       const e = (r.estatus || 'NO INICIADO').toUpperCase();
       if (e === 'FINALIZADO' || e === 'CANCELADO') return false;
-      const d = calcularDiasVencimiento(r.fechaEntrega);
+      const d = calcularDiasVencimiento(r.fechaLimite);
       return d !== null && d < 0;
     });
     if (vencidos.length === 0) return;
     alertaInfMostrada = true;
     const body = document.getElementById('inf-alerta-body');
     body.innerHTML = vencidos.map(r => {
-      const dias = Math.abs(calcularDiasVencimiento(r.fechaEntrega));
+      const dias = Math.abs(calcularDiasVencimiento(r.fechaLimite));
       return `<div class="inf-vencido-item">
         <div>
           <strong>${escHtml(r.numInforme || r.ot)}</strong>
@@ -1014,7 +1031,7 @@
           <span style="font-size:11px;">${escHtml(r.nom||'-')} · ${escHtml(r.cliente||'-')}</span><br>
           <span style="font-size:11px;color:#888;">Resp: ${escHtml(r.responsable||'-')}</span>
         </div>
-        <span class="inf-vencido-dias">${dias}d vencido</span>
+        <span class="inf-vencido-dias">Atrasado ${dias === 1 ? '1 día' : dias + ' días'}</span>
       </div>`;
     }).join('');
     document.getElementById('inf-alerta-modal').classList.add('show');
@@ -1038,8 +1055,8 @@
     const activos    = data.filter(r => !TERMINALES.includes((r.estatus || 'NO INICIADO').toUpperCase()));
     const terminados = data.filter(r =>  TERMINALES.includes((r.estatus || 'NO INICIADO').toUpperCase()));
     activos.sort((a, b) => {
-      const dA = calcularDiasVencimiento(a.fechaEntrega);
-      const dB = calcularDiasVencimiento(b.fechaEntrega);
+      const dA = calcularDiasVencimiento(a.fechaLimite);
+      const dB = calcularDiasVencimiento(b.fechaLimite);
       if (dA === null && dB === null) return 0;
       if (dA === null) return 1;
       if (dB === null) return -1;
@@ -1048,13 +1065,20 @@
     let html = '';
     const buildRow = (r) => {
       const estatus = (r.estatus || 'NO INICIADO').toUpperCase();
-      const dias = calcularDiasVencimiento(r.fechaEntrega);
-      let slaChip = `<span class="chip chip-gray">Sin SLA</span>`;
+      const dias = calcularDiasVencimiento(r.fechaLimite);
+      const diasTxt = (n) => n === 1 ? '1 día' : `${n} días`;
+      const tipFecha = r.fechaLimiteEstimada
+        ? `Entregar a más tardar el ${r.fechaLimite} (estimada: visita + ${DIAS_ENTREGA_DEFAULT} días)`
+        : `Entregar a más tardar el ${r.fechaLimite}`;
+      let slaChip = `<span class="chip chip-gray">Sin fecha</span>`;
       if(estatus.includes('FINALIZADO')) slaChip = `<span class="chip chip-green">Entregado</span>`;
+      else if(estatus === 'CANCELADO') slaChip = `<span class="chip chip-gray">Cancelado</span>`;
       else if(dias !== null) {
-        if(dias < 0) slaChip = `<span class="chip chip-red">Vencido (${Math.abs(dias)}d)</span>`;
-        else if(dias <= 7) slaChip = `<span class="chip chip-yellow">Límite (${dias}d)</span>`;
-        else slaChip = `<span class="chip chip-green">En tiempo (${dias}d)</span>`;
+        let txt, cls;
+        if(dias < 0)       { txt = `Atrasado ${diasTxt(Math.abs(dias))}`; cls = 'chip-red'; }
+        else if(dias === 0){ txt = 'Se entrega hoy'; cls = 'chip-yellow'; }
+        else               { txt = `Faltan ${diasTxt(dias)}`; cls = dias <= 7 ? 'chip-yellow' : 'chip-green'; }
+        slaChip = `<span class="chip ${cls}" title="${escHtml(tipFecha)}">${txt}${r.fechaLimiteEstimada ? ' *' : ''}</span>`;
       }
       const cInicial = r.cliente || '-';
       const cFinal = r.sucursal || '-';
@@ -1148,15 +1172,15 @@ const mkRespSel = (ot, resp) => {
           if(filtroMetricaActivo === 'no-iniciado' && eNorm !== 'NO INICIADO') return false;
           if(filtroMetricaActivo === 'en-proceso' && !(eNorm === 'EN PROCESO' || eNorm === 'PARA REVISION' || eNorm === 'PARA IMPRESION')) return false;
           if(filtroMetricaActivo === 'en-tiempo') {
-            const d = calcularDiasVencimiento(r.fechaEntrega);
+            const d = calcularDiasVencimiento(r.fechaLimite);
             if(d === null || d <= 7 || eNorm === 'FINALIZADO' || eNorm === 'CANCELADO') return false;
           }
           if(filtroMetricaActivo === 'por-vencer') {
-            const d = calcularDiasVencimiento(r.fechaEntrega);
+            const d = calcularDiasVencimiento(r.fechaLimite);
             if(d === null || d < 0 || d > 7 || eNorm === 'FINALIZADO' || eNorm === 'CANCELADO') return false;
           }
           if(filtroMetricaActivo === 'vencidos') {
-            const d = calcularDiasVencimiento(r.fechaEntrega);
+            const d = calcularDiasVencimiento(r.fechaLimite);
             if(d === null || d >= 0 || eNorm === 'FINALIZADO' || eNorm === 'CANCELADO') return false;
           }
       }
@@ -1164,7 +1188,7 @@ const mkRespSel = (ot, resp) => {
       const matchEstatus = !estatus || eNorm === estatus;
       let matchVencimiento = true;
       if(vencimiento && eNorm !== 'FINALIZADO') {
-        const dias = calcularDiasVencimiento(r.fechaEntrega);
+        const dias = calcularDiasVencimiento(r.fechaLimite);
         if(vencimiento === 'vencidos') matchVencimiento = dias !== null && dias < 0;
         else if(vencimiento === 'proximos') matchVencimiento = dias !== null && dias >= 0 && dias <= 7;
         else if(vencimiento === 'en-plazo') matchVencimiento = dias !== null && dias > 7;
@@ -1187,7 +1211,7 @@ const mkRespSel = (ot, resp) => {
       const e = (r.estatus || 'NO INICIADO').toUpperCase();
       if(e === 'NO INICIADO') noIniciado++;
       else if(e === 'EN PROCESO' || e === 'PARA REVISION' || e === 'PARA IMPRESION') enProceso++;
-      const dias = calcularDiasVencimiento(r.fechaEntrega);
+      const dias = calcularDiasVencimiento(r.fechaLimite);
       if(dias !== null && e !== 'FINALIZADO' && e !== 'CANCELADO') {
         if(dias < 0) vencidos++;
         else if(dias <= 7) porVencer++;
@@ -1627,7 +1651,7 @@ async function cambiarDatoRapido(ot, campo, valor) {
       const card2 = document.getElementById('card-paso2');
       const btn = document.getElementById('btn-enviar');
       if (!card2 || !btn) return;
-      const listoPaso1 = hasValue('field-ot') && hasValue('field-nom') && hasValue('field-cliente-inicial') && hasValue('field-cliente-final') && hasValue('field-fecha') && hasValue('field-responsable');
+      const listoPaso1 = hasValue('field-ot') && hasValue('field-nom') && hasValue('field-cliente-inicial') && hasValue('field-cliente-final') && hasValue('field-fecha') && hasValue('field-entrega') && hasValue('field-responsable');
       if (listoPaso1) {
         card2.classList.remove('step-locked');
         btn.disabled = false;
@@ -1665,13 +1689,13 @@ async function cambiarDatoRapido(ot, campo, valor) {
     <div class="inf-modal-header">
       <span style="font-size:2rem;">🔴</span>
       <div>
-        <h2 style="margin:0;font-size:1.1rem;">Informes Vencidos</h2>
+        <h2 style="margin:0;font-size:1.1rem;">Informes atrasados</h2>
         <p style="margin:0;font-size:0.82rem;opacity:.9;">Superaron su fecha de entrega</p>
       </div>
     </div>
     <div class="inf-modal-body" id="inf-alerta-body"></div>
     <div class="inf-modal-footer">
-      <button class="inf-modal-btn inf-modal-btn-primary" onclick="filtrarVencidosInf()">🔴 Ver Vencidos</button>
+      <button class="inf-modal-btn inf-modal-btn-primary" onclick="filtrarVencidosInf()">🔴 Ver atrasados</button>
       <button class="inf-modal-btn inf-modal-btn-secondary" onclick="cerrarAlertaInf()">Cerrar</button>
     </div>
   </div>

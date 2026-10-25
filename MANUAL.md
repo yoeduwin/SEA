@@ -293,6 +293,12 @@ Paso 4: Subir documentos a las carpetas correspondientes
 Paso 5: Confirmar expediente completo
 ```
 
+#### Fecha de entrega al cliente
+
+Al capturar la fecha de visita, SEAINF propone como fecha de entrega la visita + 20 días. Es editable porque algunos servicios tienen otro plazo, y es obligatoria para crear el expediente. El backend la guarda en la columna FECHA_ENTREGA de INFORMES (si llega vacía o inválida, usa la de la OT).
+
+En el tablero, la columna **Entrega** muestra «Faltan N días», «Se entrega hoy» o «Atrasado N días». Los informes registrados sin fecha muestran una fecha estimada (visita + 20 días) marcada con `*`; esa estimación solo se usa en el tablero, no se escribe en la hoja ni en la constancia.
+
 #### Expedientes de la serie OTC
 
 Una OT de la serie OTC crea su expediente sin número de informe: el campo aparece deshabilitado («No aplica») y SEAINF no solicita consecutivo. El backend decide la serie con la columna Tipo de la OT registrada (no con el payload), rechaza cualquier número enviado para una OTC y sigue exigiéndolo para OT/OTB. La carpeta se nombra por el folio (`02_Expediente_{FOLIO_OT}_{SERVICIO}`) y la fila de INFORMES queda con el número vacío y la serie `OTC`. La OT sale del selector de pendientes en cuanto tiene esa fila, y el tablero de SEAINF la muestra como «Sin informe (OTC)».
