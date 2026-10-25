@@ -22,6 +22,11 @@
         .container { max-width: 1600px; margin: 0 auto; padding: 1.5rem; }
         .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
         .kpi-card { background: white; padding: 1rem; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); transition: transform 0.3s, box-shadow 0.3s; }
+        .kpi-grid-3 { grid-template-columns: repeat(4, 1fr); margin-bottom: 0.5rem; }
+        .kpi-filtro { border: 2px solid transparent; text-align: left; font: inherit; cursor: pointer; width: 100%; }
+        .kpi-filtro.activo { border-color: #2d5f4f; }
+        .kpi-resumen { color: #7f8c8d; font-size: 0.85rem; margin: 0 0 1.25rem 0.25rem; }
+        .seccion-analisis { color: #2d5f4f; font-size: 1rem; margin: 1.5rem 0 0.75rem; }
         .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
         .kpi-label { font-size: 0.75rem; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.3rem; }
         .kpi-value { font-size: 2rem; font-weight: 700; color: #2d5f4f; margin-bottom: 0.2rem; }
@@ -33,7 +38,7 @@
         .filter-group label { font-size: 0.75rem; color: #7f8c8d; margin-bottom: 0.3rem; font-weight: 500; }
         .filter-group select, .filter-group input { padding: 0.5rem; border: 1px solid #dfe6e9; border-radius: 6px; font-size: 0.85rem; transition: border-color 0.3s; }
         .filter-group select:focus, .filter-group input:focus { outline: none; border-color: #2d5f4f; }
-        .charts-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+        .charts-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
         .chart-card { background: white; padding: 0.8rem; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
         .chart-card h3 { margin-bottom: 0.5rem; color: #2d5f4f; font-size: 0.85rem; font-weight: 600; }
         canvas { max-height: 150px !important; }
@@ -95,6 +100,7 @@
         @media (max-width: 768px) {
             .container { padding: 1rem; }
             .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+            .kpi-grid-3 { grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
             .filter-grid { grid-template-columns: 1fr; }
             .tabs { overflow-x: auto; }
             .tab { padding: 0.8rem 1.2rem; white-space: nowrap; }
@@ -113,6 +119,13 @@
         .modal-header { background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); color: white; padding: 1.5rem; display: flex; align-items: center; gap: 1rem; }
         .modal-header h2 { font-size: 1.3rem; font-weight: 600; margin: 0; }
         .modal-body { padding: 1.5rem; max-height: 400px; overflow-y: auto; }
+        .barra-vencidas { position: relative; padding-right: 2.5rem !important; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; background: #fdecea; border: 1px solid #f5c6cb; border-left: 5px solid #e74c3c; color: #842029; padding: 0.7rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.9rem; }
+        .barra-vencidas[hidden] { display: none; }
+        .barra-vencidas strong { white-space: nowrap; }
+        .barra-vencidas .bv-lista { flex: 1; min-width: 200px; color: #6c2a2a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .barra-vencidas button { border: none; border-radius: 6px; padding: 0.4rem 0.8rem; font-weight: 600; cursor: pointer; font-size: 0.8rem; }
+        .barra-vencidas .bv-ver { background: #e74c3c; color: #fff; }
+        .barra-vencidas .bv-cerrar { position: absolute; top: 0.35rem; right: 0.35rem; background: transparent; color: #842029; font-size: 1.1rem; padding: 0.2rem 0.5rem; }
         .alert-message { background: #fff3cd; border-left: 4px solid #ffc107; padding: 1rem; margin-bottom: 1rem; border-radius: 4px; font-size: 0.95rem; color: #856404; }
         .ot-vencida-item { background: #f8f9fa; border-left: 4px solid #e74c3c; padding: 1rem; margin-bottom: 0.8rem; border-radius: 6px; transition: all 0.3s; }
         .ot-vencida-item:hover { background: #ecf0f1; transform: translateX(5px); }
@@ -254,14 +267,14 @@
     </div>
     <div id="tab-ordenes" class="tab-content active">
         <div class="container">
-            <div class="kpi-grid">
-                <div class="kpi-card"><div class="kpi-label">Total OTs</div><div class="kpi-value" id="kpi-total">0</div><div class="kpi-subtitle">Órdenes de Trabajo</div></div>
-                <div class="kpi-card"><div class="kpi-label">✅ Entregadas</div><div class="kpi-value" id="kpi-entregadas" style="color: #27ae60;">0</div><div class="kpi-subtitle"><span id="kpi-entregadas-pct">0%</span> del total</div></div>
-                <div class="kpi-card"><div class="kpi-label">🟢 En Tiempo</div><div class="kpi-value" id="kpi-tiempo" style="color: #27ae60;">0</div><div class="kpi-subtitle">Sin retraso</div></div>
-                <div class="kpi-card"><div class="kpi-label">🟠 En Límite</div><div class="kpi-value" id="kpi-limite" style="color: #e67e22;">0</div><div class="kpi-subtitle">0 a 7 días</div></div>
-                <div class="kpi-card"><div class="kpi-label">🔴 Vencidas</div><div class="kpi-value" id="kpi-vencidas" style="color: #e74c3c;">0</div><div class="kpi-subtitle">Fuera de tiempo</div></div>
-                <div class="kpi-card"><div class="kpi-label">⏱️ Tiempo Promedio</div><div class="kpi-value" id="kpi-promedio" style="color: #3498db;">0</div><div class="kpi-subtitle">Días de entrega</div></div>
+            <div id="barra-vencidas" class="barra-vencidas" role="status" hidden></div>
+            <div class="kpi-grid kpi-grid-3">
+                <button type="button" class="kpi-card kpi-filtro" data-estatus="TIEMPO" onclick="filtrarPorKPI('TIEMPO')"><div class="kpi-label">🟢 En tiempo</div><div class="kpi-value" id="kpi-tiempo" style="color: #27ae60;">0</div><div class="kpi-subtitle">Faltan más de 7 días</div></button>
+                <button type="button" class="kpi-card kpi-filtro" data-estatus="LIMITE" onclick="filtrarPorKPI('LIMITE')"><div class="kpi-label">🟠 En límite</div><div class="kpi-value" id="kpi-limite" style="color: #e67e22;">0</div><div class="kpi-subtitle">Vencen en 7 días o menos</div></button>
+                <button type="button" class="kpi-card kpi-filtro" data-estatus="ALERTA" onclick="filtrarPorKPI('ALERTA')"><div class="kpi-label">🔴 Atrasadas</div><div class="kpi-value" id="kpi-vencidas" style="color: #e74c3c;">0</div><div class="kpi-subtitle">Pasaron su fecha de entrega</div></button>
+                <div class="kpi-card" title="Promedio de días entre la visita y la entrega real, de las OT entregadas en los últimos 90 días"><div class="kpi-label">⏱️ Tiempo promedio</div><div class="kpi-value" id="kpi-promedio">—</div><div class="kpi-subtitle" id="kpi-promedio-meta">Meta: 20 días</div></div>
             </div>
+            <p class="kpi-resumen" id="kpi-resumen"></p>
             <div class="filters">
                 <h3>🔍 Filtros</h3>
                 <div class="filter-grid">
@@ -280,11 +293,6 @@
                     </div>
                 </div>
             </div>
-            <div class="charts-grid">
-                <div class="chart-card"><h3>Distribución por Estatus</h3><canvas id="chartStatus"></canvas></div>
-                <div class="chart-card"><h3>OTs por Mes de Registro</h3><canvas id="chartMes"></canvas></div>
-                <div class="chart-card"><h3>Tiempo de Entrega (Días)</h3><canvas id="chartTiempos"></canvas></div>
-            </div>
             <div class="table-container">
                 <div class="table-header"><h3>📋 Órdenes de Trabajo (<span id="table-count">0</span> registros)</h3></div>
                 <div class="table-wrapper">
@@ -294,7 +302,7 @@
                                 <th onclick="sortTable(0)">OT</th><th onclick="sortTable(1)">Cliente Inicial</th>
                                 <th onclick="sortTable(2)">Sucursal</th><th onclick="sortTable(3)">NOM</th><th onclick="sortTable(4)">Personal</th>
                                 <th onclick="sortTable(5)">F. Visita</th><th onclick="sortTable(6)">F. Digital (+20d)</th><th onclick="sortTable(7)">F. Físico (+25d)</th>
-                                <th onclick="sortTable(8)">Días</th><th onclick="sortTable(9)">Estatus</th><th>Asesor/Consultor</th><th>Acciones</th>
+                                <th onclick="sortTable(8)" title="Días desde la visita hasta la entrega real">Días que tardó</th><th onclick="sortTable(9)">Estatus</th><th>Asesor/Consultor</th><th>Acciones</th>
                             </tr>
                         </thead>
                         <tbody id="tableBody">
@@ -302,6 +310,11 @@
                         </tbody>
                     </table>
                 </div>
+            </div>
+            <h3 class="seccion-analisis">📈 Tendencia (últimos 8 meses)</h3>
+            <div class="charts-grid">
+                <div class="chart-card"><h3>OT por mes de visita: entregadas a tiempo, tarde y pendientes</h3><canvas id="chartMes"></canvas></div>
+                <div class="chart-card"><h3>Días promedio de la visita a la entrega, contra la meta</h3><canvas id="chartTiempos"></canvas></div>
             </div>
         </div>
     </div>
@@ -454,6 +467,7 @@
         
         let allData = [];
         let filteredData = [];
+        let datosSinEstatus = []; // filtros aplicados salvo el de estatus (base de tarjetas y gráficas)
         let allInformes = [];
         let filteredInformes = [];
         let charts = {};
@@ -519,11 +533,11 @@
                             hoy.setHours(0, 0, 0, 0);
                             const diffDias = Math.ceil((fechaLimite - hoy) / (1000 * 60 * 60 * 24));
                             if (diffDias < 0) {
-                                estatusAuto = `🔴 Alerta [${Math.abs(diffDias)} días]`;
+                                estatusAuto = `🔴 Atrasada ${Math.abs(diffDias) === 1 ? '1 día' : Math.abs(diffDias) + ' días'}`;
                             } else if (diffDias <= 7) {
-                                estatusAuto = `🟠 En límite [${diffDias} días]`;
+                                estatusAuto = diffDias === 0 ? '🟠 En límite · vence hoy' : `🟠 En límite · faltan ${diffDias === 1 ? '1 día' : diffDias + ' días'}`;
                             } else {
-                                estatusAuto = `🟢 En tiempo [${diffDias} días]`;
+                                estatusAuto = `🟢 En tiempo · faltan ${diffDias} días`;
                             }
                         } else {
                             estatusAuto = '🟡 Pendiente';
@@ -554,9 +568,7 @@
                     }).filter(row => row.ot);
                     
                     allData.sort((a, b) => b.ot.localeCompare(a.ot));
-                    filteredData = [...allData];
-                    
-                    updateKPIs(); updateFilters(); updateCharts(); updateTable(); checkOtsVencidas();
+                    updateFilters(); applyFilters(); checkOtsVencidas();
                     document.getElementById('lastUpdate').textContent = new Date().toLocaleString('es-MX');
                 }
             } catch (error) {
@@ -571,45 +583,29 @@
                 row.estatusRaw !== 'EN PAUSA' &&
                 getStatusCategory(row) === 'ALERTA'
             );
-            if (otsVencidas.length > 0) { mostrarAlertaVencidas(otsVencidas); }
+            if (otsVencidas.length > 0) { mostrarAlertaVencidas(otsVencidas); } else { cerrarAlertaVencidas(); }
         }
 
+        // Barra arriba del tablero (antes era una ventana que bloqueaba al entrar).
+        // Se actualiza en cada carga; la "×" la oculta hasta la siguiente.
         function mostrarAlertaVencidas(otsVencidas) {
-            const overlay = document.createElement('div'); overlay.className = 'modal-overlay'; overlay.id = 'alertModal';
-            const modalContent = document.createElement('div'); modalContent.className = 'modal-content';
-            const header = document.createElement('div'); header.className = 'modal-header';
-            header.innerHTML = `<span style="font-size: 2rem;">🔴</span><h2>¡ATENCIÓN! OTs Vencidas Detectadas</h2>`;
-            const body = document.createElement('div'); body.className = 'modal-body';
-            const alertMessage = document.createElement('div'); alertMessage.className = 'alert-message';
-            alertMessage.innerHTML = `<strong>⚠️ Acción Requerida:</strong><br>Se ${otsVencidas.length === 1 ? 'ha detectado 1 orden de trabajo vencida' : `han detectado ${otsVencidas.length} órdenes de trabajo vencidas`} que requieren atención inmediata.`;
-            body.appendChild(alertMessage);
-            otsVencidas.forEach(ot => {
-                const item = document.createElement('div'); item.className = 'ot-vencida-item';
-                const diasMatch = ot.estatusAuto.match(/\[(\d+)\s+día/);
-                const diasTexto = diasMatch ? `${diasMatch[1]} día${diasMatch[1] !== '1' ? 's' : ''}` : 'Revisar';
-                // Usar textContent para evitar XSS con datos del API
-                const header2 = document.createElement('div'); header2.className = 'ot-vencida-header';
-                const numSpan = document.createElement('span'); numSpan.className = 'ot-vencida-numero'; numSpan.textContent = ot.ot;
-                const diasSpan = document.createElement('span'); diasSpan.className = 'ot-vencida-dias'; diasSpan.textContent = `Vencida hace ${diasTexto}`;
-                header2.appendChild(numSpan); header2.appendChild(diasSpan);
-                const mkInfo = (label, val) => { const d = document.createElement('div'); d.className = 'ot-vencida-info'; const b = document.createElement('strong'); b.textContent = label; d.appendChild(b); d.appendChild(document.createTextNode(' ' + (val || '-'))); return d; };
-                item.appendChild(header2);
-                item.appendChild(mkInfo('Cliente Inicial:', ot.clienteInicial));
-                item.appendChild(mkInfo('Sucursal:', ot.clienteFinal));
-                item.appendChild(mkInfo('NOM:', ot.nom));
-                item.appendChild(mkInfo('Fecha Visita:', ot.fechaVisita));
-                item.appendChild(mkInfo('Responsable:', ot.personal));
-                item.appendChild(mkInfo('Estatus:', ot.estatusAuto));
-                body.appendChild(item);
-            });
-            const footer = document.createElement('div'); footer.className = 'modal-footer';
-            footer.innerHTML = `<button class="modal-btn modal-btn-secondary" onclick="cerrarAlertaVencidas()">Cerrar</button><button class="modal-btn modal-btn-primary" onclick="filtrarVencidas()">Ver OTs Vencidas en Tabla</button>`;
-            modalContent.appendChild(header); modalContent.appendChild(body); modalContent.appendChild(footer);
-            overlay.appendChild(modalContent); document.body.appendChild(overlay);
-            overlay.addEventListener('click', function(e) { if (e.target === overlay) { cerrarAlertaVencidas(); } });
+            const barra = document.getElementById('barra-vencidas');
+            if (!barra) return;
+            const dias = ot => { const m = ot.estatusAuto.match(/Atrasada (\d+)/); return m ? Number(m[1]) : 0; };
+            const ordenadas = [...otsVencidas].sort((a, b) => dias(b) - dias(a));
+            const lista = ordenadas.map(ot => `${ot.ot} (${dias(ot)} d)`).join(' · ');
+            barra.innerHTML = '';
+            const titulo = document.createElement('strong');
+            titulo.textContent = `🔴 ${otsVencidas.length} ${otsVencidas.length === 1 ? 'OT atrasada' : 'OT atrasadas'}`;
+            const detalle = document.createElement('span'); detalle.className = 'bv-lista'; detalle.textContent = lista; detalle.title = lista;
+            const ver = document.createElement('button'); ver.className = 'bv-ver'; ver.textContent = 'Ver en tabla'; ver.addEventListener('click', filtrarVencidas);
+            const cerrar = document.createElement('button'); cerrar.className = 'bv-cerrar'; cerrar.textContent = '×'; cerrar.title = 'Ocultar'; cerrar.setAttribute('aria-label', 'Ocultar aviso');
+            cerrar.addEventListener('click', cerrarAlertaVencidas);
+            barra.append(titulo, detalle, ver, cerrar);
+            barra.hidden = false;
         }
 
-        function cerrarAlertaVencidas() { const modal = document.getElementById('alertModal'); if (modal) { modal.style.animation = 'fadeIn 0.3s ease-out reverse'; setTimeout(() => modal.remove(), 300); } }
+        function cerrarAlertaVencidas() { const barra = document.getElementById('barra-vencidas'); if (barra) barra.hidden = true; }
         function filtrarVencidas() { cerrarAlertaVencidas(); document.getElementById('filter-estatus').value = 'ALERTA'; applyFilters(); document.querySelector('.table-container').scrollIntoView({ behavior: 'smooth' }); showToast('🔴 Mostrando solo OTs vencidas'); }
 
         let textoEventoActual = '';
@@ -652,7 +648,7 @@
             if (row.estatusRaw === 'EN PAUSA') return 'PAUSA';
             const estatus = row.estatusAuto || '';
             if (estatus.includes('✅') || estatus.includes('Entregado')) return 'ENTREGADO';
-            if (estatus.includes('🔴') || estatus.includes('Alerta')) return 'ALERTA';
+            if (estatus.includes('🔴') || estatus.includes('Atrasada') || estatus.includes('Alerta')) return 'ALERTA';
             if (estatus.includes('🟠') || estatus.includes('límite')) return 'LIMITE';
             if (estatus.includes('🟢') || estatus.includes('tiempo')) return 'TIEMPO';
             if (estatus.includes('🟡') || estatus.includes('Pendiente')) return 'PENDIENTE';
@@ -682,14 +678,33 @@
         }
 
         function updateKPIs() {
-            const total = filteredData.length;
-            const entregadas = filteredData.filter(r => r.entregadoManual.toUpperCase().includes('ENTREGADO')).length;
-            const tiempo = filteredData.filter(r => getStatusCategory(r) === 'TIEMPO').length;
-            const limite = filteredData.filter(r => getStatusCategory(r) === 'LIMITE').length;
-            const vencidas = filteredData.filter(r => getStatusCategory(r) === 'ALERTA').length;
-            const entregadasConDias = filteredData.filter(r => r.entregadoManual.toUpperCase().includes('ENTREGADO')).map(r => calcularDiasEntrega(r)).filter(d => d !== null && d >= 0);
-            const promedio = entregadasConDias.length > 0 ? Math.round(entregadasConDias.reduce((a, b) => a + b, 0) / entregadasConDias.length) : 0;
-            document.getElementById('kpi-total').textContent = total; document.getElementById('kpi-entregadas').textContent = entregadas; document.getElementById('kpi-entregadas-pct').textContent = `${total ? Math.round(entregadas/total*100) : 0}%`; document.getElementById('kpi-tiempo').textContent = tiempo; document.getElementById('kpi-limite').textContent = limite; document.getElementById('kpi-vencidas').textContent = vencidas; document.getElementById('kpi-promedio').textContent = promedio;
+            const base = datosSinEstatus;
+            const cuenta = cat => base.filter(r => getStatusCategory(r) === cat).length;
+            document.getElementById('kpi-tiempo').textContent = cuenta('TIEMPO');
+            document.getElementById('kpi-limite').textContent = cuenta('LIMITE');
+            document.getElementById('kpi-vencidas').textContent = cuenta('ALERTA');
+            const total = base.length;
+            const entregadas = base.filter(r => r.entregadoManual.toUpperCase().includes('ENTREGADO')).length;
+            const enPausa = cuenta('PAUSA');
+            // Tiempo promedio de entrega (últimos 90 días) contra la meta: verde si la cumple.
+            const hace90 = new Date(); hace90.setHours(0, 0, 0, 0); hace90.setDate(hace90.getDate() - 90);
+            const dias = base.filter(r => r.entregadoManual.toUpperCase().includes('ENTREGADO') && (parseFecha(r.fechaRealEntrega) || 0) >= hace90)
+                .map(r => calcularDiasEntrega(r)).filter(d => d !== null && d >= 0);
+            const promedio = dias.length ? Math.round(dias.reduce((a, b) => a + b, 0) / dias.length) : null;
+            const kpiProm = document.getElementById('kpi-promedio');
+            kpiProm.textContent = promedio === null ? '—' : `${promedio} días`;
+            kpiProm.style.color = promedio === null ? '#7f8c8d' : (promedio <= SLA_DIGITAL_DIAS ? '#27ae60' : '#e74c3c');
+            document.getElementById('kpi-promedio-meta').textContent = `Meta: ${SLA_DIGITAL_DIAS} días · últimos 90 días`;
+            document.getElementById('kpi-resumen').textContent =
+                `${total} OT · ${entregadas} entregadas (${total ? Math.round(entregadas / total * 100) : 0} %)` + (enPausa ? ` · ${enPausa} en pausa` : '');
+        }
+
+        // Clic en una tarjeta: filtra la tabla por ese estatus; otro clic quita el filtro.
+        function filtrarPorKPI(estatus) {
+            const sel = document.getElementById('filter-estatus');
+            sel.value = sel.value === estatus ? '' : estatus;
+            applyFilters();
+            if (sel.value) document.querySelector('.table-container').scrollIntoView({ behavior: 'smooth' });
         }
 
         function updateFilters() { const personal = [...new Set(allData.map(r => r.personal))].filter(Boolean).sort(); fillSelect('filter-personal', personal); }
@@ -700,35 +715,69 @@
             const filterClienteFinal = document.getElementById('filter-cliente-final').value.toLowerCase(); const filterNOM = document.getElementById('filter-nom').value.toLowerCase();
             const filterPersonal = document.getElementById('filter-personal').value; const filterEstatus = document.getElementById('filter-estatus').value;
             const filterAsesor = document.getElementById('filter-asesor').value.toLowerCase();
-            filteredData = allData.filter(row => {
+            datosSinEstatus = allData.filter(row => {
                 if (filterOT && !row.ot.toLowerCase().includes(filterOT)) return false; if (filterClienteInicial && !row.clienteInicial.toLowerCase().includes(filterClienteInicial)) return false;
                 if (filterClienteFinal && !row.clienteFinal.toLowerCase().includes(filterClienteFinal)) return false; if (filterNOM && !row.nom.toLowerCase().includes(filterNOM)) return false;
-                if (filterPersonal && row.personal !== filterPersonal) return false; if (filterEstatus && getStatusCategory(row) !== filterEstatus) return false;
+                if (filterPersonal && row.personal !== filterPersonal) return false;
                 if (filterAsesor && !row.asesorConsultor.toLowerCase().includes(filterAsesor)) return false;
                 return true;
             });
+            filteredData = filterEstatus ? datosSinEstatus.filter(row => getStatusCategory(row) === filterEstatus) : datosSinEstatus;
+            document.querySelectorAll('.kpi-filtro').forEach(c => c.classList.toggle('activo', c.dataset.estatus === filterEstatus));
             updateKPIs(); updateCharts(); updateTable();
         }
 
         document.getElementById('filter-ot').addEventListener('input', applyFilters); document.getElementById('filter-cliente-inicial').addEventListener('input', applyFilters); document.getElementById('filter-cliente-final').addEventListener('input', applyFilters); document.getElementById('filter-nom').addEventListener('input', applyFilters); document.getElementById('filter-personal').addEventListener('change', applyFilters); document.getElementById('filter-estatus').addEventListener('change', applyFilters);
 
-        function updateCharts() { updateStatusChart(); updateMesChart(); updateTiemposChart(); }
-        function updateStatusChart() {
-            const entregadas = filteredData.filter(r => r.entregadoManual.toUpperCase().includes('ENTREGADO')).length; const tiempo = filteredData.filter(r => getStatusCategory(r) === 'TIEMPO').length; const limite = filteredData.filter(r => getStatusCategory(r) === 'LIMITE').length; const alerta = filteredData.filter(r => getStatusCategory(r) === 'ALERTA').length; const pendiente = filteredData.filter(r => getStatusCategory(r) === 'PENDIENTE').length; const pausa = filteredData.filter(r => getStatusCategory(r) === 'PAUSA').length;
-            if (charts.status) charts.status.destroy();
-            charts.status = new Chart(document.getElementById('chartStatus'), { type: 'doughnut', data: { labels: ['✅ Entregadas', '🟢 En tiempo', '🟠 En límite', '🔴 Alerta', '🟡 Pendiente', '⏸ En Pausa'], datasets: [{ data: [entregadas, tiempo, limite, alerta, pendiente, pausa], backgroundColor: ['#27ae60', '#2ecc71', '#f39c12', '#e74c3c', '#95a5a6', '#8e44ad'], borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'bottom', labels: { font: { size: 9 }, padding: 8, boxWidth: 12 } } } } });
+        function updateCharts() { updateMesChart(); updateTiemposChart(); }
+
+        // Últimos 8 meses con visitas (clave yyyy-mm) y su etiqueta corta.
+        function mesesRecientes(datos) {
+            const claves = new Set();
+            datos.forEach(r => { const f = parseFecha(r.fechaVisita); if (f) claves.add(`${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}`); });
+            return [...claves].sort().slice(-8).map(c => { const [y, m] = c.split('-').map(Number); return { clave: c, etiqueta: new Date(y, m - 1, 1).toLocaleDateString('es-MX', { month: 'short', year: '2-digit' }) }; });
         }
+        function claveMes(fechaStr) { const f = parseFecha(fechaStr); return f ? `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}` : ''; }
+
+        // A tiempo = entregada en o antes de su fecha límite digital (incluye reprogramaciones por pausa).
+        function entregadaATiempo(r) {
+            const real = parseFecha(r.fechaRealEntrega), limite = parseFecha(r.fechaDigital);
+            if (!real || !limite) return null;
+            return real <= limite;
+        }
+
         function updateMesChart() {
-            const mesesCount = {}; filteredData.forEach(row => { const fecha = parseFecha(row.fechaVisita); if (fecha) { const mes = fecha.toLocaleDateString('es-MX', { year: 'numeric', month: 'short' }); mesesCount[mes] = (mesesCount[mes] || 0) + 1; } });
-            const sortedMeses = Object.entries(mesesCount).sort((a, b) => { const [mesA, yearA] = a[0].split(' '); const [mesB, yearB] = b[0].split(' '); const dateA = new Date(yearA, getMesIndex(mesA)); const dateB = new Date(yearB, getMesIndex(mesB)); return dateA - dateB; }).slice(-8);
+            const meses = mesesRecientes(datosSinEstatus);
+            const serie = { aTiempo: [], tarde: [], sinFecha: [], pendientes: [] };
+            meses.forEach(({ clave }) => {
+                const delMes = datosSinEstatus.filter(r => claveMes(r.fechaVisita) === clave);
+                const entregadas = delMes.filter(r => r.entregadoManual.toUpperCase().includes('ENTREGADO'));
+                // Sin fecha real (p. ej. OT migradas) no se sabe si fue a tiempo: va aparte.
+                serie.aTiempo.push(entregadas.filter(r => entregadaATiempo(r) === true).length);
+                serie.tarde.push(entregadas.filter(r => entregadaATiempo(r) === false).length);
+                serie.sinFecha.push(entregadas.filter(r => entregadaATiempo(r) === null).length);
+                serie.pendientes.push(delMes.length - entregadas.length);
+            });
             if (charts.mes) charts.mes.destroy();
-            charts.mes = new Chart(document.getElementById('chartMes'), { type: 'bar', data: { labels: sortedMeses.map(([mes]) => mes), datasets: [{ data: sortedMeses.map(([, count]) => count), backgroundColor: '#2d5f4f', borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { font: { size: 9 }, stepSize: 5 }, grid: { display: false } }, x: { ticks: { font: { size: 9 } }, grid: { display: false } } } } });
+            charts.mes = new Chart(document.getElementById('chartMes'), { type: 'bar', data: { labels: meses.map(m => m.etiqueta), datasets: [
+                { label: 'Entregadas a tiempo', data: serie.aTiempo, backgroundColor: '#27ae60', borderRadius: 3 },
+                { label: 'Entregadas tarde', data: serie.tarde, backgroundColor: '#e74c3c', borderRadius: 3 },
+                { label: 'Entregadas sin fecha real', data: serie.sinFecha, backgroundColor: '#85c1e9', borderRadius: 3 },
+                { label: 'Sin entregar', data: serie.pendientes, backgroundColor: '#bdc3c7', borderRadius: 3 }
+            ] }, options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, boxWidth: 12 } } }, scales: { x: { stacked: true, grid: { display: false }, ticks: { font: { size: 10 } } }, y: { stacked: true, beginAtZero: true, ticks: { font: { size: 10 }, precision: 0 } } } } });
         }
-        function getMesIndex(mes) { const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']; return meses.indexOf(mes.toLowerCase().substring(0, 3)); }
         function updateTiemposChart() {
-            const otsConTiempos = filteredData.filter(r => r.entregadoManual.toUpperCase().includes('ENTREGADO')).map(r => ({ ot: r.ot, dias: calcularDiasEntrega(r) })).filter(d => d.dias !== null && d.dias >= 0).sort((a, b) => b.dias - a.dias).slice(0, 10);
+            const meses = mesesRecientes(datosSinEstatus);
+            const promedios = meses.map(({ clave }) => {
+                const dias = datosSinEstatus.filter(r => claveMes(r.fechaVisita) === clave && r.entregadoManual.toUpperCase().includes('ENTREGADO'))
+                    .map(r => calcularDiasEntrega(r)).filter(d => d !== null && d >= 0);
+                return dias.length ? Math.round(dias.reduce((a, b) => a + b, 0) / dias.length) : null;
+            });
             if (charts.tiempos) charts.tiempos.destroy();
-            charts.tiempos = new Chart(document.getElementById('chartTiempos'), { type: 'bar', data: { labels: otsConTiempos.map(d => d.ot), datasets: [{ data: otsConTiempos.map(d => d.dias), backgroundColor: '#3498db', borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: true, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { font: { size: 9 } }, grid: { display: false } }, y: { ticks: { font: { size: 8 } }, grid: { display: false } } } } });
+            charts.tiempos = new Chart(document.getElementById('chartTiempos'), { type: 'line', data: { labels: meses.map(m => m.etiqueta), datasets: [
+                { label: 'Días promedio', data: promedios, borderColor: '#2d5f4f', backgroundColor: '#2d5f4f', tension: 0.25, spanGaps: true, pointRadius: 4 },
+                { label: `Meta (${SLA_DIGITAL_DIAS} días)`, data: meses.map(() => SLA_DIGITAL_DIAS), borderColor: '#e74c3c', borderDash: [6, 4], pointRadius: 0, borderWidth: 2 }
+            ] }, options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, boxWidth: 12 } } }, scales: { x: { grid: { display: false }, ticks: { font: { size: 10 } } }, y: { beginAtZero: true, ticks: { font: { size: 10 }, precision: 0 } } } } });
         }
 
         function updateTable() {
@@ -764,7 +813,7 @@
                         ${botonesAccion}
                         ${safeDriveUrl(row.linkOT) !== '#'
                             ? `<button class="action-btn drive" onclick="openDrive(${jsArg(safeDriveUrl(row.linkOT))})">📁 Drive</button>`
-                            : `<button class="action-btn drive" disabled title="Sin enlace de Drive">📁 Drive</button>`
+                            : ''
                         }
                     </div>
                 </td>
@@ -789,7 +838,7 @@
         }
 
         function exportToCSV() {
-            const headers = ['OT', 'Cliente Inicial', 'Sucursal', 'NOM', 'Personal', 'F. Visita', 'F. Digital (+20d)', 'F. Físico (+25d)', 'Días', 'Estatus', 'Asesor/Consultor'];
+            const headers = ['OT', 'Cliente Inicial', 'Sucursal', 'NOM', 'Personal', 'F. Visita', 'F. Digital (+20d)', 'F. Físico (+25d)', 'Días que tardó', 'Estatus', 'Asesor/Consultor'];
             const rows = filteredData.map(row => [row.ot, row.clienteInicial, row.clienteFinal, row.nom, row.personal, row.fechaVisita, row.fechaDigital, row.fechaFisico, calcularDiasEntrega(row) || '', row.estatusAuto, row.asesorConsultor]);
             const csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `ejecutiva_ambiental_${new Date().toISOString().split('T')[0]}.csv`; link.click();
