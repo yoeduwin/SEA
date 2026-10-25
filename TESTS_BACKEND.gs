@@ -698,6 +698,7 @@ function runTest_E07() {
 // Verifica que:
 //   - El estatus externo se cambia correctamente
 //   - Al marcar como ENTREGADO, la fecha real de entrega se registra automáticamente
+//   - Una OT ENTREGADA sale del selector de OT de SEAINF
 //   - Intentar actualizar un folio inexistente devuelve error sin excepción
 function runTest_E08() {
   _activateE2EStaging_();
@@ -721,6 +722,12 @@ function runTest_E08() {
   _eq_('E08-3: estatus_externo (col L) actualizado a ENTREGADO', filaOT[CO.ESTATUS_EXTERNO], 'ENTREGADO');
   _check_('E08-4: fecha_real_entrega (col K) registrada',
     filaOT[CO.FECHA_REAL] !== null && String(filaOT[CO.FECHA_REAL]).trim() !== '');
+
+  // Una OT ENTREGADA ya no se ofrece en el selector de SEAINF
+  var enSelector = getOrdenesSafe_().data.some(function (o) {
+    return normalizeOtForSeainf_(o.ot) === normalizeOtForSeainf_(TEST_FOLIO);
+  });
+  _check_('E08-4b: OT ENTREGADA no aparece en getOrdenes (SEAINF)', !enSelector);
 
   // Ruta negativa: folio inexistente
   var resultNeg = updateEstatusSafe_({ ot: 'FOLIO-INEXISTENTE-ZZZ', estatus: 'EN PROCESO' }, 'test');
