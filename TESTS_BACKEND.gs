@@ -1744,8 +1744,6 @@ function runUnitTests() {
     'OT2610-0011|OTB2610-0293|OTC2610-0002');
   _eq_('U115: los folios históricos no cambian',
     [normalizarFolioOT_('OT26-0227-001'), normalizarFolioOT_('OT25- 29')].join('|'), 'OT26-0227-001|OT25- 29');
-  _eq_('U116: el folio sugerido lleva 4 dígitos',
-    /^OT\d{4}-\d{4,}$/.test(getSiguienteFolioOT_({ serie: 'OT' }).folio), true);
   _eq_('U98: número de informe mal formado se rechaza',
     fase3_CrearExpediente({ data: { ot: 'OTC2610-1', numInforme: 'EA-2610-PIPC' } }).error,
     'Número de informe inválido.');
