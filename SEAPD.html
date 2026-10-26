@@ -6,7 +6,7 @@
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     body { font-family: Arial, sans-serif; background:#f5f5f5; padding:20px; font-size:12px; }
-    .main-container { max-width:1200px; margin:0 auto; background:#fff; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,.1); overflow:hidden; }
+    .main-container { max-width:1200px; margin:0 auto; background:#fff; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,.1); overflow:clip; }
     .header { background: linear-gradient(135deg, #1e5a3e, #2d7a4f); color:#fff; padding:25px 30px; display:flex; justify-content:space-between; align-items:center; }
     .logo-section { display:flex; align-items:center; gap:15px; }
     .logo { width:50px; height:50px; background:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#1e5a3e; font-weight:bold; font-size:20px; }
@@ -15,6 +15,16 @@
     .document-info h2 { margin:0; font-size:22px; font-weight:bold; text-align:right; }
     .document-info p { margin:3px 0 0 0; font-size:11px; opacity:.9; text-align:right; }
     .form-content { padding:30px 40px; }
+    .seapd-progreso { position:sticky; top:0; z-index:50; background:#fff; margin:-30px -40px 25px; padding:10px 40px; border-bottom:1px solid #e0e0e0; box-shadow:0 2px 6px rgba(0,0,0,.05); display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .seapd-progreso ol { list-style:none; display:flex; gap:6px; flex-wrap:wrap; margin:0; padding:0; flex:1; }
+    .seapd-progreso button { border:1px solid #cfd8d3; background:#f6f8f7; color:#4a5a51; border-radius:14px; padding:5px 11px; font-size:11px; font-weight:600; cursor:pointer; white-space:nowrap; }
+    .seapd-progreso button.actual { border-color:#1e5a3e; color:#1e5a3e; background:#fff; box-shadow:0 0 0 1px #1e5a3e inset; }
+    .seapd-progreso button.completa { background:#e6f4ec; border-color:#9fd0b3; color:#1e5a3e; }
+    .seapd-progreso button.completa::before { content:'✓ '; }
+    .seapd-progreso .faltan { font-size:11px; color:#8a5a00; font-weight:600; white-space:nowrap; }
+    .seapd-progreso .faltan.listo { color:#1e5a3e; }
+    .aviso-privacidad { font-size:11px; color:#666; margin:0 0 12px; }
+    .aviso-privacidad a { color:#1e5a3e; font-weight:600; }
     .section { border-bottom:1px solid #e0e0e0; margin-bottom:30px; padding-bottom:25px; }
     .section:last-child { border-bottom:none; }
     .section-header { background:#1e5a3e; color:#fff; padding:10px 20px; margin:0 -40px 25px -40px; font-weight:bold; font-size:12px; text-transform:uppercase; letter-spacing:.5px; }
@@ -74,6 +84,27 @@
     .floating-btn:hover .floating-btn-tooltip { opacity:1; }
     .modal-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,.8); z-index:9999; justify-content:center; align-items:center; overflow-y:auto; padding:20px; }
     .modal-overlay.active { display:flex; }
+    /* Bienvenida */
+    #welcomeModal { background:rgba(16,40,28,.55); backdrop-filter:blur(3px); }
+    .wm-card { background:#fff; border-radius:16px; max-width:480px; width:100%; padding:32px 32px 24px; box-shadow:0 24px 60px rgba(0,0,0,.25); font-family:inherit; animation:wmEntrada .25s ease-out; }
+    @keyframes wmEntrada { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:none; } }
+    .wm-top { display:flex; align-items:center; gap:10px; margin-bottom:20px; }
+    .wm-logo { width:36px; height:36px; border-radius:10px; background:#1e5a3e; color:#fff; font-weight:700; font-size:14px; display:flex; align-items:center; justify-content:center; letter-spacing:.5px; }
+    .wm-eyebrow { font-size:11px; font-weight:600; color:#5b7466; text-transform:uppercase; letter-spacing:.6px; }
+    .wm-titulo { font-size:26px; line-height:1.2; color:#16352a; margin:0 0 8px; font-weight:700; }
+    .wm-sub { font-size:14px; line-height:1.55; color:#55635b; margin:0 0 22px; }
+    .wm-pasos { list-style:none; margin:0 0 24px; padding:0; display:flex; flex-direction:column; gap:14px; }
+    .wm-pasos li { display:flex; gap:12px; align-items:flex-start; }
+    .wm-num { flex:0 0 26px; height:26px; border-radius:50%; background:#e6f4ec; color:#1e5a3e; font-weight:700; font-size:13px; display:flex; align-items:center; justify-content:center; }
+    .wm-pasos strong { display:block; font-size:14px; color:#16352a; margin-bottom:2px; }
+    .wm-pasos span:not(.wm-num) { font-size:13px; color:#6b7a72; line-height:1.45; }
+    .wm-cta { width:100%; background:#1e5a3e; color:#fff; border:none; border-radius:10px; padding:14px; font-size:15px; font-weight:600; cursor:pointer; transition:background .2s; }
+    .wm-cta:hover, .wm-cta:focus-visible { background:#174a32; outline:none; box-shadow:0 0 0 3px rgba(30,90,62,.25); }
+    .wm-ayuda { margin-top:18px; padding-top:16px; border-top:1px solid #edf1ef; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; font-size:12px; color:#6b7a72; }
+    .wm-contacto { display:flex; gap:8px; }
+    .wm-contacto a { text-decoration:none; font-size:12px; font-weight:600; color:#1e5a3e; background:#f2f7f4; border:1px solid #dbe8e0; border-radius:20px; padding:6px 12px; white-space:nowrap; }
+    .wm-contacto a:hover { background:#e6f4ec; }
+    @media (max-width:480px) { .wm-card { padding:24px 20px 18px; border-radius:14px; } .wm-titulo { font-size:22px; } .wm-ayuda { justify-content:center; text-align:center; } }
     .modal-content { background:white; border-radius:10px; max-width:800px; width:100%; max-height:90vh; overflow-y:auto; box-shadow:0 10px 40px rgba(0,0,0,.3); }
     .modal-header { background: linear-gradient(135deg, #1e5a3e, #2d7a4f); color:white; padding:20px 30px; border-radius:10px 10px 0 0; }
     .modal-header h2 { margin:0; font-size:20px; }
@@ -98,6 +129,8 @@
       .form-grid{grid-template-columns:1fr;}
       .form-content{padding:20px;}
       .section-header{margin:0 -20px 20px -20px;}
+      .seapd-progreso{margin:-20px -20px 20px;padding:8px 12px;}
+      .seapd-progreso ol{flex:1 1 100%;flex-wrap:nowrap;overflow-x:auto;}
       .header{flex-direction:column; gap:15px; text-align:center;}
       .document-info h2,.document-info p{ text-align:center; }
       .floating-buttons{bottom:20px; right:20px; gap:12px;}
@@ -137,31 +170,27 @@
 </head>
 <body>
   <div class="version-tag">v3.0 (Multi-Sucursal)</div>
-  <div id="welcomeModal" class="modal-overlay">
-    <div style="background: white; border-radius: 10px; max-width: 600px; width: 90%; padding: 40px; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
-      <div style="width: 80px; height: 80px; background: #1e5a3e; border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; color: white; font-size: 40px; font-weight: bold;">EA</div>
-      <h2 style="color: #1e5a3e; margin: 0 0 20px 0; font-size: 24px;">¡Bienvenido!</h2>
-      <p style="color: #333; font-size: 16px; line-height: 1.6; margin-bottom: 15px;"><strong>ESTIMADO CLIENTE,</strong></p>
-      <p style="color: #666; font-size: 15px; line-height: 1.8; margin-bottom: 20px;">
-        Hemos creado esta plataforma para mejorar su experiencia con nosotros. Es por ello que le agradecemos enormemente su confianza.
-      </p>
-      <div style="background: #f0f9f4; border-left: 4px solid #1e5a3e; padding: 20px; margin: 25px 0; border-radius: 5px;">
-        <p style="color: #1e5a3e; font-size: 14px; margin: 0; font-weight: 500;">
-          <strong>¿Tiene alguna duda?</strong><br>
-          <span style="color: #666; font-weight: normal;">Por favor, no dude en comunicarse con nosotros:</span>
-        </p>
+  <div id="welcomeModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="wmTitulo">
+    <div class="wm-card">
+      <div class="wm-top">
+        <span class="wm-logo">EA</span>
+        <span class="wm-eyebrow">Perfil de datos · Ejecutiva Ambiental</span>
       </div>
-      <div style="display: flex; gap: 15px; justify-content: center; margin: 30px 0;">
-        <a href="tel:2229417295" style="flex: 1; background: #1e5a3e; color: white; padding: 15px 20px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; display:flex; align-items:center; justify-content:center; gap:8px;">
-          <span style="font-size: 20px;">📞</span> Llamar Ahora
-        </a>
-        <a href="https://wa.me/522791113533" target="_blank" style="flex: 1; background: #25D366; color: white; padding: 15px 20px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; display:flex; align-items:center; justify-content:center; gap:8px;">
-          <span style="font-size: 20px;">💬</span> WhatsApp
-        </a>
+      <h2 class="wm-titulo" id="wmTitulo">Bienvenido</h2>
+      <p class="wm-sub">Gracias por su confianza. Con este registro preparamos sus servicios sin volver a pedirle la misma información.</p>
+      <ol class="wm-pasos">
+        <li><span class="wm-num">1</span><div><strong>Regístrese una sola vez</strong><span>Datos de su empresa y de la sucursal donde trabajaremos.</span></div></li>
+        <li><span class="wm-num">2</span><div><strong>Adjunte sus documentos generales</strong><span>Planos o layout y lo que su planta pida para ingresar.</span></div></li>
+        <li><span class="wm-num">3</span><div><strong>Actualice solo si algo cambia</strong><span>Domicilio, responsable u otra sucursal: use "Ya soy cliente".</span></div></li>
+      </ol>
+      <button type="button" class="wm-cta" onclick="closeWelcomeModal()">Comenzar registro</button>
+      <div class="wm-ayuda">
+        <span>¿Dudas? Estamos para ayudarle</span>
+        <div class="wm-contacto">
+          <a href="tel:2229417295">📞 222 941 7295</a>
+          <a href="https://wa.me/522791113533" target="_blank" rel="noopener">💬 WhatsApp</a>
+        </div>
       </div>
-      <button onclick="closeWelcomeModal()" style="background: #6c757d; color: white; border: none; padding: 12px 40px; border-radius: 5px; font-size: 15px; font-weight: 600; cursor: pointer;">
-        Continuar al Formulario
-      </button>
     </div>
   </div>
   
@@ -204,6 +233,10 @@
     </div>
     <div class="form-content">
       <form id="perfilDatosForm">
+        <nav class="seapd-progreso" id="seapdProgreso" aria-label="Avance del registro">
+          <ol id="seapdProgresoPasos"></ol>
+          <span class="faltan" id="seapdFaltan" aria-live="polite"></span>
+        </nav>
         <div class="section">
           <div class="section-header">Información General</div>
           <div id="returningBanner" class="returning-banner">
@@ -229,7 +262,7 @@
             <div class="form-group full-width">
               <label>Sucursal<span class="required">*</span></label>
               <input type="text" name="sucursal" required placeholder="Ej: Matriz, Planta Norte, Sucursal Centro, etc.">
-              <span class="helper-text">Especifique el nombre de la sucursal o ubicación específica</span>
+              <span class="helper-text">Use el nombre con el que identifica la planta (ej: "Planta Puebla") y escríbalo igual en futuros registros; si ya es cliente, elíjala con "Ya soy cliente".</span>
             </div>
           </div>
           <div class="form-grid">
@@ -896,6 +929,7 @@
           </div>
         </div>
         <div class="submit-section">
+          <p class="aviso-privacidad">Al enviar, acepta nuestro <a href="https://ejecutivambiental.com/aviso-de-privacidad/" target="_blank" rel="noopener">Aviso de privacidad</a>.</p>
           <button type="submit" class="btn-submit" id="submitBtn">Revisar y Enviar Información</button>
           <div class="loading" id="loading">
             <div class="loading-spinner"></div>
@@ -903,7 +937,7 @@
           </div>
           <div class="message success-message" id="successMsg">
             <strong>¡Información enviada correctamente!</strong><br><br>
-            Nuestro equipo revisará la información y se comunicará con usted en las próximas <strong>24 horas</strong>.
+            Alguien de nuestro equipo revisará la información y se comunicará con usted. <span id="successCorreo"></span>Si lo prefiere, puede llamarnos al <a href="tel:2229417295" style="color:inherit;font-weight:600;">222 941 7295</a>.
             <div id="successRevision" style="display:none; margin-top:12px;"></div>
           </div>
           <div class="message error-message" id="errorMsg">
@@ -976,6 +1010,7 @@
       if (input) input.value = '';
       if (preview) preview.classList.remove('active');
       if (uploadGroup) uploadGroup.classList.remove('has-file');
+      window.seapdActualizarProgreso?.();
     }
 
     function clearConditionalFilesByAttr(attrValue) {
@@ -1286,6 +1321,7 @@
       if (loading) loading.style.display = 'block';
       try {
         const formData = new FormData(form);
+        const correoInforme = String(formData.get('correo_informe') || '').trim();
         const data = { action: 'registrarCliente' };
         
         let totalFileSize = 0;
@@ -1342,6 +1378,8 @@
             ? `<strong>En revisión:</strong> ${campos.map(escHtml).join(', ')}. Por seguridad, estos datos se aplicarán cuando nuestro equipo los confirme; avisamos al correo registrado.`
             : '';
         }
+        const successCorreo = document.getElementById('successCorreo');
+        if (successCorreo) successCorreo.textContent = correoInforme ? `La confirmación llegará a ${enmascararCorreo(correoInforme)}; si no la recibe, revise su carpeta de spam. ` : '';
         if (successMsg) successMsg.style.display = 'block';
         setModoActualizacion(false);
         const bannerOk = document.getElementById('returningBanner');
@@ -1578,6 +1616,7 @@
         const el = form.querySelector(`[name="${n}"]`);
         if (el) el.readOnly = activo;
       });
+      window.seapdActualizarProgreso?.();
     }
     window.applyClientData = applyClientData;
 
@@ -1604,6 +1643,7 @@
         const helper = uploadGroup.querySelector('.helper-text');
         if (helper) helper.style.display = 'none';
       });
+      window.seapdActualizarProgreso?.();
     }
 
     function showFileInput(fileKey) {
@@ -1618,10 +1658,12 @@
       }
       const helper = uploadGroup.querySelector('.helper-text');
       if (helper) helper.style.display = '';
+      window.seapdActualizarProgreso?.();
     }
     window.showFileInput = showFileInput;
 
     function clearPrefill() {
+      if (!confirm('¿Borrar todo lo capturado y los archivos adjuntos? Esta acción no se puede deshacer.')) return;
       isReturningClient = false;
       setModoActualizacion(false);
       const form = document.getElementById('perfilDatosForm');
@@ -1654,8 +1696,71 @@
       const rfcField = document.querySelector('input[name="rfc"]');
       if (rfcField) rfcField.style.borderColor = '';
       window._returningClientData = null;
+      window.seapdActualizarProgreso?.();
     }
     window.clearPrefill = clearPrefill;
+
+    // a***@dominio.com: confirma el destino sin exhibir el correo completo en pantalla.
+    function enmascararCorreo(correo) {
+      const [usuario, dominio] = String(correo).split('@');
+      if (!dominio) return '';
+      return `${usuario.slice(0, 1)}***@${dominio}`;
+    }
+
+    // Barra de avance: una etiqueta por sección; se marca completa cuando sus
+    // campos obligatorios visibles son válidos. Sección sin obligatorios = opcional.
+    (function iniciarProgreso() {
+      const form = document.getElementById('perfilDatosForm');
+      const lista = document.getElementById('seapdProgresoPasos');
+      const faltanEl = document.getElementById('seapdFaltan');
+      if (!form || !lista) return;
+      const NOMBRES = ['General', 'Informe', 'Fechas', 'Proceso', 'Archivos', 'NOM-020', 'Protección Civil'];
+      const secciones = [...form.querySelectorAll(':scope > .section')];
+      const botones = secciones.map((sec, i) => {
+        const li = document.createElement('li');
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = `${i + 1}. ${NOMBRES[i] || 'Sección'}`;
+        b.addEventListener('click', () => {
+          const alto = document.getElementById('seapdProgreso').offsetHeight;
+          window.scrollTo({ top: sec.getBoundingClientRect().top + window.scrollY - alto - 8, behavior: 'smooth' });
+        });
+        li.appendChild(b); lista.appendChild(li);
+        return b;
+      });
+      const obligatorios = sec => [...sec.querySelectorAll('[required]')].filter(el => !el.disabled && el.offsetParent !== null);
+      function actualizar() {
+        let faltan = 0;
+        secciones.forEach((sec, i) => {
+          const req = obligatorios(sec);
+          // Un grupo de radios cuenta una sola vez.
+          const vistos = new Set();
+          const pendientes = req.filter(el => {
+            const clave = el.type === 'radio' ? 'radio:' + el.name : el;
+            if (vistos.has(clave)) return false;
+            vistos.add(clave);
+            return !el.checkValidity();
+          }).length;
+          faltan += pendientes;
+          botones[i].classList.toggle('completa', req.length > 0 && pendientes === 0);
+          botones[i].title = req.length === 0 ? 'Sección opcional' : (pendientes ? `Faltan ${pendientes} campo(s) obligatorio(s)` : 'Completa');
+        });
+        faltanEl.textContent = faltan ? `Faltan ${faltan} campo${faltan === 1 ? '' : 's'} obligatorio${faltan === 1 ? '' : 's'}` : '✓ Todo lo obligatorio está listo';
+        faltanEl.classList.toggle('listo', faltan === 0);
+      }
+      function marcarActual() {
+        const alto = document.getElementById('seapdProgreso').offsetHeight + 20;
+        let actual = 0;
+        secciones.forEach((sec, i) => { if (sec.getBoundingClientRect().top - alto <= 0) actual = i; });
+        botones.forEach((b, i) => b.classList.toggle('actual', i === actual));
+      }
+      form.addEventListener('input', actualizar);
+      form.addEventListener('change', () => setTimeout(actualizar, 0));
+      form.addEventListener('reset', () => setTimeout(actualizar, 0));
+      window.addEventListener('scroll', marcarActual, { passive: true });
+      window.seapdActualizarProgreso = actualizar;
+      actualizar(); marcarActual();
+    })();
   </script>
 
   <!-- ── reCAPTCHA v3 (portal público de registro de clientes) ── -->
