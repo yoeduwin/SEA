@@ -567,7 +567,7 @@
                         };
                     }).filter(row => row.ot);
                     
-                    allData.sort((a, b) => b.ot.localeCompare(a.ot));
+                    allData.sort((a, b) => b.ot.localeCompare(a.ot, 'es', { numeric: true })); // OT2610-10 después de OT2610-9
                     updateFilters(); applyFilters(); checkOtsVencidas();
                     document.getElementById('lastUpdate').textContent = new Date().toLocaleString('es-MX');
                 }

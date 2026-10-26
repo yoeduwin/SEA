@@ -1739,6 +1739,13 @@ function runUnitTests() {
   _eq_('U97: registrarOT rechaza una NOM en OTC',
     fase2_RegistrarOT({ ot_folio: 'OTC2610-1', tipo_orden: 'OTC', nom_servicio: 'NOM-011-STPS',
       cliente_razon_social: 'X', sucursal: TEST_SUCURSAL, rfc: TEST_RFC }).code, 'NOM_EN_OTC');
+  _eq_('U114: el folio actual se normaliza a 4 dígitos',
+    [normalizarFolioOT_('ot2610-11'), normalizarFolioOT_('OTB2610-293'), normalizarFolioOT_('OTC2610-0002')].join('|'),
+    'OT2610-0011|OTB2610-0293|OTC2610-0002');
+  _eq_('U115: los folios históricos no cambian',
+    [normalizarFolioOT_('OT26-0227-001'), normalizarFolioOT_('OT25- 29')].join('|'), 'OT26-0227-001|OT25- 29');
+  _eq_('U116: el folio sugerido lleva 4 dígitos',
+    /^OT\d{4}-\d{4,}$/.test(getSiguienteFolioOT_({ serie: 'OT' }).folio), true);
   _eq_('U98: número de informe mal formado se rechaza',
     fase3_CrearExpediente({ data: { ot: 'OTC2610-1', numInforme: 'EA-2610-PIPC' } }).error,
     'Número de informe inválido.');

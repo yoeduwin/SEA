@@ -163,6 +163,15 @@ function esSerieOTC_(tipo) {
 
 // SEAINF reconoce la serie por el prefijo del folio y el backend por la col C:
 // un folio OTC solo es válido con serie OTC, y viceversa.
+// Folio de OT en forma canónica: el consecutivo del formato actual va a 4
+// dígitos (OT2610-11 → OT2610-0011). Los formatos históricos no se tocan.
+function normalizarFolioOT_(folio) {
+  const f = String(folio == null ? '' : folio).trim().toUpperCase();
+  const m = f.match(/^(OT[BC]?)(\d{4})-(\d+)$/);
+  if (!m) return f;
+  return m[1] + m[2] + '-' + String(parseInt(m[3], 10)).padStart(4, '0');
+}
+
 function folioCoincideConSerieOTC_(folio, tipo) {
   const f = String(folio == null ? '' : folio).trim().toUpperCase();
   return (f.indexOf(SERIE_OTC_) === 0) === esSerieOTC_(tipo);
@@ -1241,6 +1250,7 @@ function fase2_RegistrarOT(data) {
   if (!data || !data.ot_folio || !data.cliente_razon_social || !data.sucursal || !data.rfc) {
     return { success: false, error: 'Faltan datos obligatorios de la OT: folio, cliente, sucursal o RFC.' };
   }
+  data.ot_folio = normalizarFolioOT_(data.ot_folio);
   if (!folioCoincideConSerieOTC_(data.ot_folio, data.tipo_orden)) {
     return {
       success: false,
@@ -1258,6 +1268,16 @@ function fase2_RegistrarOT(data) {
           nomsEnOtc.join(', ') + ' en una OT u OTB.'
       };
     }
+  }
+  // Un folio ya registrado no se vuelve a escribir; OT2610-11 y OT2610-0011 son el mismo.
+  const sheetOt = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+  const foliosExistentes = sheetOt ? sheetOt.getRange(1, CO.OT + 1, Math.max(1, sheetOt.getLastRow()), 1).getDisplayValues() : [];
+  if (foliosExistentes.some(r => normalizarFolioOT_(r[0]) === data.ot_folio)) {
+    return {
+      success: false,
+      code: 'FOLIO_DUPLICADO',
+      error: 'El folio ' + data.ot_folio + ' ya está registrado. Usa el siguiente sugerido.'
+    };
   }
   // No confiar a ciegas en el enlace recibido: sólo se acepta si resuelve a
   // una carpeta real de Drive que corresponda al RFC+sucursal de la OT (un ID
@@ -1313,7 +1333,7 @@ function fase2_RegistrarOT(data) {
     '',               // P: MOTIVO_PAUSA
     ''                // Q: FECHA_INFO_COMPLETA
   ]);
-  return { success: true, message: 'OT Registrada correctamente' };
+  return { success: true, message: 'OT Registrada correctamente', folio: data.ot_folio };
 }
 // =========================================================================
 // FASE 3: SISTEMA DE EXPEDIENTES
@@ -2006,7 +2026,7 @@ function getSiguienteFolioOT_(params) {
   var today = new Date();
   var yy = String(today.getFullYear()).slice(-2);
   var mm = String(today.getMonth() + 1).padStart(2, '0');
-  var folio = serie + yy + mm + '-' + siguiente;
+  var folio = serie + yy + mm + '-' + String(siguiente).padStart(4, '0');
 
   return { success: true, serie: serie, folio: folio, ultimo: ultimoFolio, consecutivo: siguiente };
 }

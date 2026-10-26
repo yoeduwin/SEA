@@ -110,7 +110,8 @@
     .declaration-empty{text-align:center;font-style:italic;color:#999;font-size:10px;margin:10px 0;}
     #wo_generalObservations{min-height:50px;}
     @media print{
-      .nav-tabs,.excel-controls,.excel-mapping-info,.no-print,.modal-overlay,#sea-user-info{display:none !important;}
+      .nav-tabs,.excel-controls,.excel-mapping-info,.no-print,.modal-overlay,#sea-user-info,.data-sync-indicator{display:none !important;}
+      #wo_contractRefDoc::placeholder{color:transparent !important;} /* el ejemplo COT-… no se imprime */
       .service-suggestions{display:none !important;}
       .add-row-btn,.remove-row-btn{display:none !important;}
       #workTable th:last-child,#workTable td:last-child{display:none !important;}
@@ -199,6 +200,7 @@
   <div class="nav-tabs">
     <button class="nav-tab active" id="profileTabButton" onclick="switchTab('profile')">👤 Perfil</button>
     <button class="nav-tab" id="workorderTabButton" onclick="switchTab('workorder')">📋 Orden de trabajo</button>
+    <div id="sea-user-info" style="margin-left:auto;display:flex;align-items:center;gap:6px;padding:0 12px;"></div>
   </div>
 
   <div id="profileTab" class="tab-content active">
@@ -856,8 +858,21 @@
     }
   }
   
+  // Fecha de hoy en hora local (toISOString usa UTC: después de las 18:00 en México daba el día siguiente).
+  function fechaLocalISO() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  // Misma regla que el backend: el consecutivo del formato actual va a 4 dígitos.
+  function normalizarFolioOT(folio) {
+    const f = String(folio || '').trim().toUpperCase();
+    const m = f.match(/^(OT[BC]?)(\d{4})-(\d+)$/);
+    return m ? `${m[1]}${m[2]}-${String(parseInt(m[3], 10)).padStart(4, '0')}` : f;
+  }
+
   function generateWorkOrder() {
-    document.getElementById('wo_issueDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('wo_issueDate').value = fechaLocalISO();
     updateOrderNumber(); syncData(); generateQRCode(); showStatus('workorderStatus','Orden de trabajo generada automáticamente','success');
   }
   function generateQRCode() {
@@ -1082,7 +1097,9 @@ Tel: 222-941-7295`;
     showStatus('workorderStatus','Enviando datos a Base Maestra...','warning');
 
     try {
-      const orderNumber = document.getElementById('wo_orderNumber')?.value || '';
+      const orderField = document.getElementById('wo_orderNumber');
+      if (orderField) orderField.value = normalizarFolioOT(orderField.value);
+      const orderNumber = orderField?.value || '';
       const company = document.getElementById('wo_clientName')?.value || '';
       const branch = document.getElementById('wo_branch')?.value || '';
       const rfc = document.getElementById('rfc')?.value || profileData.rfc || '';
@@ -1161,8 +1178,12 @@ Tel: 222-941-7295`;
         // El folio definitivo (por si el backend lo ajusta automáticamente en el futuro)
         const finalFolio = result.folio || orderNumber;
         showStatus('workorderStatus', `✅ ¡OT registrada! Folio: ${finalFolio}`, 'success');
-        // Recalcular el siguiente folio directamente desde la Base Maestra (sin localStorage)
-        updateOrderNumber();
+        // Se conserva el folio registrado para imprimir o enviar esta misma OT;
+        // el siguiente se propone al generar la próxima OT o al cambiar de serie.
+        const folioEl = document.getElementById('wo_orderNumber');
+        if (folioEl) folioEl.value = finalFolio;
+        const infoEl = document.getElementById('seriesInfo');
+        if (infoEl) infoEl.textContent = `✅ ${finalFolio} registrada. El siguiente folio se propone al generar la próxima OT.`;
       } else {
         showStatus('workorderStatus', '❌ Error: ' + result.error, 'error');
       }
@@ -1287,12 +1308,13 @@ Tel: 222-941-7295`;
         }
       });
     }
-    const today = new Date().toISOString().split('T')[0];
+    const today = fechaLocalISO();
     const issueDateInput = document.getElementById('wo_issueDate');
     if (issueDateInput) issueDateInput.value = today;
     const reviewDateInput = document.getElementById('wo_contractReviewDate');
     if (reviewDateInput && !reviewDateInput.value) reviewDateInput.value = today;
     document.querySelectorAll('.service-input').forEach(setupServiceAutocomplete);
+    document.getElementById('wo_orderNumber')?.addEventListener('change', function () { this.value = normalizarFolioOT(this.value); });
     updateOrderNumber();
     document.querySelectorAll('.nav-tab').forEach(tab => tab.addEventListener('click', syncData));
 
@@ -1310,12 +1332,6 @@ Tel: 222-941-7295`;
 </script>
 
 <!-- ── Autenticación Google (páginas internas) ── -->
-<div id="sea-user-info" style="
-  position:fixed;top:12px;right:16px;z-index:9999;
-  display:flex;align-items:center;gap:6px;
-  background:rgba(255,255,255,0.92);border-radius:20px;
-  padding:4px 10px;box-shadow:0 1px 6px rgba(0,0,0,0.15);
-"></div>
 <script src="https://accounts.google.com/gsi/client" onload="onGISLoaded()" async defer></script>
 <script src="auth.js"></script>
 <script>
