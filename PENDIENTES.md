@@ -19,26 +19,20 @@ Ese tiempo no es responsabilidad de EA, pero hoy cuenta como atraso y sube el pr
 - Un estatus del tipo **"En espera del cliente / autoridad"** que se pueda marcar desde la OT o el expediente, y que excluya ese tiempo del cálculo. Sería parecido a la pausa, pero con causa explícita y visible en el tablero.
 - Medir por separado el tiempo **de EA** (visita → informe listo) y el tiempo **total** (visita → entrega), para que la meta evalúe solo lo que depende de EA.
 
-## 2. Meta de entrega: ¿20 o 25 días?
+## 2. Personal: una sola lista para todos los sistemas (para después)
 
-SEADB compara el tiempo promedio contra **20 días** (digital), y el correo al equipo menciona **25**. Hay que definir cuál es la meta oficial y alinear el sistema y la comunicación.
+SEAOT, SEAINF y SEADB escriben distinto a las mismas personas, y SEADB acumula unas 38 variantes, así que el filtro por persona no sirve.
 
-## 3. Personal: una sola lista para todos los sistemas
+**Personal confirmado:** Jimmy Ayala, Martín Luna, Eduardo Campos e Iván Hernández. "Iván Hernández" es la misma persona que aparece como "Eduwin Iván", "Iván Zárate", etc.; su nombre completo es Eduwin Iván Hernández Zárate.
 
-SEAOT, SEAINF y SEADB escriben distinto a las mismas personas, y SEADB acumula unas 38 variantes, así que el filtro por persona no sirve. Falta definir:
-- La forma oficial de cada nombre (mayúsculas y acentos).
-- Si "Iván Zárate" y "EDUWIN IVAN" son la misma persona.
+**Falta definir:**
+- La forma exacta en que se escribe cada nombre en el sistema (mayúsculas y acentos).
 - Si se quedan "Externo - Adrián H" y "Externo".
-- Si se corrige el histórico de la hoja o solo de aquí en adelante.
+- Si se corrige el histórico de la hoja o solo se aplica de aquí en adelante.
 
-## 4. SEAOT: ¿bloquear los botones de serie?
+## Resueltos
 
-La serie se asigna sola al elegir el servicio. Los botones de serie siguen visibles por si hay que corregir. Falta decidir si se bloquean.
-
-## 5. SEAINF: el responsable elegido no se guarda
-
-Al crear el expediente se elige un responsable, pero el backend guarda el personal asignado en la OT (`fase3_CrearExpediente`, columna RESPONSABLE). Falta decidir cuál debe prevalecer.
-
-## 6. Publicación del backend
-
-Después de cada cambio en `BACKEND_FIXES.gs` hay que copiarlo a Apps Script y publicar una **nueva versión** de la implementación. El último cambio pendiente de publicar es el de los folios a 4 dígitos y la validación de folios repetidos.
+- **Meta de entrega:** es de **25 días**.
+- **Backend:** ya publicado en Apps Script, con los folios a 4 dígitos y la validación de folios repetidos.
+- **Botones de serie en SEAOT:** no se bloquean.
+- **Responsable en SEAINF:** se deja como está.
