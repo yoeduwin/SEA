@@ -6,6 +6,7 @@
   <title>Sistema de Gestión de Expedientes - Ejecutiva Ambiental</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
+  <script src="catalogo-servicios.js"></script>
   <style>
     :root {
       --primary: #1e5a3e;
@@ -597,18 +598,8 @@
     validarProgreso();
   });
 
-  const ALL_NOMS = ['NOM-035-STPS-2018', 'NOM-019-STPS-2011', 'NOM-030-STPS-2009',
-    'NOM-081-SEMARNAT-1994', 'NOM-001-STPS-2008', 'NOM-017-STPS-2008',
-    'NOM-026-STPS-2008', 'NOM-002-STPS-2010', 'NOM-025-STPS-2008',
-    'NOM-018-STPS-2015', 'NOM-036-1-STPS-2018', 'NOM-006-STPS-2014',
-    'NOM-037-STPS-2023', 'NOM-004-STPS-1999', 'NOM-011-STPS-2001',
-    'NOM-022-STPS-2015', 'NOM-009-STPS-2011', 'NOM-020-STPS-2011',
-    'NOM-027-STPS-2008', 'NOM-033-STPS-2015', 'NOM-010-STPS-2014',
-    'NOM-029-STPS-2011', 'NOM-015-STPS-2001', 'NOM-034-STPS-2016',
-    'NOM-028-STPS-2012', 'NOM-005-STPS-1998', 'NOM-036-2-STPS-2023',
-    'CURSO DE MONTACARGAS', 'PROTECCIÓN CIVIL (PIPC)', 'DICTAMEN ESTRUCTURAL',
-    'PROGRAMA INTERNO DE PROTECCIÓN CIVIL'
-  ];
+  // Catálogo único de servicios compartido con SEAOT (catalogo-servicios.js).
+  const ALL_NOMS = (window.CATALOGO_SERVICIOS || []).map(s => s.nombre);
 
   function extraerCodigoNOM(nom) {
     const m = String(nom || '').match(/^NOM-(\d{3}(?:-\d+)?)-STPS/);

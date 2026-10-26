@@ -225,9 +225,16 @@ La serie OTC separa los servicios que no generan informe técnico del laboratori
 |---|---|
 | Folio ↔ serie | Un folio que empieza con `OTC` solo se registra con la serie OTC, y viceversa (SEAINF reconoce la serie por el prefijo del folio). |
 | Servicios NOM | No se admiten en OTC: llevan informe y van en OT u OTB. Cuenta solo el servicio que **empieza** con NOM; `CURSO NOM-020-STPS` es capacitación y sí va en OTC. |
-| NOM-081 | Solo se agrega automáticamente en la serie OT; al cambiar a OTB u OTC se retira. |
+| NOM-081 | Solo va en la serie OT; se elige como servicio y la serie se fija sola. |
 | Servicios de PC o capacitación en OT/OTB | SEAOT pide confirmación antes de registrarlos fuera de OTC. |
 | Backend anterior | Si el backend desplegado aún no reconoce la serie, SEAOT avisa y no propone folio. |
+
+#### Servicio, serie y folio
+
+- **Un servicio por OT.** El servicio se elige de la lista "Servicio de esta OT", que sale del catálogo compartido `catalogo-servicios.js` (el mismo que usa SEAINF, con nombres completos). Las filas de la tabla repiten ese servicio y solo cambian personal, fecha, cantidad y observaciones; se registra un solo servicio.
+- **La serie la fija el servicio:** OTB para normas con informe, OT para la NOM-081-SEMARNAT-1994 y OTC para servicios sin informe (Protección Civil, dictámenes, estudio de riesgo, plan de atención a emergencias, curso de montacargas, capacitación). Si se cambia la serie a mano y no corresponde, el servicio se quita.
+- **Folio a 4 dígitos** en las tres series (`OT2610-0011`, `OTB2610-0294`, `OTC2610-0002`). El consecutivo no se reinicia cada mes; el backend completa los ceros al registrar y rechaza un folio ya registrado. Los folios históricos no cambian.
+- **Revisión de contrato:** empieza sin marcar y es obligatoria para registrar, imprimir o enviar. "Equipos calibrados" solo se pide en los servicios que usan equipo (NOM-011, 015, 020, 022, 024, 025 y 081); en los demás se imprime "No aplica". "Servicio aceptado" y "Requiere aclaración previa" son excluyentes. El documento contractual de referencia es opcional.
 
 #### Carga desde Excel
 

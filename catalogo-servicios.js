@@ -1,0 +1,40 @@
+// Catálogo único de servicios para SEAOT y SEAINF (nombres completos).
+//   serie:  OTB = normas con informe · OT = solo NOM-081 · OTC = sin informe.
+//   equipo: el servicio usa equipo calibrado (la revisión de contrato lo exige).
+// Para agregar un servicio, agréguelo aquí: ambos sistemas lo toman de esta lista.
+window.CATALOGO_SERVICIOS = [
+  { nombre: 'NOM-001-STPS-2008',              serie: 'OTB' },
+  { nombre: 'NOM-002-STPS-2010',              serie: 'OTB' },
+  { nombre: 'NOM-004-STPS-1999',              serie: 'OTB' },
+  { nombre: 'NOM-005-STPS-1998',              serie: 'OTB' },
+  { nombre: 'NOM-006-STPS-2014',              serie: 'OTB' },
+  { nombre: 'NOM-009-STPS-2011',              serie: 'OTB' },
+  { nombre: 'NOM-010-STPS-2014',              serie: 'OTB' },
+  { nombre: 'NOM-011-STPS-2001',              serie: 'OTB', equipo: true },
+  { nombre: 'NOM-015-STPS-2001',              serie: 'OTB', equipo: true },
+  { nombre: 'NOM-017-STPS-2008',              serie: 'OTB' },
+  { nombre: 'NOM-018-STPS-2015',              serie: 'OTB' },
+  { nombre: 'NOM-019-STPS-2011',              serie: 'OTB' },
+  { nombre: 'NOM-020-STPS-2011',              serie: 'OTB', equipo: true },
+  { nombre: 'NOM-022-STPS-2015',              serie: 'OTB', equipo: true },
+  { nombre: 'NOM-024-STPS-2001',              serie: 'OTB', equipo: true },
+  { nombre: 'NOM-025-STPS-2008',              serie: 'OTB', equipo: true },
+  { nombre: 'NOM-026-STPS-2008',              serie: 'OTB' },
+  { nombre: 'NOM-027-STPS-2008',              serie: 'OTB' },
+  { nombre: 'NOM-028-STPS-2012',              serie: 'OTB' },
+  { nombre: 'NOM-029-STPS-2011',              serie: 'OTB' },
+  { nombre: 'NOM-030-STPS-2009',              serie: 'OTB' },
+  { nombre: 'NOM-033-STPS-2015',              serie: 'OTB' },
+  { nombre: 'NOM-034-STPS-2016',              serie: 'OTB' },
+  { nombre: 'NOM-035-STPS-2018',              serie: 'OTB' },
+  { nombre: 'NOM-036-1-STPS-2018',            serie: 'OTB' },
+  { nombre: 'NOM-037-STPS-2023',              serie: 'OTB' },
+  { nombre: 'NOM-081-SEMARNAT-1994',          serie: 'OT',  equipo: true },
+  { nombre: 'PROGRAMA INTERNO DE PROTECCIÓN CIVIL', serie: 'OTC' },
+  { nombre: 'DICTAMEN ESTRUCTURAL',           serie: 'OTC' },
+  { nombre: 'DICTAMEN ELÉCTRICO',             serie: 'OTC' },
+  { nombre: 'ESTUDIO DE RIESGO',              serie: 'OTC' },
+  { nombre: 'PLAN DE ATENCIÓN A EMERGENCIAS', serie: 'OTC' },
+  { nombre: 'CURSO DE MONTACARGAS',           serie: 'OTC' },
+  { nombre: 'CAPACITACIÓN',                   serie: 'OTC' }
+];

@@ -110,7 +110,8 @@
     .declaration-empty{text-align:center;font-style:italic;color:#999;font-size:10px;margin:10px 0;}
     #wo_generalObservations{min-height:50px;}
     @media print{
-      .nav-tabs,.excel-controls,.excel-mapping-info,.no-print,.modal-overlay,#sea-user-info{display:none !important;}
+      .nav-tabs,.excel-controls,.excel-mapping-info,.no-print,.modal-overlay,#sea-user-info,.data-sync-indicator{display:none !important;}
+      #wo_contractRefDoc::placeholder{color:transparent !important;} /* el ejemplo COT-… no se imprime */
       .service-suggestions{display:none !important;}
       .add-row-btn,.remove-row-btn{display:none !important;}
       #workTable th:last-child,#workTable td:last-child{display:none !important;}
@@ -199,6 +200,7 @@
   <div class="nav-tabs">
     <button class="nav-tab active" id="profileTabButton" onclick="switchTab('profile')">👤 Perfil</button>
     <button class="nav-tab" id="workorderTabButton" onclick="switchTab('workorder')">📋 Orden de trabajo</button>
+    <div id="sea-user-info" style="margin-left:auto;display:flex;align-items:center;gap:6px;padding:0 12px;"></div>
   </div>
 
   <div id="profileTab" class="tab-content active">
@@ -296,7 +298,11 @@
       <div class="section-content">
         <div class="form-grid">
           <div class="form-group full-width no-print">
-            <label>Serie de Orden (Operativo)<span class="tt" tabindex="0" data-tip="OT = Orden estándar para servicios de laboratorio e higiene. OTB = Orden tipo B para servicios adicionales de seguridad industrial. OTC = Orden de servicios complementarios (capacitación, protección civil…): lleva expediente, pero no número de informe. El folio se asigna automáticamente según la serie.">i</span></label>
+            <label for="wo_servicio">Servicio de esta OT<span class="tt" tabindex="0" data-tip="Una OT es un solo servicio. Al elegirlo se fija la serie: OTB para normas con informe, OT para la NOM-081 y OTC para servicios sin informe.">i</span></label>
+            <select id="wo_servicio" onchange="aplicarServicioOT()"><option value="">Elija el servicio...</option></select>
+          </div>
+          <div class="form-group full-width no-print">
+            <label>Serie de Orden (Operativo)<span class="tt" tabindex="0" data-tip="OTB = normas con informe. OT = NOM-081-SEMARNAT-1994. OTC = servicios sin informe (protección civil, dictámenes, capacitación…): lleva expediente, pero no número de informe. La serie se fija al elegir el servicio y el folio se asigna automáticamente.">i</span></label>
             <div class="radio-group">
               <label><input type="radio" name="orderSeries" value="OT" checked onchange="updateOrderNumber()"> Serie OT</label>
               <label><input type="radio" name="orderSeries" value="OTB" onchange="updateOrderNumber()"> Serie OTB</label>
@@ -311,15 +317,16 @@
           <label class="contract-review-label">Revisión de Contrato<span class="tt" tabindex="0" data-tip="Confirma que se evaluó la capacidad técnica, calibración de equipos, competencia del personal y disponibilidad de fechas antes de aceptar el servicio.">i</span></label>
           <p class="contract-review-text">
             <span class="cr-prefix">Se confirma para la ejecución del presente servicio:</span>
-            <label class="cb-inline"><input type="checkbox" id="rc_capacidad" checked> capacidad técnica</label>
-            <label class="cb-inline"><input type="checkbox" id="rc_equipos" checked> equipos calibrados</label>
-            <label class="cb-inline"><input type="checkbox" id="rc_personal" checked> personal competente</label>
-            <label class="cb-inline"><input type="checkbox" id="rc_fechas" checked> disponibilidad de fechas</label>
+            <label class="cb-inline"><input type="checkbox" id="rc_capacidad"> capacidad técnica</label>
+            <label class="cb-inline" id="rc_equipos_wrap"><input type="checkbox" id="rc_equipos"> equipos calibrados</label>
+            <span class="cb-inline" id="rc_equipos_na" style="display:none;">equipos calibrados: No aplica</span>
+            <label class="cb-inline"><input type="checkbox" id="rc_personal"> personal competente</label>
+            <label class="cb-inline"><input type="checkbox" id="rc_fechas"> disponibilidad de fechas</label>
           </p>
           <p class="contract-review-text">
             Por lo tanto:
-            <label class="cb-inline"><input type="checkbox" id="rc_aceptado" checked> Servicio aceptado para ejecución</label>
-            <label class="cb-inline"><input type="checkbox" id="rc_aclaracion"> Requiere aclaración previa</label>.
+            <label class="cb-inline"><input type="checkbox" id="rc_aceptado" onchange="if(this.checked)document.getElementById('rc_aclaracion').checked=false"> Servicio aceptado para ejecución</label>
+            <label class="cb-inline"><input type="checkbox" id="rc_aclaracion" onchange="if(this.checked)document.getElementById('rc_aceptado').checked=false"> Requiere aclaración previa</label>.
           </p>
           <div class="contract-review-date">
             <label>Fecha de revisión:</label>
@@ -368,7 +375,7 @@
           <tr>
             <td>
               <div class="service-autocomplete">
-                <input type="text" class="service-input" placeholder="NOM-XXX-STPS">
+                <input type="text" class="service-input" readonly>
                 <div class="service-suggestions"></div>
               </div>
             </td>
@@ -430,16 +437,13 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="catalogo-servicios.js"></script>
 <script>
   // ✅ NUEVA API CENTRAL
   const SHEETS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby8t7Py-cilePxLiGa-Lq7Df73XaRlmkRYV_kXbTs79HFydaJyub8muA0PBLRkPevUuXg/exec';
-  const NOM_081 = 'NOM-081-SEMARNAT-1994';
-  const PREDEFINED_SERVICES = ['NOM-001-STPS','NOM-002-STPS','NOM-004-STPS','NOM-006-STPS','NOM-011-STPS','NOM-015-STPS','NOM-017-STPS','NOM-019-STPS','NOM-022-STPS','NOM-024-STPS','NOM-025-STPS','NOM-026-STPS','NOM-030-STPS', NOM_081,'PROTECCIÓN CIVIL','CAPACITACIÓN','DICTAMEN ESTRUCTURAL','ESTUDIO DE RIESGO','PLAN DE EMERGENCIA','PROGRAMA INTERNO'];
   // Serie OTC (servicios complementarios): no admite NOM, que llevan informe.
   // Solo cuenta el servicio que EMPIEZA con NOM: "CURSO NOM-020-STPS" es capacitación.
   const esServicioNom = s => /^NOM[\s-]?\d/i.test(String(s || '').trim());
-  // Servicios que normalmente van en OTC; en OT/OTB se pide confirmación.
-  const SERVICIOS_OTC_PATRON = /PROTECCI[OÓ]N CIVIL|\bPIPC\b|PROGRAMA INTERNO|PLAN DE EMERGENCIA|CAPACITACI[OÓ]N|\bCURSO/i;
 
   let profileData = {};
   const excelCellMapping = {
@@ -798,35 +802,75 @@
   // Se consulta directamente en ORDENES_TRABAJO vía la acción getSiguienteFolioOT.
   function getSelectedSeries() { const radio = document.querySelector('input[name="orderSeries"]:checked'); return radio ? radio.value : 'OT'; }
 
-  // Regla estricta serie ↔ NOM-081-SEMARNAT-1994:
-  //  • Serie OT        → se coloca automáticamente (si aún no está en la tabla de servicios).
-  //  • Series OTB/OTC  → queda restringida: se retira de la tabla y se bloquea al registrar.
-  function applySeriesNomRule(series) {
-    const inputs = Array.from(document.querySelectorAll('#workTableBody .service-input'));
-    const has081 = v => String(v || '').toUpperCase().includes('NOM-081');
+  // ================== SERVICIO ÚNICO POR OT ==================
+  // Una OT es un solo servicio, elegido del catálogo compartido (catalogo-servicios.js).
+  // El servicio fija la serie; las filas de la tabla repiten ese servicio y solo
+  // varían personal, fecha, cantidad y observaciones.
+  const CATALOGO = window.CATALOGO_SERVICIOS || [];
+  const servicioCatalogo = nombre => CATALOGO.find(s => s.nombre === nombre) || null;
+  const servicioActual = () => (document.getElementById('wo_servicio')?.value || '').trim();
 
-    if (series !== 'OT') {
-      let removed = false;
-      inputs.forEach(inp => { if (has081(inp.value)) { inp.value = ''; removed = true; } });
-      if (removed) {
-        showStatus('workorderStatus', `⚠ La NOM-081-SEMARNAT-1994 no aplica a la serie ${series}; se retiró de la orden.`, 'warning');
-        updateDeclarationTable();
-      }
-      return;
-    }
-
-    // Serie OT → asegurar que la NOM-081 esté presente
-    if (inputs.some(inp => has081(inp.value))) return;
-    let target = inputs.find(inp => !String(inp.value || '').trim());
-    if (!target) {
-      addWorkRow();
-      const all = document.querySelectorAll('#workTableBody .service-input');
-      target = all[all.length - 1];
-    }
-    if (target) { target.value = NOM_081; updateDeclarationTable(); }
+  function poblarSelectServicios() {
+    const sel = document.getElementById('wo_servicio');
+    if (!sel) return;
+    const grupos = [['OTB', 'Normas con informe (serie OTB)'], ['OT', 'NOM-081 (serie OT)'], ['OTC', 'Sin informe (serie OTC)']];
+    grupos.forEach(([serie, etiqueta]) => {
+      const og = document.createElement('optgroup');
+      og.label = etiqueta;
+      CATALOGO.filter(s => s.serie === serie).forEach(s => og.appendChild(new Option(s.nombre, s.nombre)));
+      sel.appendChild(og);
+    });
   }
 
-  // Consulta el siguiente folio consecutivo directamente en Sheets (sin localStorage).
+  // "Equipos calibrados" solo aplica a los servicios que usan equipo; en los demás se imprime "No aplica".
+  function actualizarRevisionEquipos() {
+    const info = servicioCatalogo(servicioActual());
+    const aplica = !info || !!info.equipo;
+    const wrap = document.getElementById('rc_equipos_wrap');
+    const na = document.getElementById('rc_equipos_na');
+    if (wrap) wrap.style.display = aplica ? '' : 'none';
+    if (na) na.style.display = aplica ? 'none' : '';
+    if (!aplica) { const cb = document.getElementById('rc_equipos'); if (cb) cb.checked = false; }
+  }
+
+  function aplicarServicioOT() {
+    const nombre = servicioActual();
+    document.querySelectorAll('#workTableBody .service-input').forEach(inp => { inp.value = nombre; });
+    const info = servicioCatalogo(nombre);
+    if (info && info.serie !== getSelectedSeries()) {
+      const radio = document.querySelector(`input[name="orderSeries"][value="${info.serie}"]`);
+      if (radio) { radio.checked = true; updateOrderNumber(); }
+    }
+    actualizarRevisionEquipos();
+    updateDeclarationTable();
+  }
+
+  // Si se cambia la serie a mano y ya no corresponde al servicio elegido, se quita el servicio.
+  function applySeriesNomRule(series) {
+    const info = servicioCatalogo(servicioActual());
+    if (!info || info.serie === series) return;
+    document.getElementById('wo_servicio').value = '';
+    aplicarServicioOT();
+    showStatus('workorderStatus', `⚠ ${info.nombre} va en la serie ${info.serie}; se quitó el servicio. Elija uno de la serie ${series}.`, 'warning');
+  }
+
+  // La revisión de contrato no puede quedar vacía: todo lo que aplica debe estar
+  // confirmado y debe elegirse "aceptado" o "requiere aclaración".
+  function validarRevisionContrato() {
+    const marcado = id => !!document.getElementById(id)?.checked;
+    const info = servicioCatalogo(servicioActual());
+    const faltan = [];
+    if (!marcado('rc_capacidad')) faltan.push('capacidad técnica');
+    if ((!info || info.equipo) && !marcado('rc_equipos')) faltan.push('equipos calibrados');
+    if (!marcado('rc_personal')) faltan.push('personal competente');
+    if (!marcado('rc_fechas')) faltan.push('disponibilidad de fechas');
+    if (!marcado('rc_aceptado') && !marcado('rc_aclaracion')) faltan.push('"Servicio aceptado" o "Requiere aclaración previa"');
+    if (!faltan.length) return true;
+    showStatus('workorderStatus', '❌ Complete la revisión de contrato: ' + faltan.join(', ') + '.', 'error');
+    document.querySelector('.contract-review-block')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return false;
+  }
+
   // El campo N° de Orden queda editable para poder corregirlo manualmente si hace falta.
   async function updateOrderNumber() {
     const series = getSelectedSeries();
@@ -856,8 +900,21 @@
     }
   }
   
+  // Fecha de hoy en hora local (toISOString usa UTC: después de las 18:00 en México daba el día siguiente).
+  function fechaLocalISO() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  // Misma regla que el backend: el consecutivo del formato actual va a 4 dígitos.
+  function normalizarFolioOT(folio) {
+    const f = String(folio || '').trim().toUpperCase();
+    const m = f.match(/^(OT[BC]?)(\d{4})-(\d+)$/);
+    return m ? `${m[1]}${m[2]}-${String(parseInt(m[3], 10)).padStart(4, '0')}` : f;
+  }
+
   function generateWorkOrder() {
-    document.getElementById('wo_issueDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('wo_issueDate').value = fechaLocalISO();
     updateOrderNumber(); syncData(); generateQRCode(); showStatus('workorderStatus','Orden de trabajo generada automáticamente','success');
   }
   function generateQRCode() {
@@ -866,7 +923,7 @@
   }
   function addWorkRow() {
     const tbody = document.getElementById('workTableBody'); const tr = document.createElement('tr');
-    tr.innerHTML = `<td><div class="service-autocomplete"><input type="text" class="service-input" placeholder="NOM-XXX-STPS"><div class="service-suggestions"></div></div></td><td><select><option value="">Seleccionar...</option><option>Martín Luna</option><option>Jimmy Ayala</option><option>Iván Zárate</option><option>Eduardo Campos</option><option>Externo - Adrián H</option><option>Externo</option></select></td><td><input type="date"></td><td><input type="text" placeholder="10 puntos, 2 ZC... etc"></td><td><textarea rows="2"></textarea></td><td style="text-align:center;"><button class="remove-row-btn" onclick="removeRow(this)">✖</button></td>`;
+    tr.innerHTML = `<td><div class="service-autocomplete"><input type="text" class="service-input" readonly><div class="service-suggestions"></div></div></td><td><select><option value="">Seleccionar...</option><option>Martín Luna</option><option>Jimmy Ayala</option><option>Iván Zárate</option><option>Eduardo Campos</option><option>Externo - Adrián H</option><option>Externo</option></select></td><td><input type="date"></td><td><input type="text" placeholder="10 puntos, 2 ZC... etc"></td><td><textarea rows="2"></textarea></td><td style="text-align:center;"><button class="remove-row-btn" onclick="removeRow(this)">✖</button></td>`;
     tbody.appendChild(tr); setupServiceAutocomplete(tr.querySelector('.service-input'));
   }
   function removeRow(btn) { if (btn && btn.closest) { btn.closest('tr').remove(); updateDeclarationTable(); } }
@@ -899,22 +956,11 @@
     `).join('');
   }
 
+  // La celda de servicio de cada fila repite el servicio elegido arriba (solo lectura).
   function setupServiceAutocomplete(input) {
-    if (!input) return; const container = input.closest('.service-autocomplete'); const suggestionsDiv = container.querySelector('.service-suggestions');
-    input.addEventListener('input', function() {
-      const val = this.value.toUpperCase().trim();
-      if (val.length < 2) { suggestionsDiv.classList.remove('show'); return; }
-      let pool = PREDEFINED_SERVICES;
-      const serie = getSelectedSeries();
-      if (serie === 'OTB') pool = pool.filter(s => !s.toUpperCase().includes('NOM-081'));
-      else if (serie === 'OTC') pool = pool.filter(s => !esServicioNom(s));
-      const filtered = pool.filter(s => s.toUpperCase().includes(val));
-      if (filtered.length) { suggestionsDiv.innerHTML = filtered.map(s => `<div data-service="${s}">${s}</div>`).join(''); suggestionsDiv.classList.add('show'); } else { suggestionsDiv.classList.remove('show'); }
-    });
-    suggestionsDiv.addEventListener('click', (e) => {
-      const item = e.target.closest('div[data-service]'); if (!item) return; input.value = item.getAttribute('data-service') || ''; suggestionsDiv.classList.remove('show');
-    });
-    document.addEventListener('click', (e) => { if (!container.contains(e.target)) suggestionsDiv.classList.remove('show'); }, {capture:true});
+    if (!input) return;
+    input.readOnly = true;
+    input.value = servicioActual();
   }
 
   // Nombre sugerido del PDF: al usar "Guardar como PDF", el navegador toma el
@@ -923,7 +969,7 @@
     return String(s || '').replace(/[/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
   }
   function printWorkOrder() {
-    if (!confirmarCronologiaOT()) return;
+    if (!validarRevisionContrato() || !confirmarCronologiaOT()) return;
     const folio = (document.getElementById('wo_orderNumber')?.value || '').trim();
     const empresa = (document.getElementById('wo_clientName')?.value || '').trim();
     const prevTitle = document.title;
@@ -956,7 +1002,7 @@
     setTimeout(() => { replaced.forEach(({ sel, span }) => { sel.style.display = ''; span.remove(); }); replacedDates.forEach(({ inp, span }) => { inp.style.display = ''; span.remove(); }); controls.forEach(e => e.style.display = ''); document.getElementById('profileTab').style.display = ''; switchTab('workorder'); document.title = prevTitle; }, 800);
   }
   function sendWorkOrder() {
-    if (!confirmarCronologiaOT()) return;
+    if (!validarRevisionContrato() || !confirmarCronologiaOT()) return;
     const email = document.getElementById('wo_email')?.value;
     const orderNumber = document.getElementById('wo_orderNumber')?.value || 'Nueva';
     if (!email) { showStatus('workorderStatus','No hay email de cliente disponible','warning'); return; }
@@ -1075,14 +1121,17 @@ Tel: 222-941-7295`;
 
   // ================== REGISTRO A LA API CENTRAL ==================
   async function registerToSheets(e) {
-    if (!confirmarCronologiaOT()) return;
+    if (!servicioActual()) { showStatus('workorderStatus','Elija el servicio de esta OT.','error'); return; }
+    if (!validarRevisionContrato() || !confirmarCronologiaOT()) return;
     const btn = (e && e.target) ? e.target : document.querySelector('[onclick*="registerToSheets"]');
     const originalText = btn ? btn.textContent : '';
     if (btn) { btn.textContent = '⏳ Registrando...'; btn.disabled = true; }
     showStatus('workorderStatus','Enviando datos a Base Maestra...','warning');
 
     try {
-      const orderNumber = document.getElementById('wo_orderNumber')?.value || '';
+      const orderField = document.getElementById('wo_orderNumber');
+      if (orderField) orderField.value = normalizarFolioOT(orderField.value);
+      const orderNumber = orderField?.value || '';
       const company = document.getElementById('wo_clientName')?.value || '';
       const branch = document.getElementById('wo_branch')?.value || '';
       const rfc = document.getElementById('rfc')?.value || profileData.rfc || '';
@@ -1127,19 +1176,18 @@ Tel: 222-941-7295`;
           showStatus('workorderStatus', `❌ La serie OTC es para servicios sin informe (capacitación, protección civil…). ${nomsEnOtc.join(', ')} lleva informe: regístrala en una OT u OTB.`, 'error');
           return;
         }
-      } else {
-        const complementarios = services.filter(s => SERVICIOS_OTC_PATRON.test(s));
-        if (complementarios.length && !confirm(`Estos servicios normalmente van en la serie OTC, que no genera número de informe:\n\n${complementarios.join('\n')}\n\n¿Registrar de todos modos en la serie ${serieOT}?`)) {
-          showStatus('workorderStatus','Registro cancelado. Cambia la serie a OTC para estos servicios.','warning');
-          return;
-        }
+      }
+      const infoServicio = servicioCatalogo(servicioActual());
+      if (infoServicio && infoServicio.serie !== serieOT) {
+        showStatus('workorderStatus', `❌ ${infoServicio.nombre} va en la serie ${infoServicio.serie}. Corrige la serie.`, 'error');
+        return;
       }
 
       const payload = {
         action: 'registrarOT',
         ot_folio: orderNumber,
         tipo_orden: getSelectedSeries(),
-        nom_servicio: services.join(', '),
+        nom_servicio: [...new Set(services)].join(', '), // un servicio por OT: las filas lo repiten
         cliente_razon_social: company,
         sucursal: branch,
         rfc: rfc,
@@ -1161,8 +1209,12 @@ Tel: 222-941-7295`;
         // El folio definitivo (por si el backend lo ajusta automáticamente en el futuro)
         const finalFolio = result.folio || orderNumber;
         showStatus('workorderStatus', `✅ ¡OT registrada! Folio: ${finalFolio}`, 'success');
-        // Recalcular el siguiente folio directamente desde la Base Maestra (sin localStorage)
-        updateOrderNumber();
+        // Se conserva el folio registrado para imprimir o enviar esta misma OT;
+        // el siguiente se propone al generar la próxima OT o al cambiar de serie.
+        const folioEl = document.getElementById('wo_orderNumber');
+        if (folioEl) folioEl.value = finalFolio;
+        const infoEl = document.getElementById('seriesInfo');
+        if (infoEl) infoEl.textContent = `✅ ${finalFolio} registrada. El siguiente folio se propone al generar la próxima OT.`;
       } else {
         showStatus('workorderStatus', '❌ Error: ' + result.error, 'error');
       }
@@ -1287,12 +1339,14 @@ Tel: 222-941-7295`;
         }
       });
     }
-    const today = new Date().toISOString().split('T')[0];
+    const today = fechaLocalISO();
     const issueDateInput = document.getElementById('wo_issueDate');
     if (issueDateInput) issueDateInput.value = today;
     const reviewDateInput = document.getElementById('wo_contractReviewDate');
     if (reviewDateInput && !reviewDateInput.value) reviewDateInput.value = today;
+    poblarSelectServicios();
     document.querySelectorAll('.service-input').forEach(setupServiceAutocomplete);
+    document.getElementById('wo_orderNumber')?.addEventListener('change', function () { this.value = normalizarFolioOT(this.value); });
     updateOrderNumber();
     document.querySelectorAll('.nav-tab').forEach(tab => tab.addEventListener('click', syncData));
 
@@ -1310,12 +1364,6 @@ Tel: 222-941-7295`;
 </script>
 
 <!-- ── Autenticación Google (páginas internas) ── -->
-<div id="sea-user-info" style="
-  position:fixed;top:12px;right:16px;z-index:9999;
-  display:flex;align-items:center;gap:6px;
-  background:rgba(255,255,255,0.92);border-radius:20px;
-  padding:4px 10px;box-shadow:0 1px 6px rgba(0,0,0,0.15);
-"></div>
 <script src="https://accounts.google.com/gsi/client" onload="onGISLoaded()" async defer></script>
 <script src="auth.js"></script>
 <script>
