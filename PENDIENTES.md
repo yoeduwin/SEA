@@ -32,7 +32,6 @@ SEAOT, SEAINF y SEADB escriben distinto a las mismas personas, y SEADB acumula u
 
 ## Resueltos
 
-- **Meta de entrega:** es de **25 días**.
 - **Backend:** ya publicado en Apps Script, con los folios a 4 dígitos y la validación de folios repetidos.
 - **Botones de serie en SEAOT:** no se bloquean.
 - **Responsable en SEAINF:** se deja como está.
