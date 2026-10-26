@@ -1379,7 +1379,10 @@
             : '';
         }
         const successCorreo = document.getElementById('successCorreo');
-        if (successCorreo) successCorreo.textContent = correoInforme ? `La confirmación llegará a ${enmascararCorreo(correoInforme)}; si no la recibe, revise su carpeta de spam. ` : '';
+        // En una sucursal existente, un correo nuevo queda en revisión y la
+        // confirmación sale al correo ya registrado: no se muestra el capturado.
+        const destino = result.actualizado ? 'al correo registrado' : (correoInforme ? `a ${enmascararCorreo(correoInforme)}` : '');
+        if (successCorreo) successCorreo.textContent = destino ? `La confirmación llegará ${destino}; si no la recibe, revise su carpeta de spam. ` : '';
         if (successMsg) successMsg.style.display = 'block';
         setModoActualizacion(false);
         const bannerOk = document.getElementById('returningBanner');
