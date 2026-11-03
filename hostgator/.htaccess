@@ -1,0 +1,36 @@
+# ─────────────────────────────────────────────────────────────────────
+# SEA — portales públicos en ejecutivambiental.com (HostGator / cPanel)
+# Este archivo va dentro de /clientes y de /asesores (una copia en cada una).
+# Lo genera scripts/empaquetar-hostgator.sh; no lo edites en el servidor.
+# ─────────────────────────────────────────────────────────────────────
+
+# Abrir index.html al entrar a la carpeta y no mostrar la lista de archivos
+DirectoryIndex index.html
+Options -Indexes
+
+# Forzar HTTPS (reCAPTCHA no funciona bien sin él)
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{HTTPS} !=on
+  RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+</IfModule>
+
+# Solo se sirven las páginas y el script de reCAPTCHA; nada más
+<FilesMatch "\.(gs|md|yml|yaml|json|sh|zip|bak|log|txt)$">
+  Require all denied
+</FilesMatch>
+
+<IfModule mod_headers.c>
+  # Seguridad básica
+  Header always set Strict-Transport-Security "max-age=31536000"
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+
+  # Que los navegadores siempre vean la versión más reciente al actualizar
+  <FilesMatch "\.(html|js)$">
+    Header set Cache-Control "no-cache, must-revalidate"
+  </FilesMatch>
+</IfModule>

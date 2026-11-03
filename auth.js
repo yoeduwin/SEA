@@ -1,7 +1,8 @@
 /**
  * auth.js — Módulo de autenticación Google OAuth para SEA
  *
- * USO: Páginas internas (SEAPD, SEAOT, SEAINF).
+ * USO: Páginas internas (SEAOT, SEAINF, ...). SEAPD y PAIC son públicas
+ *      y usan recaptcha.js, no este módulo.
  *
  * CONFIGURACIÓN:
  *   1. Reemplaza CLIENT_ID con el OAuth 2.0 Client ID de Google Cloud Console.
