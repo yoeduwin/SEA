@@ -1296,9 +1296,11 @@
       const errorMsg = document.getElementById('errorMsg');
       const errorMsgText = document.getElementById('errorMsgText');
       if (errorMsgText) {
-        let fullMessage = message;
+        // El detalle puede traer texto del servidor (p. ej. el nombre de un
+        // archivo rechazado): se escapa igual que en PAIC.
+        let fullMessage = escHtml(message);
         if (detail) {
-          fullMessage += `<br><small style="opacity:0.8; font-size:11px;">(${detail})</small>`;
+          fullMessage += `<br><small style="opacity:0.8; font-size:11px;">(${escHtml(detail)})</small>`;
         }
         errorMsgText.innerHTML = fullMessage;
       }
