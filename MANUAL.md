@@ -278,6 +278,42 @@ Payload disponible en el handoff: `ot`, `serie`, `cliente`, `sucursal`, `rfc`, `
 
 El destino de los formatos se controla con la constante `FORMATOS_BASE` en `SEAOT.html` (por defecto vacía = mismo directorio y origen que SEAOT).
 
+#### Listado de órdenes, cancelación y reprogramación
+
+La pestaña **🗂️ Órdenes** de SEAOT lista todas las OTs de `ORDENES_TRABAJO`, una por folio y las más recientes primero. Se filtra por folio/cliente/sucursal/RFC, serie, estatus («Activas» = sin cerrar) y rango de fecha de visita. Muestra hasta 300 filas; para ver más, se afinan los filtros.
+
+Cada OT tiene tres botones:
+
+| Botón | Qué hace |
+|---|---|
+| **👁 Ver** | Muestra en pantalla los datos de la OT, si tiene expediente en SEAINF y sus Observaciones, donde queda el historial de cancelaciones y reprogramaciones. No imprime ni genera PDF. |
+| **📅 Reprogramar** | Pide la nueva fecha de visita (hoy o después) y un motivo. Muestra la nueva fecha límite antes de confirmar. |
+| **✖ Cancelar** | Pide un motivo y una confirmación. Es definitiva. |
+
+**La cancelación y la reprogramación oficiales se hacen sólo desde SEAOT.** El backend exige permiso `SEAOT` en `USUARIOS_AUTORIZADOS` para las acciones `cancelarOT` y `reprogramarOT`. SEADB sólo muestra las OTs canceladas.
+
+**Reglas** (el backend las valida aunque el botón esté habilitado):
+
+| Estatus de la OT | Cancelar | Reprogramar |
+|---|---|---|
+| NO INICIADO (o vacío) / EN PROCESO | Sí | Sí, sólo si **no tiene expediente** en INFORMES (si lo tiene, la visita ya se hizo) |
+| EN PAUSA | Sí | No: primero se reanuda en SEADB |
+| ENTREGADO / FINALIZADO / CANCELADO | No | No |
+
+- El motivo es obligatorio: de 10 a 500 caracteres.
+- En una OT migrada con varias filas, basta con que una fila esté cerrada para que la OT cuente como cerrada. Para reprogramar, todas sus filas deben estar en NO INICIADO o EN PROCESO. Ambas acciones actualizan todas las filas del folio.
+
+**Qué se escribe** (sin hojas ni columnas nuevas):
+
+| Acción | ORDENES_TRABAJO | INFORMES | AUDITORIA |
+|---|---|---|---|
+| Cancelar | L → `CANCELADO`; N + `[fecha] CANCELACIÓN (usuario): motivo` | N → `CANCELADO` si hay expediente y el informe no está FINALIZADO | `CANCELAR_OT` |
+| Reprogramar | I → nueva visita; J → visita + 20 días (OT/OTC) o + 25 días (OTB); N + `[fecha] REPROGRAMACIÓN (usuario): visita anterior → nueva; entrega límite anterior → nueva. Motivo: …` | No se toca | `REPROGRAMAR_OT` |
+
+Las dos acciones mandan un correo a `CONFIG.EMAIL_TO`. Si el correo falla, el cambio ya quedó guardado y en AUDITORIA.
+
+Una OT cancelada desaparece del selector de SEAINF y el programa de envíos (EjecutivaEnvios) no la cierra.
+
 ---
 
 ### 3.3 SEAINF — Gestión de Expedientes
@@ -396,9 +432,9 @@ Ambas pestañas leen la pestaña `INFORMES` del archivo **PANEL DE EJECUTIVA** (
 | EN PAUSA | Detenida por información pendiente del cliente (se reanuda desde SEADB) |
 | ENTREGADO | Entrega marcada manualmente en SEADB (botón **✅ Entregado**) |
 | FINALIZADO | Cerrada automáticamente al enviar el informe digital desde EjecutivaEnvios. Es definitiva |
-| CANCELADO | OT cancelada |
+| CANCELADO | OT cancelada. Se cancela sólo desde SEAOT → **🗂️ Órdenes** |
 
-SEADB cuenta `ENTREGADO` y `FINALIZADO` como entregadas en KPIs, semáforos y gráficas.
+SEADB cuenta `ENTREGADO` y `FINALIZADO` como entregadas en KPIs, semáforos y gráficas. Las OTs `CANCELADO` aparecen al final de la tabla como «⛔ Cancelada», sin botones de acción ni **📤 Compartir**, y no cuentan en tarjetas, gráficas, aviso de atrasadas ni calendario. El filtro de estatus tiene la opción «⛔ Cancelada».
 
 #### Cierre automático por envío digital
 
@@ -803,6 +839,9 @@ Estas funciones son invocadas desde `doPost()` después de validar autenticació
 | `getConsecutivoSafe_(params)` | Genera el siguiente número de informe consecutivo |
 | `updateEstatusSafe_(data, usuario)` | Actualiza el estatus externo de una OT |
 | `updateEstatusInformeSafe_(data, usuario)` | Actualiza el estatus interno del informe |
+| `listarOTsGestion_()` | Listado de OTs para SEAOT, con las acciones permitidas para cada una (sólo lectura) |
+| `cancelarOT_(data, usuario)` | Cancela una OT: `{ ot, motivo }` |
+| `reprogramarOT_(data, usuario)` | Reprograma la visita y recalcula la fecha límite: `{ ot, fechaVisita: 'yyyy-MM-dd', motivo }` |
 
 ---
 
@@ -827,6 +866,9 @@ Estas funciones son invocadas desde `doPost()` después de validar autenticació
 | `resolverCambioPendiente` | GOOGLE | SEAOT |
 | `registrarOT` | GOOGLE | SEAOT |
 | `resolverCarpetaCliente` | GOOGLE | SEAOT |
+| `listarOTsGestion` | GOOGLE | SEAOT |
+| `cancelarOT` | GOOGLE | SEAOT |
+| `reprogramarOT` | GOOGLE | SEAOT |
 | `getOrdenes` | GOOGLE | SEAINF |
 | `getConsecutivo` | GOOGLE | SEAINF |
 | `createExpediente` | GOOGLE | SEAINF |
