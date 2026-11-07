@@ -1857,6 +1857,33 @@ function runUnitTests() {
     '10/12/2026|10/12/2026|14/01/2027');
   _eq_('U129: cancelar exige motivo de 10 caracteres',
     cancelarOT_({ ot: TEST_FOLIO, motivo: 'corto' }, 'test').success, false);
+  // ── Imprimir/enviar sólo OTs registradas (reimpresión permitida) ─────────
+  var walker = { cliente: 'Autopartes Walker S de RL de CV - Planta Puebla FINSA', sucursal: 'Puebla FINSA',
+    rfc: 'AWA911128HV8', nom: 'NOM-004', estatus: 'ENTREGADO' };
+  var formWalker = { folio: 'OTB26-0328-167', rfc: 'awa911128hv8', cliente: 'AUTOPARTES WALKER S DE RL DE CV',
+    sucursal: 'PUEBLA FINSA', servicio: 'NOM-004-STPS-1999' };
+  _eq_('U131: folio sin registrar no se imprime', evaluarEmisionOT_([], formWalker).motivo, 'NO_REGISTRADA');
+  _eq_('U132: reimpresión con el mismo cliente, sucursal y servicio',
+    evaluarEmisionOT_([walker], formWalker).permitido, true);
+  var otroCliente = { folio: 'OTB26-0328-167', rfc: 'BCA001206674', cliente: 'BODEGA CRUZ AZUL', sucursal: 'Puebla FINSA', servicio: 'NOM-004' };
+  var rOtro = evaluarEmisionOT_([walker], otroCliente);
+  _eq_('U133: folio de otro cliente se bloquea', rOtro.motivo + '|' + /cliente \(RFC\)/.test(rOtro.mensaje), 'FOLIO_DE_OTRA_OT|true');
+  _eq_('U134: misma empresa con otro servicio se bloquea',
+    diferenciasFolioOT_(walker, { rfc: 'AWA911128HV8', sucursal: 'Puebla FINSA', servicio: 'NOM-025-STPS' }).join(','), 'servicio');
+  _eq_('U135: otra sucursal se bloquea',
+    diferenciasFolioOT_(walker, { rfc: 'AWA911128HV8', sucursal: 'Planta Querétaro', servicio: 'NOM-004' }).join(','), 'sucursal');
+  _eq_('U136: OT cancelada no se reimprime',
+    evaluarEmisionOT_([{ cliente: walker.cliente, sucursal: walker.sucursal, rfc: walker.rfc, nom: walker.nom, estatus: 'CANCELADO' }], formWalker).motivo,
+    'CANCELADA');
+  _check_('U137: fila histórica sin RFC válido compara por razón social y acentos',
+    diferenciasFolioOT_({ cliente: 'Bodega Cruz Azul del Centro', sucursal: 'Bodega Cruz Azul del Centro S.A de C.V', rfc: 'Bodega Cruz Azul del Centro S.A de C.V', nom: 'NOM-022-STPS' },
+      { rfc: 'BCA001206674', cliente: 'BODEGA CRUZ AZUL DEL CENTRO S.A. DE C.V.', sucursal: 'Bodega Cruz Azul del Centro S.A de C.V', servicio: 'NOM-022-STPS' }).length === 0);
+  _eq_('U139: OT registrada sin sucursal ("---") se compara por RFC y servicio',
+    diferenciasFolioOT_({ cliente: 'Leonali', sucursal: '---', rfc: 'LEO010101AB1', nom: 'NOM-020-STPS-2011' },
+      { rfc: 'LEO010101AB1', sucursal: 'Matriz', servicio: 'NOM-020-STPS-2011' }).length, 0);
+  _eq_('U138: verificarFolioOT exige Google y permiso SEAOT',
+    AUTH_MODE.verificarFolioOT + '|' + ACTION_MODULE.verificarFolioOT, 'GOOGLE|SEAOT');
+
   _eq_('U130: reprogramar rechaza una fecha pasada',
     reprogramarOT_({ ot: TEST_FOLIO, fechaVisita: '2020-01-01', motivo: 'Cliente pidió cambio' }, 'test').error,
     'La nueva fecha de visita no puede ser anterior a hoy.');

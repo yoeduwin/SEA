@@ -278,6 +278,20 @@ Payload disponible en el handoff: `ot`, `serie`, `cliente`, `sucursal`, `rfc`, `
 
 El destino de los formatos se controla con la constante `FORMATOS_BASE` en `SEAOT.html` (por defecto vacía = mismo directorio y origen que SEAOT).
 
+#### Imprimir y enviar sólo OTs registradas
+
+**Imprimir/PDF** y **Enviar por Email** consultan primero la Base Maestra (acción `verificarFolioOT`) y sólo continúan si el folio ya está registrado en `ORDENES_TRABAJO` y es la misma OT del formulario. Así no circulan OTs impresas que no existen en el sistema, ni OTs nuevas con un folio que ya es de otro cliente.
+
+| Caso | Resultado |
+|---|---|
+| Folio no registrado | Bloqueado: hay que presionar **🚀 Registrar OT en API** primero |
+| Folio registrado con el mismo cliente, sucursal y servicio | Permitido (reimpresión de una OT perdida) |
+| Folio registrado para otro cliente, sucursal o servicio | Bloqueado: el mensaje indica a qué OT pertenece y qué no coincide |
+| OT `CANCELADO` | Bloqueado |
+| Sin conexión o backend sin actualizar | Bloqueado: no se pudo verificar |
+
+Para **reimprimir** una OT registrada se carga el perfil del cliente, se elige el mismo servicio y se escribe el folio en **N° de Orden**. La comparación ignora mayúsculas, acentos, puntuación y espacios, y acepta que uno contenga al otro («NOM-004» ↔ «NOM-004-STPS-1999», «Puebla FINSA» ↔ «Planta Puebla FINSA»). El cliente se compara por RFC; en filas históricas sin RFC válido, por razón social. Si la OT registrada no tiene sucursal («---»), no se compara la sucursal.
+
 #### Listado de órdenes, cancelación y reprogramación
 
 La pestaña **🗂️ Órdenes** de SEAOT lista todas las OTs de `ORDENES_TRABAJO`, una por folio y las más recientes primero. Se filtra por folio/cliente/sucursal/RFC, serie, estatus («Activas» = sin cerrar) y rango de fecha de visita. Muestra hasta 300 filas; para ver más, se afinan los filtros.
@@ -841,6 +855,7 @@ Estas funciones son invocadas desde `doPost()` después de validar autenticació
 | `updateEstatusInformeSafe_(data, usuario)` | Actualiza el estatus interno del informe |
 | `listarOTsGestion_()` | Listado de OTs para SEAOT, con las acciones permitidas para cada una (sólo lectura) |
 | `cancelarOT_(data, usuario)` | Cancela una OT: `{ ot, motivo }` |
+| `verificarFolioOT_(data)` | Indica si una OT se puede imprimir o enviar: `{ folio, rfc, cliente, sucursal, servicio }` → `{ permitido, motivo, mensaje }` |
 | `reprogramarOT_(data, usuario)` | Reprograma la visita y recalcula la fecha límite: `{ ot, fechaVisita: 'yyyy-MM-dd', motivo }` |
 
 ---
@@ -869,6 +884,7 @@ Estas funciones son invocadas desde `doPost()` después de validar autenticació
 | `listarOTsGestion` | GOOGLE | SEAOT |
 | `cancelarOT` | GOOGLE | SEAOT |
 | `reprogramarOT` | GOOGLE | SEAOT |
+| `verificarFolioOT` | GOOGLE | SEAOT |
 | `getOrdenes` | GOOGLE | SEAINF |
 | `getConsecutivo` | GOOGLE | SEAINF |
 | `createExpediente` | GOOGLE | SEAINF |
