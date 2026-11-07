@@ -1302,20 +1302,31 @@
   }
   // Sólo se imprime o envía una OT ya registrada, y sólo con los datos de esa
   // OT (reimpresión). El backend compara folio, cliente, sucursal y servicio.
+  // Datos que se verifican; se vuelven a leer al terminar para detectar cambios.
+  function datosEmisionOT_() {
+    return {
+      folio: (document.getElementById('wo_orderNumber')?.value || '').trim(),
+      rfc: document.getElementById('rfc')?.value || profileData.rfc || '',
+      cliente: document.getElementById('wo_clientName')?.value || '',
+      sucursal: document.getElementById('wo_branch')?.value || '',
+      servicio: servicioActual()
+    };
+  }
+
   async function verificarFolioParaEmitir() {
     const folioEl = document.getElementById('wo_orderNumber');
     if (folioEl) folioEl.value = normalizarFolioOT(folioEl.value);
-    const folio = (folioEl?.value || '').trim();
-    if (!folio) { showStatus('workorderStatus', '❌ Falta el N° de Orden de Trabajo.', 'error'); return false; }
+    const datos = datosEmisionOT_();
+    if (!datos.folio) { showStatus('workorderStatus', '❌ Falta el N° de Orden de Trabajo.', 'error'); return false; }
     showStatus('workorderStatus', 'Verificando el folio en la Base Maestra...', 'warning');
     try {
-      const r = await postAccion({
-        action: 'verificarFolioOT', folio,
-        rfc: document.getElementById('rfc')?.value || profileData.rfc || '',
-        cliente: document.getElementById('wo_clientName')?.value || '',
-        sucursal: document.getElementById('wo_branch')?.value || '',
-        servicio: servicioActual()
-      });
+      const r = await postAccion(Object.assign({ action: 'verificarFolioOT' }, datos));
+      // Si el formulario cambió durante la consulta, lo verificado ya no es lo
+      // que se imprimiría. Quien llama imprime o envía sin otra espera.
+      if (JSON.stringify(datosEmisionOT_()) !== JSON.stringify(datos)) {
+        showStatus('workorderStatus', '❌ El folio, cliente o servicio cambió mientras se verificaba. Vuelve a intentarlo.', 'error');
+        return false;
+      }
       if (!r || !r.success) {
         showStatus('workorderStatus', '❌ No se pudo verificar el folio: ' + ((r && (r.error || r.message)) || 'error desconocido') + '. Intenta de nuevo.', 'error');
         return false;
