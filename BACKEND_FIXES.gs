@@ -222,6 +222,7 @@ const AUTH_MODE = {
   listarOTsGestion:       'GOOGLE',   // SEAOT: listado de OTs (sólo lectura)
   cancelarOT:             'GOOGLE',   // SEAOT: cancelación oficial
   reprogramarOT:          'GOOGLE',   // SEAOT: cambio de fecha de visita
+  verificarFolioOT:       'GOOGLE',   // SEAOT: folio registrado antes de imprimir/enviar
   // SEAINF
   getOrdenes:             'GOOGLE',
   getConsecutivo:         'GOOGLE',
@@ -257,6 +258,7 @@ const ACTION_MODULE = {
   listarOTsGestion:       'SEAOT',
   cancelarOT:             'SEAOT',
   reprogramarOT:          'SEAOT',
+  verificarFolioOT:       'SEAOT',
   getOrdenes:             'SEAINF',
   getConsecutivo:         'SEAINF',
   createExpediente:       'SEAINF',
@@ -676,6 +678,7 @@ function doPost(e) {
       case 'listarOTsGestion': return output_(listarOTsGestion_());
       case 'cancelarOT': return output_(cancelarOT_(data, _usuario));
       case 'reprogramarOT': return output_(reprogramarOT_(data, _usuario));
+      case 'verificarFolioOT': return output_(verificarFolioOT_(data));
       case 'updateEstatusInforme': return output_(updateEstatusInformeSafe_(data, _usuario));
       case 'updateResponsable': return output_(updateResponsableSafe_(data, _usuario));
       // Acciones GET migradas a POST para mantener token fuera de la URL (B-03)
@@ -2585,6 +2588,89 @@ function reprogramarOT_(data, usuario) {
     fechaVisita: fechaDMYGestionOT_(nueva),
     fechaEntrega: fechaDMYGestionOT_(entregaNueva)
   };
+}
+
+// ── verificarFolioOT_ ─────────────────────────────────────────────────────
+// SEAOT sólo deja imprimir o enviar una OT cuyo folio ya está registrado y
+// pertenece al mismo cliente, sucursal y servicio que el formulario
+// (reimpresión). Así no circulan OTs impresas sin registro ni OTs nuevas con
+// un folio que ya es de otro cliente.
+
+// Texto comparable: sin acentos, mayúsculas, sólo letras y números.
+function textoComparableOT_(v) {
+  return String(v == null ? '' : v).normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toUpperCase().replace(/[^A-Z0-9Ñ]+/g, ' ').trim();
+}
+
+// Iguales, o uno contiene al otro ("NOM-004" ↔ "NOM-004-STPS-1999").
+function coincideTextoOT_(a, b) {
+  const x = textoComparableOT_(a), y = textoComparableOT_(b);
+  if (!x || !y) return false;
+  return x === y || (' ' + x + ' ').indexOf(' ' + y + ' ') !== -1 || (' ' + y + ' ').indexOf(' ' + x + ' ') !== -1;
+}
+
+const RFC_REGEX_OT_ = /^[A-Z&Ñ]{3,4}\d{6}[A-Z0-9]{3}$/;
+
+/**
+ * ¿La fila registrada es la misma OT que la del formulario? Lógica pura.
+ * Compara RFC (o razón social si la fila histórica no tiene un RFC válido),
+ * sucursal y servicio. Devuelve la lista de campos que no coinciden.
+ */
+function diferenciasFolioOT_(fila, form) {
+  const difs = [];
+  const rfcFila = textoComparableOT_(fila.rfc).replace(/ /g, '');
+  const rfcForm = textoComparableOT_(form.rfc).replace(/ /g, '');
+  if (RFC_REGEX_OT_.test(rfcFila) && RFC_REGEX_OT_.test(rfcForm)) {
+    if (rfcFila !== rfcForm) difs.push('cliente (RFC)');
+  } else if (!coincideTextoOT_(fila.cliente, form.cliente)) {
+    difs.push('cliente');
+  }
+  // Filas sin sucursal ("", "-", "---"): no hay contra qué comparar.
+  if (textoComparableOT_(fila.sucursal) && !coincideTextoOT_(fila.sucursal, form.sucursal)) difs.push('sucursal');
+  const servicios = String(fila.nom || '').split(/[,;|]/).filter(s => s.trim());
+  if (!servicios.some(s => coincideTextoOT_(s, form.servicio))) difs.push('servicio');
+  return difs;
+}
+
+function evaluarEmisionOT_(filas, form) {
+  if (!filas.length) {
+    return { permitido: false, motivo: 'NO_REGISTRADA',
+      mensaje: `La OT ${form.folio} no está registrada. Regístrala con "🚀 Registrar OT en API" antes de imprimirla o enviarla.` };
+  }
+  const estatus = estatusAgregadoOT_(filas.map(f => f.estatus));
+  if (estatus === 'CANCELADO') {
+    return { permitido: false, motivo: 'CANCELADA', mensaje: `La OT ${form.folio} está CANCELADA: no se puede imprimir ni enviar.` };
+  }
+  let menor = null;
+  for (let i = 0; i < filas.length; i++) {
+    const d = diferenciasFolioOT_(filas[i], form);
+    if (!d.length) return { permitido: true, motivo: 'REGISTRADA', mensaje: '' };
+    if (!menor || d.length < menor.difs.length) menor = { fila: filas[i], difs: d };
+  }
+  const f = menor.fila;
+  return { permitido: false, motivo: 'FOLIO_DE_OTRA_OT',
+    mensaje: `El folio ${form.folio} ya está registrado para otra OT (${f.cliente || '—'} / ${f.sucursal || '—'} / ${f.nom || '—'}). ` +
+      `No coincide: ${menor.difs.join(', ')}. Usa el folio sugerido para una OT nueva, o carga el cliente y servicio correctos para reimprimirla.` };
+}
+
+/**
+ * @param {Object} data  { folio, rfc, cliente, sucursal, servicio }
+ */
+function verificarFolioOT_(data) {
+  const folio = normalizarFolioOT_(data && data.folio);
+  if (!folio) return { success: false, error: 'Falta el folio de la OT.' };
+  const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+  const values = sheet.getDataRange().getDisplayValues();
+  const filas = [];
+  for (let i = 1; i < values.length; i++) {
+    if (normalizarFolioOT_(values[i][CO.OT]) !== folio) continue;
+    filas.push({ cliente: values[i][CO.CLIENTE], sucursal: values[i][CO.SUCURSAL], rfc: values[i][CO.RFC],
+      nom: values[i][CO.NOM], estatus: values[i][CO.ESTATUS_EXTERNO] });
+  }
+  const r = evaluarEmisionOT_(filas, {
+    folio: folio, rfc: data.rfc, cliente: data.cliente, sucursal: data.sucursal, servicio: data.servicio
+  });
+  return { success: true, folio: folio, permitido: r.permitido, motivo: r.motivo, mensaje: r.mensaje };
 }
 
 // Aviso al equipo interno. Una falla de correo no revierte el cambio, que ya

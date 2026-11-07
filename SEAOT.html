@@ -1300,8 +1300,49 @@
   function sanitizeNombre(s) {
     return String(s || '').replace(/[/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
   }
-  function printWorkOrder() {
+  // Sólo se imprime o envía una OT ya registrada, y sólo con los datos de esa
+  // OT (reimpresión). El backend compara folio, cliente, sucursal y servicio.
+  // Datos que se verifican; se vuelven a leer al terminar para detectar cambios.
+  function datosEmisionOT_() {
+    return {
+      folio: (document.getElementById('wo_orderNumber')?.value || '').trim(),
+      rfc: document.getElementById('rfc')?.value || profileData.rfc || '',
+      cliente: document.getElementById('wo_clientName')?.value || '',
+      sucursal: document.getElementById('wo_branch')?.value || '',
+      servicio: servicioActual()
+    };
+  }
+
+  async function verificarFolioParaEmitir() {
+    const folioEl = document.getElementById('wo_orderNumber');
+    if (folioEl) folioEl.value = normalizarFolioOT(folioEl.value);
+    const datos = datosEmisionOT_();
+    if (!datos.folio) { showStatus('workorderStatus', '❌ Falta el N° de Orden de Trabajo.', 'error'); return false; }
+    showStatus('workorderStatus', 'Verificando el folio en la Base Maestra...', 'warning');
+    try {
+      const r = await postAccion(Object.assign({ action: 'verificarFolioOT' }, datos));
+      // Si el formulario cambió durante la consulta, lo verificado ya no es lo
+      // que se imprimiría. Quien llama imprime o envía sin otra espera.
+      if (JSON.stringify(datosEmisionOT_()) !== JSON.stringify(datos)) {
+        showStatus('workorderStatus', '❌ El folio, cliente o servicio cambió mientras se verificaba. Vuelve a intentarlo.', 'error');
+        return false;
+      }
+      if (!r || !r.success) {
+        showStatus('workorderStatus', '❌ No se pudo verificar el folio: ' + ((r && (r.error || r.message)) || 'error desconocido') + '. Intenta de nuevo.', 'error');
+        return false;
+      }
+      if (!r.permitido) { showStatus('workorderStatus', '❌ ' + r.mensaje, 'error'); return false; }
+      document.getElementById('workorderStatus').innerHTML = '';
+      return true;
+    } catch (_) {
+      showStatus('workorderStatus', '❌ Sin conexión con la Base Maestra: no se pudo verificar el folio. Intenta de nuevo.', 'error');
+      return false;
+    }
+  }
+
+  async function printWorkOrder() {
     if (!validarRevisionContrato() || !confirmarCronologiaOT()) return;
+    if (!(await verificarFolioParaEmitir())) return;
     const folio = (document.getElementById('wo_orderNumber')?.value || '').trim();
     const empresa = (document.getElementById('wo_clientName')?.value || '').trim();
     const prevTitle = document.title;
@@ -1333,8 +1374,9 @@
     window.print();
     setTimeout(() => { replaced.forEach(({ sel, span }) => { sel.style.display = ''; span.remove(); }); replacedDates.forEach(({ inp, span }) => { inp.style.display = ''; span.remove(); }); controls.forEach(e => e.style.display = ''); document.getElementById('profileTab').style.display = ''; switchTab('workorder'); document.title = prevTitle; }, 800);
   }
-  function sendWorkOrder() {
+  async function sendWorkOrder() {
     if (!validarRevisionContrato() || !confirmarCronologiaOT()) return;
+    if (!(await verificarFolioParaEmitir())) return;
     const email = document.getElementById('wo_email')?.value;
     const orderNumber = document.getElementById('wo_orderNumber')?.value || 'Nueva';
     if (!email) { showStatus('workorderStatus','No hay email de cliente disponible','warning'); return; }
