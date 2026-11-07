@@ -109,6 +109,41 @@
     .signature-caption .ip-name{font-weight:bold;color:#1e5a3e;}
     .declaration-empty{text-align:center;font-style:italic;color:#999;font-size:10px;margin:10px 0;}
     #wo_generalObservations{min-height:50px;}
+    /* Listado y gestión de OTs */
+    .og-filtros input,.og-filtros select{padding:7px 8px;border:1px solid #ccc;border-radius:4px;font-size:11px;}
+    .og-filtros input[type="search"]{min-width:230px;flex:1;}
+    .og-filtros label{display:flex;align-items:center;gap:4px;font-size:11px;}
+    .og-resumen{padding:8px 15px;font-size:11px;color:#555;}
+    .og-table-wrap{overflow-x:auto;padding:0 15px 15px;}
+    .og-table{width:100%;border-collapse:collapse;font-size:11px;}
+    .og-table th{background:#1e5a3e;color:#fff;text-align:left;padding:7px 6px;white-space:nowrap;position:sticky;top:0;}
+    .og-table td{border-bottom:1px solid #eee;padding:6px;vertical-align:top;}
+    .og-table tr:hover td{background:#f8f9fa;}
+    .og-table .og-acciones{white-space:nowrap;}
+    .og-btn{border:0;border-radius:4px;padding:5px 8px;margin:0 3px 3px 0;cursor:pointer;font-size:11px;color:#fff;background:#1e5a3e;}
+    .og-btn.og-ver{background:#6c757d;}
+    .og-btn.og-reprog{background:#007bff;}
+    .og-btn.og-cancel{background:#dc3545;}
+    .og-table .og-btn:disabled{background:#e9ecef;color:#adb5bd;cursor:not-allowed;}
+    .og-chip{display:inline-block;border-radius:10px;padding:2px 8px;font-size:10px;font-weight:bold;white-space:nowrap;background:#e9ecef;color:#495057;}
+    .og-chip.e-no-iniciado{background:#fff3cd;color:#856404;}
+    .og-chip.e-en-proceso{background:#d1ecf1;color:#0c5460;}
+    .og-chip.e-en-pausa{background:#e2d9f3;color:#4a2d7a;}
+    .og-chip.e-entregado,.og-chip.e-finalizado{background:#d4edda;color:#155724;}
+    .og-chip.e-cancelado{background:#f8d7da;color:#721c24;}
+    .og-detalle{display:grid;grid-template-columns:150px 1fr;gap:6px 10px;font-size:12px;margin:12px 0;}
+    .og-detalle dt{font-weight:bold;color:#1e5a3e;}
+    .og-detalle dd{margin:0;word-break:break-word;}
+    .og-obs{white-space:pre-wrap;background:#f8f9fa;border:1px solid #e9ecef;border-radius:4px;padding:8px;font-size:11px;max-height:220px;overflow-y:auto;}
+    .og-form label{display:block;font-weight:bold;font-size:11px;margin:10px 0 4px;color:#333;}
+    .og-form textarea,.og-form input[type="date"]{width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;font-size:12px;font-family:inherit;}
+    .og-ayuda{font-size:10px;color:#666;margin-top:3px;}
+    .og-aviso{background:#fff3cd;border:1px solid #ffc107;border-radius:4px;padding:8px;font-size:11px;color:#856404;margin-top:10px;}
+    .og-aviso.og-peligro{background:#f8d7da;border-color:#dc3545;color:#721c24;}
+    .og-modal-botones{display:flex;gap:8px;margin-top:15px;}
+    .og-modal-botones button{flex:1;border:0;border-radius:4px;padding:9px;cursor:pointer;font-weight:bold;color:#fff;}
+    .og-modal-botones button:disabled{opacity:.5;cursor:not-allowed;}
+    @media (max-width:640px){.og-detalle{grid-template-columns:1fr;}.og-filtros input[type="search"]{min-width:0;flex:1 1 100%;}}
     @media print{
       .nav-tabs,.excel-controls,.excel-mapping-info,.no-print,.modal-overlay,#sea-user-info,.data-sync-indicator{display:none !important;}
       #wo_contractRefDoc::placeholder{color:transparent !important;} /* el ejemplo COT-… no se imprime */
@@ -132,6 +167,7 @@
       .signature-line{height:28px;}
       @page{size:A4;margin:10mm}
       #profileTab{display:none !important;}
+      #ordenesTab{display:none !important;}
       #workorderTab{display:block !important;}
     }
   </style>
@@ -200,6 +236,7 @@
   <div class="nav-tabs">
     <button class="nav-tab active" id="profileTabButton" onclick="switchTab('profile')">👤 Perfil</button>
     <button class="nav-tab" id="workorderTabButton" onclick="switchTab('workorder')">📋 Orden de trabajo</button>
+    <button class="nav-tab" id="ordenesTabButton" onclick="switchTab('ordenes')">🗂️ Órdenes</button>
     <div id="sea-user-info" style="margin-left:auto;display:flex;align-items:center;gap:6px;padding:0 12px;"></div>
   </div>
 
@@ -431,6 +468,80 @@
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Listado de órdenes de trabajo: consulta, cancelación y reprogramación ── -->
+  <div id="ordenesTab" class="tab-content">
+    <div class="excel-controls og-filtros">
+      <strong>🗂️ Órdenes de trabajo:</strong>
+      <input type="search" id="og_texto" placeholder="Folio, cliente, sucursal o RFC" autocomplete="off">
+      <select id="og_serie" aria-label="Serie">
+        <option value="">Todas las series</option><option value="OT">OT</option><option value="OTB">OTB</option><option value="OTC">OTC</option>
+      </select>
+      <select id="og_estatus" aria-label="Estatus">
+        <option value="">Todos los estatus</option><option value="ACTIVAS">Activas (sin cerrar)</option>
+        <option value="NO INICIADO">No iniciado</option><option value="EN PROCESO">En proceso</option><option value="EN PAUSA">En pausa</option>
+        <option value="ENTREGADO">Entregado</option><option value="FINALIZADO">Finalizado</option><option value="CANCELADO">Cancelado</option>
+      </select>
+      <label>Visita del <input type="date" id="og_desde"></label>
+      <label>al <input type="date" id="og_hasta"></label>
+      <button type="button" onclick="limpiarFiltrosOrdenes()" style="background:#6c757d;">Limpiar</button>
+      <button type="button" onclick="cargarOrdenesGestion()">🔄 Actualizar</button>
+      <span id="ordenesStatus"></span>
+    </div>
+    <div id="og_resumen" class="og-resumen">Abre esta pestaña para cargar las órdenes.</div>
+    <div class="og-table-wrap">
+      <table class="og-table">
+        <thead><tr>
+          <th>Folio</th><th>Serie</th><th>Servicio</th><th>Cliente / sucursal</th><th>Personal</th>
+          <th>Visita</th><th>Entrega límite</th><th>Estatus</th><th>Acciones</th>
+        </tr></thead>
+        <tbody id="og_body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="otVerModal" class="modal-overlay">
+    <div class="modal-content" style="max-width:640px;">
+      <h3>👁 Orden de trabajo <span id="otVerFolio"></span></h3>
+      <dl id="otVerDetalle" class="og-detalle"></dl>
+      <div style="font-weight:bold;font-size:11px;color:#1e5a3e;margin-bottom:4px;">Observaciones e historial</div>
+      <div id="otVerObs" class="og-obs"></div>
+      <button class="close-modal" onclick="cerrarModalOT('otVerModal')">Cerrar</button>
+    </div>
+  </div>
+
+  <div id="otCancelarModal" class="modal-overlay">
+    <div class="modal-content og-form" style="max-width:520px;">
+      <h3 style="color:#dc3545;">✖ Cancelar OT <span id="otCancelarFolio"></span></h3>
+      <div id="otCancelarResumen" style="font-size:11px;color:#333;"></div>
+      <label for="otCancelarMotivo">Motivo de la cancelación</label>
+      <textarea id="otCancelarMotivo" rows="3" maxlength="500" placeholder="Ej. El cliente canceló el servicio por cambio de proveedor."></textarea>
+      <div class="og-ayuda"><span id="otCancelarCuenta">0</span>/500 · mínimo 10 caracteres</div>
+      <div id="otCancelarExpediente" class="og-aviso" style="display:none;"></div>
+      <div class="og-aviso og-peligro">La cancelación es definitiva: la OT sale de SEAINF y del envío de informes, y el folio no se reutiliza.</div>
+      <div class="og-modal-botones">
+        <button type="button" style="background:#6c757d;" onclick="cerrarModalOT('otCancelarModal')">Volver</button>
+        <button type="button" id="otCancelarBtn" style="background:#dc3545;" onclick="confirmarCancelarOT()" disabled>Cancelar OT</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="otReprogramarModal" class="modal-overlay">
+    <div class="modal-content og-form" style="max-width:520px;">
+      <h3>📅 Reprogramar OT <span id="otReprogramarFolio"></span></h3>
+      <div id="otReprogramarResumen" style="font-size:11px;color:#333;"></div>
+      <label for="otReprogramarFecha">Nueva fecha de visita</label>
+      <input type="date" id="otReprogramarFecha">
+      <div id="otReprogramarPreview" class="og-ayuda"></div>
+      <label for="otReprogramarMotivo">Motivo de la reprogramación</label>
+      <textarea id="otReprogramarMotivo" rows="3" maxlength="500" placeholder="Ej. El cliente pidió mover la visita por paro de planta."></textarea>
+      <div class="og-ayuda"><span id="otReprogramarCuenta">0</span>/500 · mínimo 10 caracteres</div>
+      <div class="og-modal-botones">
+        <button type="button" style="background:#6c757d;" onclick="cerrarModalOT('otReprogramarModal')">Volver</button>
+        <button type="button" id="otReprogramarBtn" style="background:#007bff;" onclick="confirmarReprogramarOT()" disabled>Reprogramar</button>
       </div>
     </div>
   </div>
@@ -746,16 +857,237 @@
     if (el) { el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 2000); }
   }
 
+  // ================== LISTADO Y GESTIÓN DE OTs ==================
+  // Cancelar y reprogramar se hacen oficialmente sólo aquí (SEAOT). El backend
+  // vuelve a validar las reglas: estos botones sólo evitan intentos inútiles.
+  const OG_MAX_FILAS = 300;
+  const ordenesGestion = { cargado: false, cargando: false, data: [], hoy: '', actual: null };
+
+  function claseEstatusOT(e) { return 'og-chip e-' + String(e || '').toLowerCase().replace(/\s+/g, '-'); }
+  function serieOT(tipo) { const t = String(tipo || '').trim().toUpperCase(); return t === 'OTA' ? 'OT' : t; }
+  function isoAFecha_(iso) { const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])) : null; }
+  function fechaUTCADMY_(d) { return d ? `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}` : ''; }
+
+  async function cargarOrdenesGestion() {
+    if (ordenesGestion.cargando) return;
+    ordenesGestion.cargando = true;
+    showStatus('ordenesStatus', 'Cargando órdenes...', 'warning');
+    try {
+      const r = await postAccion({ action: 'listarOTsGestion' });
+      if (!r || !r.success) { showStatus('ordenesStatus', (r && (r.error || r.message)) || 'No fue posible cargar las órdenes.', 'error'); return; }
+      ordenesGestion.data = r.data || [];
+      ordenesGestion.hoy = r.hoy || fechaLocalISO();
+      ordenesGestion.cargado = true;
+      document.getElementById('ordenesStatus').innerHTML = '';
+      renderOrdenesGestion();
+    } catch (_) {
+      showStatus('ordenesStatus', 'Error de conexión al cargar las órdenes.', 'error');
+    } finally {
+      ordenesGestion.cargando = false;
+    }
+  }
+
+  function filtrarOrdenesGestion() {
+    const texto = document.getElementById('og_texto').value.trim().toLowerCase();
+    const serie = document.getElementById('og_serie').value;
+    const estatus = document.getElementById('og_estatus').value;
+    const desde = isoAFecha_(document.getElementById('og_desde').value);
+    const hasta = isoAFecha_(document.getElementById('og_hasta').value);
+    return ordenesGestion.data.filter(o => {
+      if (texto && ![o.ot, o.cliente, o.sucursal, o.rfc, o.nom].some(v => String(v || '').toLowerCase().includes(texto))) return false;
+      if (serie && serieOT(o.tipo) !== serie) return false;
+      if (estatus === 'ACTIVAS' && ['ENTREGADO', 'FINALIZADO', 'CANCELADO'].includes(o.estatus)) return false;
+      if (estatus && estatus !== 'ACTIVAS' && o.estatus !== estatus) return false;
+      if (desde || hasta) {
+        const v = isoAFecha_(o.fecha_visita_iso);
+        if (!v || (desde && v < desde) || (hasta && v > hasta)) return false;
+      }
+      return true;
+    });
+  }
+
+  function renderOrdenesGestion() {
+    const body = document.getElementById('og_body');
+    const resumen = document.getElementById('og_resumen');
+    body.textContent = '';
+    const lista = filtrarOrdenesGestion();
+    const visibles = lista.slice(0, OG_MAX_FILAS);
+    resumen.textContent = `${lista.length} de ${ordenesGestion.data.length} órdenes` +
+      (lista.length > OG_MAX_FILAS ? ` · se muestran las ${OG_MAX_FILAS} más recientes; afina los filtros para ver el resto.` : '.');
+    if (!visibles.length) {
+      const td = body.insertRow().insertCell(); td.colSpan = 9; td.textContent = 'No hay órdenes con esos filtros.';
+      td.style.cssText = 'text-align:center;color:#666;padding:20px;';
+      return;
+    }
+    visibles.forEach(o => {
+      const tr = body.insertRow();
+      const celda = (txt, negrita) => { const td = tr.insertCell(); td.textContent = txt || '—'; if (negrita) td.style.fontWeight = 'bold'; return td; };
+      celda(o.ot, true);
+      celda(serieOT(o.tipo));
+      celda(o.nom);
+      celda([o.cliente, o.sucursal].filter(Boolean).join(' — '));
+      celda(o.personal);
+      celda(o.fecha_visita);
+      celda(o.fecha_entrega);
+      const tdE = tr.insertCell(); const chip = document.createElement('span');
+      chip.className = claseEstatusOT(o.estatus); chip.textContent = o.estatus; tdE.appendChild(chip);
+      const tdA = tr.insertCell(); tdA.className = 'og-acciones';
+      const boton = (label, clase, habilitado, ayuda, fn) => {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'og-btn ' + clase; b.textContent = label;
+        b.disabled = !habilitado; if (ayuda) b.title = ayuda; b.addEventListener('click', fn); tdA.appendChild(b);
+      };
+      boton('👁 Ver', 'og-ver', true, '', () => abrirVerOT(o));
+      boton('📅 Reprogramar', 'og-reprog', o.puede_reprogramar, o.motivo_no_reprogramar, () => abrirReprogramarOT(o));
+      boton('✖ Cancelar', 'og-cancel', o.puede_cancelar, o.motivo_no_cancelar, () => abrirCancelarOT(o));
+    });
+  }
+
+  function limpiarFiltrosOrdenes() {
+    ['og_texto', 'og_serie', 'og_estatus', 'og_desde', 'og_hasta'].forEach(id => { document.getElementById(id).value = ''; });
+    renderOrdenesGestion();
+  }
+
+  function cerrarModalOT(id) { document.getElementById(id).style.display = 'none'; ordenesGestion.actual = null; }
+
+  function resumenOT_(o) {
+    return `${o.cliente || '—'} — ${o.sucursal || '—'} · ${o.nom || '—'} · Visita: ${o.fecha_visita || 'sin fecha'} · Estatus: ${o.estatus}`;
+  }
+
+  function abrirVerOT(o) {
+    document.getElementById('otVerFolio').textContent = o.ot;
+    const dl = document.getElementById('otVerDetalle'); dl.textContent = '';
+    [
+      ['Serie', serieOT(o.tipo)], ['Servicio', o.nom], ['Cliente', o.cliente], ['Sucursal', o.sucursal], ['RFC', o.rfc],
+      ['Personal asignado', o.personal], ['Registrada', o.fecha_registro], ['Fecha de visita', o.fecha_visita],
+      ['Entrega límite', o.fecha_entrega || 'La calcula SEADB (visita + días de SLA)'], ['Entrega real', o.fecha_real],
+      ['Estatus', o.estatus],
+      ['Pausa', o.estatus === 'EN PAUSA' ? `${o.fecha_pausa || ''} ${o.motivo_pausa ? '· ' + o.motivo_pausa : ''}`.trim() : ''],
+      ['Expediente SEAINF', o.tiene_expediente ? `Sí · ${o.num_informe}` : 'No'],
+      ['Carpeta del cliente', o.link_drive]
+    ].forEach(([k, v]) => {
+      if (!v) return;
+      const dt = document.createElement('dt'); dt.textContent = k;
+      const dd = document.createElement('dd');
+      if (k === 'Carpeta del cliente' && /^https:\/\/drive\.google\.com\//.test(v)) {
+        const a = document.createElement('a'); a.href = v; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Abrir en Drive'; dd.appendChild(a);
+      } else dd.textContent = v;
+      dl.append(dt, dd);
+    });
+    document.getElementById('otVerObs').textContent = o.observaciones || 'Sin observaciones.';
+    document.getElementById('otVerModal').style.display = 'flex';
+  }
+
+  function abrirCancelarOT(o) {
+    ordenesGestion.actual = o;
+    document.getElementById('otCancelarFolio').textContent = o.ot;
+    document.getElementById('otCancelarResumen').textContent = resumenOT_(o);
+    const motivo = document.getElementById('otCancelarMotivo'); motivo.value = '';
+    const exp = document.getElementById('otCancelarExpediente');
+    exp.style.display = o.tiene_expediente ? 'block' : 'none';
+    exp.textContent = o.tiene_expediente ? `Esta OT ya tiene expediente (${o.num_informe}): el informe también quedará CANCELADO en SEAINF.` : '';
+    actualizarFormCancelarOT();
+    document.getElementById('otCancelarModal').style.display = 'flex';
+    motivo.focus();
+  }
+
+  function actualizarFormCancelarOT() {
+    const n = document.getElementById('otCancelarMotivo').value.trim().length;
+    document.getElementById('otCancelarCuenta').textContent = n;
+    document.getElementById('otCancelarBtn').disabled = n < 10;
+  }
+
+  async function confirmarCancelarOT() {
+    const o = ordenesGestion.actual; if (!o) return;
+    const motivo = document.getElementById('otCancelarMotivo').value.trim();
+    if (motivo.length < 10) return;
+    if (!confirm(`¿Cancelar definitivamente la OT ${o.ot}?\n\n${o.cliente} — ${o.sucursal}\nMotivo: ${motivo}`)) return;
+    const btn = document.getElementById('otCancelarBtn'); btn.disabled = true; btn.textContent = '⏳ Cancelando...';
+    try {
+      const r = await postAccion({ action: 'cancelarOT', ot: o.ot, motivo });
+      if (!r || !r.success) { alert('No se pudo cancelar: ' + ((r && (r.error || r.message)) || 'error desconocido')); return; }
+      cerrarModalOT('otCancelarModal');
+      ordenesGestion.cargado = false; await cargarOrdenesGestion();
+      showStatus('ordenesStatus', `✅ ${r.message}`, 'success');
+    } catch (_) {
+      alert('Error de conexión. Revisa el listado antes de intentar de nuevo: el cambio pudo haberse aplicado.');
+    } finally {
+      btn.textContent = 'Cancelar OT'; actualizarFormCancelarOT();
+    }
+  }
+
+  function abrirReprogramarOT(o) {
+    ordenesGestion.actual = o;
+    document.getElementById('otReprogramarFolio').textContent = o.ot;
+    document.getElementById('otReprogramarResumen').textContent = resumenOT_(o);
+    const fecha = document.getElementById('otReprogramarFecha');
+    fecha.value = ''; fecha.min = ordenesGestion.hoy || fechaLocalISO();
+    document.getElementById('otReprogramarMotivo').value = '';
+    actualizarFormReprogramarOT();
+    document.getElementById('otReprogramarModal').style.display = 'flex';
+    fecha.focus();
+  }
+
+  // Vista previa con la misma regla del backend: OTB +25 días, OT/OTC +20.
+  function actualizarFormReprogramarOT() {
+    const o = ordenesGestion.actual; if (!o) return;
+    const iso = document.getElementById('otReprogramarFecha').value;
+    const n = document.getElementById('otReprogramarMotivo').value.trim().length;
+    document.getElementById('otReprogramarCuenta').textContent = n;
+    const prev = document.getElementById('otReprogramarPreview');
+    const nueva = isoAFecha_(iso);
+    let fechaOk = false;
+    if (!nueva) prev.textContent = `Visita actual: ${o.fecha_visita || 'sin fecha'}.`;
+    else if (iso < (ordenesGestion.hoy || fechaLocalISO())) prev.textContent = '⚠ La fecha no puede ser anterior a hoy.';
+    else if (iso === o.fecha_visita_iso) prev.textContent = '⚠ Es la misma fecha de visita actual.';
+    else {
+      const limite = new Date(nueva.getTime()); limite.setUTCDate(limite.getUTCDate() + (o.dias_sla || 20));
+      prev.textContent = `Visita: ${o.fecha_visita || 'sin fecha'} → ${fechaUTCADMY_(nueva)} · Nueva entrega límite: ${fechaUTCADMY_(limite)} (+${o.dias_sla || 20} días).`;
+      fechaOk = true;
+    }
+    document.getElementById('otReprogramarBtn').disabled = !(fechaOk && n >= 10);
+  }
+
+  async function confirmarReprogramarOT() {
+    const o = ordenesGestion.actual; if (!o) return;
+    const fechaVisita = document.getElementById('otReprogramarFecha').value;
+    const motivo = document.getElementById('otReprogramarMotivo').value.trim();
+    const btn = document.getElementById('otReprogramarBtn'); btn.disabled = true; btn.textContent = '⏳ Reprogramando...';
+    try {
+      const r = await postAccion({ action: 'reprogramarOT', ot: o.ot, fechaVisita, motivo });
+      if (!r || !r.success) { alert('No se pudo reprogramar: ' + ((r && (r.error || r.message)) || 'error desconocido')); return; }
+      cerrarModalOT('otReprogramarModal');
+      ordenesGestion.cargado = false; await cargarOrdenesGestion();
+      showStatus('ordenesStatus', `✅ ${r.message}`, 'success');
+    } catch (_) {
+      alert('Error de conexión. Revisa el listado antes de intentar de nuevo: el cambio pudo haberse aplicado.');
+    } finally {
+      btn.textContent = 'Reprogramar'; actualizarFormReprogramarOT();
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    ['og_texto'].forEach(id => document.getElementById(id).addEventListener('input', renderOrdenesGestion));
+    ['og_serie', 'og_estatus', 'og_desde', 'og_hasta'].forEach(id => document.getElementById(id).addEventListener('change', renderOrdenesGestion));
+    document.getElementById('otCancelarMotivo').addEventListener('input', actualizarFormCancelarOT);
+    document.getElementById('otReprogramarMotivo').addEventListener('input', actualizarFormReprogramarOT);
+    document.getElementById('otReprogramarFecha').addEventListener('input', actualizarFormReprogramarOT);
+    ['otVerModal', 'otCancelarModal', 'otReprogramarModal'].forEach(id => {
+      const m = document.getElementById(id);
+      m.addEventListener('click', e => { if (e.target === m) cerrarModalOT(id); });
+    });
+  });
+
   function switchTab(name) {
     try { window.scrollTo({top:0, behavior:'smooth'}); } catch(e) { window.scrollTo(0,0); }
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-    const tabMap = { 'profile': { content: 'profileTab', button: 'profileTabButton' }, 'workorder': { content: 'workorderTab', button: 'workorderTabButton' } };
+    const tabMap = { 'profile': { content: 'profileTab', button: 'profileTabButton' }, 'workorder': { content: 'workorderTab', button: 'workorderTabButton' }, 'ordenes': { content: 'ordenesTab', button: 'ordenesTabButton' } };
     if (tabMap[name]) {
       document.getElementById(tabMap[name].content).classList.add('active');
       document.getElementById(tabMap[name].button).classList.add('active');
     }
     syncData();
+    if (name === 'ordenes' && !ordenesGestion.cargado) cargarOrdenesGestion();
   }
 
   function syncData() {

@@ -15,12 +15,13 @@
 //   E10–E18 → idempotencia, versionado, aislamiento, fallbacks seguros y
 //             coincidencia relajada de carpetas manuales / links legados
 //   E19  SEAOT/SEAINF → serie OTC: OT y expediente sin número de informe
+//   E20  SEAOT  → listarOTsGestion + reprogramarOT + cancelarOT
 //
 // USO
 //   1. Configurar Script Properties de staging:
 //      SEA_E2E_ENABLED=TRUE, SEA_TEST_SPREADSHEET_ID y SEA_TEST_FOLDER_ID.
 //   2. Editor GAS → seleccionar runE2ETests → ▶ Ejecutar → Ver registros.
-//   Para ejecutar un flujo individual: runTest_E01 … runTest_E19.
+//   Para ejecutar un flujo individual: runTest_E01 … runTest_E20.
 //   Para solo pruebas unitarias: runUnitTests (no requiere staging).
 //
 // SEGURIDAD
@@ -50,6 +51,8 @@ var TEST_FOLIO_INTRUDER = 'TEST-E2E-INTRUDER-RFC';
 // Serie OTC: el folio debe empezar con OTC. No sigue el formato OTCAAMM-N, así que
 // no altera el consecutivo real de la serie.
 var TEST_FOLIO_OTC      = 'OTC-TEST-E2E-001';
+var TEST_FOLIO_GESTION  = 'TEST-E2E-GESTION';
+var TEST_FOLIO_GESTION_EXP = 'TEST-E2E-GESTION-EXP';
 var TEST_RFC_MANUAL     = 'MANU000000TST';
 var TEST_SUCURSAL       = 'Sucursal Test E2E';
 var TEST_SUCURSAL_HIST  = 'Sucursal Histórica E2E';
@@ -61,7 +64,7 @@ var TEST_FOLIOS_ = [
   TEST_FOLIO_EMPTY, TEST_FOLIO_GARBAGE, TEST_FOLIO_LEGACY,
   TEST_FOLIO_LEGACYLINK, TEST_FOLIO_RESOLVED,
   TEST_FOLIO_FAKEID, TEST_FOLIO_FOREIGN, TEST_FOLIO_INTRUDER,
-  TEST_FOLIO_OTC
+  TEST_FOLIO_OTC, TEST_FOLIO_GESTION, TEST_FOLIO_GESTION_EXP
 ];
 var TEST_RFCS_ = [TEST_RFC, TEST_RFC_HIST, TEST_RFC_MISSING, TEST_RFC_MANUAL];
 
@@ -165,14 +168,14 @@ function runE2ETests() {
     e01: false, e02: false, e03: false, e04: false, e05: false, e06: false,
     e07: false, e08: false, e09: false, e10: false, e11: false, e12: false,
     e13: false, e14: false, e15: false, e16: false, e17: false, e18: false,
-    e19: false
+    e19: false, e20: false
   };
 
   var tests = [
     runTest_E01, runTest_E02, runTest_E03, runTest_E04, runTest_E05, runTest_E06,
     runTest_E07, runTest_E08, runTest_E09, runTest_E10, runTest_E11, runTest_E12,
     runTest_E13, runTest_E14, runTest_E15, runTest_E16, runTest_E17, runTest_E18,
-    runTest_E19
+    runTest_E19, runTest_E20
   ];
   for (var n = 0; n < tests.length; n++) {
     var number = String(n + 1).padStart(2, '0');
@@ -213,6 +216,7 @@ function runE2ETests() {
   Logger.log('  E17 retroajuste carpetas   : ' + (results.e17 ? 'OK' : 'FALLO'));
   Logger.log('  E18 carpetas manuales      : ' + (results.e18 ? 'OK' : 'FALLO'));
   Logger.log('  E19 serie OTC sin informe  : ' + (results.e19 ? 'OK' : 'FALLO'));
+  Logger.log('  E20 cancelar/reprogramar   : ' + (results.e20 ? 'OK' : 'FALLO'));
   Logger.log('══════════════════════════════════════════════');
 
   // Ejecutar también las pruebas unitarias
@@ -1354,6 +1358,50 @@ function runTest_E19() {
 // =========================================================================
 // LIMPIEZA — elimina todos los datos de prueba
 // =========================================================================
+// =========================================================================
+// E20 — SEAOT: listado, reprogramación y cancelación de OTs
+// =========================================================================
+// Usa dos OTs propias de staging: una sin expediente y otra con expediente.
+function runTest_E20() {
+  _activateE2EStaging_();
+  Logger.log('');
+  Logger.log('── E20: SEAOT → listar, reprogramar y cancelar ──');
+  var link = canonicalDriveFolderLink_('staging-sin-carpeta');
+  _appendOtRow_(TEST_FOLIO_GESTION, 'EMPRESA GESTION E2E', TEST_SUCURSAL, TEST_RFC, link, 'NOM-011-STPS');
+  _appendOtRow_(TEST_FOLIO_GESTION_EXP, 'EMPRESA GESTION E2E', TEST_SUCURSAL, TEST_RFC, link, 'NOM-011-STPS');
+  _appendInformeRow_(TEST_FOLIO_GESTION_EXP, 'EA-2611-NOM011-9999', 'EMPRESA GESTION E2E', TEST_SUCURSAL, TEST_RFC, link);
+
+  var buscar = function(folio) {
+    return listarOTsGestion_().data.filter(function(o) { return o.ot === folio; })[0];
+  };
+  var sinExp = buscar(TEST_FOLIO_GESTION);
+  var conExp = buscar(TEST_FOLIO_GESTION_EXP);
+  _check_('E20-1: el listado incluye ambas OTs', !!sinExp && !!conExp);
+  _check_('E20-2: sin expediente se puede reprogramar y cancelar', sinExp.puede_reprogramar && sinExp.puede_cancelar);
+  _check_('E20-3: con expediente sólo se puede cancelar', !conExp.puede_reprogramar && conExp.puede_cancelar && conExp.tiene_expediente);
+
+  var hoy = hoyGestionOT_();
+  var nueva = sumarDiasFechaGestionOT_(hoy, 10);
+  var r = reprogramarOT_({ ot: TEST_FOLIO_GESTION, fechaVisita: fechaISOGestionOT_(nueva), motivo: 'Prueba automatizada E20', _skipEmail: true }, 'test-automatizado');
+  _check_('E20-4: reprogramarOT devuelve success=true', r.success === true);
+  var tras = buscar(TEST_FOLIO_GESTION);
+  _eq_('E20-5: la visita cambió', tras.fecha_visita, fechaDMYGestionOT_(nueva));
+  _eq_('E20-6: la entrega límite es visita + 20 días', tras.fecha_entrega, fechaDMYGestionOT_(sumarDiasFechaGestionOT_(nueva, 20)));
+  _check_('E20-7: Observaciones registra la reprogramación', tras.observaciones.indexOf('REPROGRAMACIÓN') !== -1);
+
+  var rExp = reprogramarOT_({ ot: TEST_FOLIO_GESTION_EXP, fechaVisita: fechaISOGestionOT_(nueva), motivo: 'Prueba automatizada E20', _skipEmail: true }, 'test');
+  _check_('E20-8: no se reprograma una OT con expediente', rExp.success === false);
+
+  var c = cancelarOT_({ ot: TEST_FOLIO_GESTION_EXP, motivo: 'Prueba automatizada E20', _skipEmail: true }, 'test-automatizado');
+  _check_('E20-9: cancelarOT devuelve success=true', c.success === true);
+  _eq_('E20-10: el informe también queda CANCELADO', c.informesCancelados, 1);
+  _eq_('E20-11: el listado muestra la OT CANCELADO', buscar(TEST_FOLIO_GESTION_EXP).estatus, 'CANCELADO');
+  _check_('E20-12: una OT cancelada no se vuelve a cancelar',
+    cancelarOT_({ ot: TEST_FOLIO_GESTION_EXP, motivo: 'Prueba automatizada E20', _skipEmail: true }, 'test').success === false);
+  var enSelector = getOrdenesSafe_().data.some(function(o) { return o.ot === TEST_FOLIO_GESTION_EXP; });
+  _check_('E20-13: la OT cancelada no aparece en SEAINF', !enSelector);
+}
+
 function _cleanup_() {
   _activateE2EStaging_();
   var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
@@ -1781,6 +1829,37 @@ function runUnitTests() {
     buscarFilaClienteExistente_(maestroSinRfc, 'SIN_RFC', 'Matriz', 'empresa a'), 2);
   _eq_('U112: buscarClienteNombre exige Google', AUTH_MODE.buscarClienteNombre, 'GOOGLE');
   _eq_('U113: informes enviados exigen Google (ya no hay CSV público)', AUTH_MODE.getInformesEnviados, 'GOOGLE');
+
+  // ── Gestión de OT desde SEAOT: cancelar y reprogramar ────────────────────
+  _eq_('U117: cancelar y reprogramar son exclusivos de SEAOT',
+    [ACTION_MODULE.listarOTsGestion, ACTION_MODULE.cancelarOT, ACTION_MODULE.reprogramarOT,
+     AUTH_MODE.cancelarOT, AUTH_MODE.reprogramarOT].join('|'), 'SEAOT|SEAOT|SEAOT|GOOGLE|GOOGLE');
+  var g = function(est, exp) { var r = evaluarGestionOT_(est, exp); return (r.puedeCancelar ? 'C' : '-') + (r.puedeReprogramar ? 'R' : '-'); };
+  _eq_('U118: NO INICIADO sin expediente admite ambas', g('NO INICIADO', false), 'CR');
+  _eq_('U119: EN PROCESO con expediente sólo se cancela', g('EN PROCESO', true), 'C-');
+  _eq_('U120: EN PAUSA se cancela pero no se reprograma', g('EN PAUSA', false), 'C-');
+  _eq_('U121: OT cerradas no admiten ninguna',
+    [g('ENTREGADO', false), g('FINALIZADO', false), g('CANCELADO', false)].join('|'), '--|--|--');
+  _eq_('U122: estatus vacío cuenta como NO INICIADO', g('', false), 'CR');
+  _eq_('U123: estatus desconocido no admite ninguna', g('PENDIENTE', false), '--');
+  _eq_('U124: una fila FINALIZADO cierra una OT migrada',
+    estatusAgregadoOT_(['EN PROCESO', 'FINALIZADO', 'EN PROCESO']), 'FINALIZADO');
+  _eq_('U125: sin filas cerradas manda la más reciente',
+    estatusAgregadoOT_(['NO INICIADO', 'EN PROCESO']), 'EN PROCESO');
+  _eq_('U126: fechas ISO y dd/MM/yyyy se leen igual',
+    fechaISOGestionOT_(parseFechaGestionOT_('2026-11-07')) + '|' + fechaISOGestionOT_(parseFechaGestionOT_('07/11/2026 10:30')),
+    '2026-11-07|2026-11-07');
+  _eq_('U127: fecha imposible se rechaza', parseFechaGestionOT_('31/02/2026'), null);
+  _eq_('U128: OT/OTC +20 días y OTB +25 días cruzando mes',
+    [fechaDMYGestionOT_(sumarDiasFechaGestionOT_(parseFechaGestionOT_('2026-11-20'), diasSlaGestionOT_('OT'))),
+     fechaDMYGestionOT_(sumarDiasFechaGestionOT_(parseFechaGestionOT_('2026-11-20'), diasSlaGestionOT_('OTC'))),
+     fechaDMYGestionOT_(sumarDiasFechaGestionOT_(parseFechaGestionOT_('2026-12-20'), diasSlaGestionOT_('OTB')))].join('|'),
+    '10/12/2026|10/12/2026|14/01/2027');
+  _eq_('U129: cancelar exige motivo de 10 caracteres',
+    cancelarOT_({ ot: TEST_FOLIO, motivo: 'corto' }, 'test').success, false);
+  _eq_('U130: reprogramar rechaza una fecha pasada',
+    reprogramarOT_({ ot: TEST_FOLIO, fechaVisita: '2020-01-01', motivo: 'Cliente pidió cambio' }, 'test').error,
+    'La nueva fecha de visita no puede ser anterior a hoy.');
 
   var pass = _results_.filter(function(r){ return r.indexOf('PASS') === 0; }).length;
   var fail = _results_.filter(function(r){ return r.indexOf('FAIL') === 0; }).length;

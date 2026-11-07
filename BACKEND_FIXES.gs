@@ -219,6 +219,9 @@ const AUTH_MODE = {
   resolverCarpetaCliente:  'GOOGLE',   // resolución read-only para clientes históricos
   registrarOT:            'GOOGLE',
   getSiguienteFolioOT:    'GOOGLE',   // SEAOT: calcula el siguiente folio leyendo ORDENES_TRABAJO
+  listarOTsGestion:       'GOOGLE',   // SEAOT: listado de OTs (sólo lectura)
+  cancelarOT:             'GOOGLE',   // SEAOT: cancelación oficial
+  reprogramarOT:          'GOOGLE',   // SEAOT: cambio de fecha de visita
   // SEAINF
   getOrdenes:             'GOOGLE',
   getConsecutivo:         'GOOGLE',
@@ -251,6 +254,9 @@ const ACTION_MODULE = {
   resolverCambioPendiente:'SEAOT',
   registrarOT:            'SEAOT',
   getSiguienteFolioOT:    'SEAOT',
+  listarOTsGestion:       'SEAOT',
+  cancelarOT:             'SEAOT',
+  reprogramarOT:          'SEAOT',
   getOrdenes:             'SEAINF',
   getConsecutivo:         'SEAINF',
   createExpediente:       'SEAINF',
@@ -667,6 +673,9 @@ function doPost(e) {
       case 'updateEstatus': return output_(updateEstatusSafe_(data, _usuario));
       case 'pausarOT': return output_(pausarOT_(data, _usuario));
       case 'reanudarOT': return output_(reanudarOT_(data, _usuario));
+      case 'listarOTsGestion': return output_(listarOTsGestion_());
+      case 'cancelarOT': return output_(cancelarOT_(data, _usuario));
+      case 'reprogramarOT': return output_(reprogramarOT_(data, _usuario));
       case 'updateEstatusInforme': return output_(updateEstatusInformeSafe_(data, _usuario));
       case 'updateResponsable': return output_(updateResponsableSafe_(data, _usuario));
       // Acciones GET migradas a POST para mantener token fuera de la URL (B-03)
@@ -2235,6 +2244,369 @@ function reanudarOT_(data, usuario) {
     return { success: true, message: `OT reanudada. Nueva fecha de entrega: ${fechaEntregaNueva}.`, nuevaFechaEntrega: fechaEntregaNueva };
   }
   return { success: false, error: 'OT no encontrada.' };
+}
+
+// =========================================================================
+// GESTIÓN DE OT DESDE SEAOT — listado, cancelación y reprogramación
+// =========================================================================
+// La cancelación y la reprogramación oficiales se hacen sólo desde SEAOT
+// (ACTION_MODULE = 'SEAOT'). No se agregan hojas ni columnas: se usan las
+// columnas I, J, L y N de ORDENES_TRABAJO, la N de INFORMES y AUDITORIA.
+//
+// Reglas:
+//   Cancelar     → NO INICIADO, EN PROCESO o EN PAUSA. Motivo obligatorio.
+//   Reprogramar  → NO INICIADO o EN PROCESO y sin expediente en INFORMES
+//                  (si ya hay expediente, la visita ya se hizo).
+//                  La fecha límite se recalcula desde la nueva visita.
+//   ENTREGADO, FINALIZADO y CANCELADO no admiten ninguna de las dos.
+const ESTATUS_CANCELABLES_     = ['NO INICIADO', 'EN PROCESO', 'EN PAUSA'];
+const ESTATUS_REPROGRAMABLES_  = ['NO INICIADO', 'EN PROCESO'];
+const ESTATUS_CERRADOS_GESTION_ = ['ENTREGADO', 'FINALIZADO', 'CANCELADO'];
+const MOTIVO_GESTION_MIN_      = 10;
+
+// Estatus externo normalizado; una celda vacía es una OT sin iniciar.
+function estatusGestionOT_(valor) {
+  const e = String(valor == null ? '' : valor).trim().toUpperCase();
+  return e || 'NO INICIADO';
+}
+
+// Estatus que representa a una OT con varias filas (OT migradas): basta con
+// que una fila esté cerrada para tratar la OT como cerrada, igual que SEAINF.
+// Prioridad: FINALIZADO > ENTREGADO > CANCELADO > la fila más reciente.
+function estatusAgregadoOT_(estatuses) {
+  const lista = estatuses.map(estatusGestionOT_);
+  const cerrado = ['FINALIZADO', 'ENTREGADO', 'CANCELADO'].filter(e => lista.indexOf(e) !== -1)[0];
+  if (cerrado) return cerrado;
+  return lista.length ? lista[lista.length - 1] : 'NO INICIADO';
+}
+
+/**
+ * Qué se puede hacer con una OT. Lógica pura (sin Sheets) para probarla.
+ * @param {string} estatus           Estatus externo (agregado si hay varias filas)
+ * @param {boolean} tieneExpediente  Si la OT ya tiene fila en INFORMES
+ */
+function evaluarGestionOT_(estatus, tieneExpediente) {
+  const e = estatusGestionOT_(estatus);
+  const r = { estatus: e, puedeCancelar: false, motivoNoCancelar: '', puedeReprogramar: false, motivoNoReprogramar: '' };
+  if (ESTATUS_CERRADOS_GESTION_.indexOf(e) !== -1) {
+    r.motivoNoCancelar = r.motivoNoReprogramar = `La OT ya está ${e}.`;
+    return r;
+  }
+  if (ESTATUS_CANCELABLES_.indexOf(e) !== -1) r.puedeCancelar = true;
+  else r.motivoNoCancelar = `Estatus no reconocido: "${e}".`;
+
+  if (ESTATUS_REPROGRAMABLES_.indexOf(e) === -1) {
+    r.motivoNoReprogramar = e === 'EN PAUSA'
+      ? 'La OT está EN PAUSA: primero hay que reanudarla en SEADB.'
+      : `Estatus no reconocido: "${e}".`;
+  } else if (tieneExpediente) {
+    r.motivoNoReprogramar = 'La OT ya tiene expediente en SEAINF: la visita ya se realizó.';
+  } else {
+    r.puedeReprogramar = true;
+  }
+  return r;
+}
+
+// Fecha de calendario {y, m, d} sin hora ni zona horaria. Acepta un Date,
+// 'yyyy-MM-dd', 'dd/MM/yyyy' y 'dd-MM-yyyy' (con o sin hora al final).
+function parseFechaGestionOT_(valor) {
+  if (valor instanceof Date) {
+    if (isNaN(valor.getTime())) return null;
+    const p = Utilities.formatDate(valor, CONFIG.TIMEZONE, 'yyyy-MM-dd').split('-');
+    return { y: Number(p[0]), m: Number(p[1]), d: Number(p[2]) };
+  }
+  const s = String(valor == null ? '' : valor).trim().split(/[ T]/)[0];
+  let y, m, d, mt;
+  if ((mt = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/))) { y = +mt[1]; m = +mt[2]; d = +mt[3]; }
+  else if ((mt = s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/))) { d = +mt[1]; m = +mt[2]; y = +mt[3]; }
+  else return null;
+  const t = new Date(Date.UTC(y, m - 1, d));
+  if (t.getUTCFullYear() !== y || t.getUTCMonth() !== m - 1 || t.getUTCDate() !== d) return null; // 31/02, etc.
+  return { y: y, m: m, d: d };
+}
+
+function sumarDiasFechaGestionOT_(f, dias) {
+  const t = new Date(Date.UTC(f.y, f.m - 1, f.d + dias));
+  return { y: t.getUTCFullYear(), m: t.getUTCMonth() + 1, d: t.getUTCDate() };
+}
+
+function compararFechasGestionOT_(a, b) {
+  return (a.y - b.y) || (a.m - b.m) || (a.d - b.d);
+}
+
+const pad2GestionOT_ = n => String(n).padStart(2, '0');
+function fechaISOGestionOT_(f) { return f ? `${f.y}-${pad2GestionOT_(f.m)}-${pad2GestionOT_(f.d)}` : ''; }
+function fechaDMYGestionOT_(f) { return f ? `${pad2GestionOT_(f.d)}/${pad2GestionOT_(f.m)}/${f.y}` : ''; }
+
+// Días desde la visita hasta la entrega límite: el mismo criterio que reanudarOT_.
+function diasSlaGestionOT_(tipo) {
+  return String(tipo || '').trim().toUpperCase() === 'OTB' ? 25 : 20;
+}
+
+function hoyGestionOT_() {
+  return parseFechaGestionOT_(Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'yyyy-MM-dd'));
+}
+
+// Texto de una celda de fecha para mostrar (dd/MM/yyyy), sin importar si
+// Sheets la guardó como fecha o como texto.
+function textoFechaGestionOT_(valor) {
+  const f = parseFechaGestionOT_(valor);
+  return f ? fechaDMYGestionOT_(f) : String(valor == null ? '' : valor).trim();
+}
+
+function agregarNotaObservaciones_(anterior, nota) {
+  const previo = String(anterior == null ? '' : anterior);
+  const stamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'dd/MM/yyyy HH:mm');
+  const linea = `[${stamp}] ${nota}`;
+  return previo ? previo + '\n' + linea : linea;
+}
+
+// Filas (índice 0-based sobre getValues) de ORDENES_TRABAJO con ese folio.
+function filasOTGestion_(values, ot) {
+  const clave = normalizeOtForSeainf_(ot);
+  const filas = [];
+  for (let i = 1; i < values.length; i++) {
+    if (clave && normalizeOtForSeainf_(values[i][CO.OT]) === clave) filas.push(i);
+  }
+  return filas;
+}
+
+function otTieneExpediente_(ot) {
+  const sheetInf = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_INFORMES);
+  if (!sheetInf) return false;
+  const clave = normalizeOtForSeainf_(ot);
+  const valores = sheetInf.getRange(1, CI.OT + 1, Math.max(1, sheetInf.getLastRow()), 1).getValues();
+  for (let i = 1; i < valores.length; i++) {
+    if (normalizeOtForSeainf_(valores[i][0]) === clave) return true;
+  }
+  return false;
+}
+
+function validarMotivoGestionOT_(motivo) {
+  const m = String(motivo == null ? '' : motivo).trim();
+  if (m.length < MOTIVO_GESTION_MIN_) return { ok: false, error: `El motivo debe tener al menos ${MOTIVO_GESTION_MIN_} caracteres.` };
+  if (m.length > 500) return { ok: false, error: 'El motivo no debe pasar de 500 caracteres.' };
+  return { ok: true, motivo: m };
+}
+
+// ── listarOTsGestion_ ─────────────────────────────────────────────────────
+/**
+ * Listado de OTs para SEAOT, una entrada por folio (la fila más reciente),
+ * con las acciones permitidas. Sólo lectura.
+ */
+function listarOTsGestion_() {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = ss.getSheetByName(CONFIG.SHEET_OT);
+  if (!sheet) return { success: false, error: 'No existe la hoja ' + CONFIG.SHEET_OT + '.' };
+  const values = sheet.getDataRange().getValues();
+
+  const informesPorOt = {};
+  const sheetInf = ss.getSheetByName(CONFIG.SHEET_INFORMES);
+  if (sheetInf) {
+    sheetInf.getDataRange().getDisplayValues().slice(1).forEach(r => {
+      const k = normalizeOtForSeainf_(r[CI.OT]);
+      if (k) informesPorOt[k] = String(r[CI.NUM_INFORME] || '').trim() || informesPorOt[k] || '(sin número)';
+    });
+  }
+
+  const grupos = {};
+  const orden = [];
+  for (let i = 1; i < values.length; i++) {
+    const k = normalizeOtForSeainf_(values[i][CO.OT]);
+    if (!k) continue;
+    if (!grupos[k]) { grupos[k] = []; orden.push(k); }
+    grupos[k].push(values[i]);
+  }
+
+  const texto = v => (v instanceof Date) ? textoFechaGestionOT_(v) : String(v == null ? '' : v).trim();
+  const ordenes = orden.map(k => {
+    const filas = grupos[k];
+    const row = filas[filas.length - 1];
+    const estatus = estatusAgregadoOT_(filas.map(f => f[CO.ESTATUS_EXTERNO]));
+    const tieneExpediente = Object.prototype.hasOwnProperty.call(informesPorOt, k);
+    const reglas = evaluarGestionOT_(estatus, tieneExpediente);
+    const fVisita = parseFechaGestionOT_(row[CO.FECHA_VISITA]);
+    const fRegistro = row[CO.FECHA] instanceof Date
+      ? Utilities.formatDate(row[CO.FECHA], CONFIG.TIMEZONE, 'dd/MM/yyyy HH:mm')
+      : texto(row[CO.FECHA]);
+    return {
+      ot:                 texto(row[CO.OT]),
+      tipo:               texto(row[CO.TIPO]),
+      nom:                texto(row[CO.NOM]),
+      cliente:            texto(row[CO.CLIENTE]),
+      sucursal:           texto(row[CO.SUCURSAL]),
+      rfc:                texto(row[CO.RFC]),
+      personal:           texto(row[CO.PERSONAL]),
+      fecha_registro:     fRegistro,
+      fecha_visita:       textoFechaGestionOT_(row[CO.FECHA_VISITA]),
+      fecha_visita_iso:   fechaISOGestionOT_(fVisita),
+      fecha_entrega:      textoFechaGestionOT_(row[CO.FECHA_ENTREGA]),
+      fecha_real:         textoFechaGestionOT_(row[CO.FECHA_REAL]),
+      estatus:            reglas.estatus,
+      observaciones:      texto(row[CO.OBSERVACIONES]),
+      fecha_pausa:        textoFechaGestionOT_(row[CO.FECHA_PAUSA]),
+      motivo_pausa:       texto(row[CO.MOTIVO_PAUSA]),
+      link_drive:         texto(row[CO.LINK_DRIVE]),
+      filas:              filas.length,
+      tiene_expediente:   tieneExpediente,
+      num_informe:        tieneExpediente ? informesPorOt[k] : '',
+      dias_sla:           diasSlaGestionOT_(row[CO.TIPO]),
+      puede_cancelar:     reglas.puedeCancelar,
+      motivo_no_cancelar: reglas.motivoNoCancelar,
+      puede_reprogramar:  reglas.puedeReprogramar,
+      motivo_no_reprogramar: reglas.motivoNoReprogramar
+    };
+  }).reverse(); // las más recientes primero
+
+  return { success: true, data: ordenes, hoy: fechaISOGestionOT_(hoyGestionOT_()) };
+}
+
+// ── cancelarOT_ ───────────────────────────────────────────────────────────
+/**
+ * Cancela oficialmente una OT (sólo SEAOT).
+ * @param {Object} data  { ot, motivo }
+ * @param {string} usuario  Email del operador autenticado
+ */
+function cancelarOT_(data, usuario) {
+  if (!data || !data.ot) return { success: false, error: 'Falta el folio de la OT.' };
+  const vm = validarMotivoGestionOT_(data.motivo);
+  if (!vm.ok) return { success: false, error: vm.error };
+
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = ss.getSheetByName(CONFIG.SHEET_OT);
+  const values = sheet.getDataRange().getValues();
+  const filas = filasOTGestion_(values, data.ot);
+  if (!filas.length) return { success: false, error: 'OT no encontrada.' };
+
+  const estatusAnterior = estatusAgregadoOT_(filas.map(i => values[i][CO.ESTATUS_EXTERNO]));
+  const reglas = evaluarGestionOT_(estatusAnterior, false);
+  if (!reglas.puedeCancelar) return { success: false, error: 'No se puede cancelar. ' + reglas.motivoNoCancelar };
+
+  const folio = String(values[filas[0]][CO.OT]).trim();
+  const nota = `CANCELACIÓN (${usuario || 'desconocido'}): ${vm.motivo}`;
+  filas.forEach(i => {
+    sheet.getRange(i + 1, CO.ESTATUS_EXTERNO + 1).setValue('CANCELADO');
+    sheet.getRange(i + 1, CO.OBSERVACIONES + 1).setValue(agregarNotaObservaciones_(values[i][CO.OBSERVACIONES], nota));
+  });
+  registrarAuditoria_(usuario, 'CANCELAR_OT', folio, 'estatus_externo', estatusAnterior, 'CANCELADO');
+  registrarAuditoria_(usuario, 'CANCELAR_OT', folio, 'motivo', '', vm.motivo);
+
+  // El expediente, si existe, también se cancela (salvo un informe ya finalizado).
+  let informesCancelados = 0;
+  const sheetInf = ss.getSheetByName(CONFIG.SHEET_INFORMES);
+  if (sheetInf) {
+    const inf = sheetInf.getDataRange().getValues();
+    const clave = normalizeOtForSeainf_(folio);
+    for (let i = 1; i < inf.length; i++) {
+      if (normalizeOtForSeainf_(inf[i][CI.OT]) !== clave) continue;
+      const estInf = String(inf[i][CI.ESTATUS] || '').trim().toUpperCase();
+      if (ESTATUS_INFORME_TERMINALES_.indexOf(estInf) !== -1) continue;
+      sheetInf.getRange(i + 1, CI.ESTATUS + 1).setValue('CANCELADO');
+      registrarAuditoria_(usuario, 'CANCELAR_OT', folio, 'estatus_informe', estInf, 'CANCELADO');
+      informesCancelados++;
+    }
+  }
+  SpreadsheetApp.flush();
+
+  const row = values[filas[filas.length - 1]];
+  if (!data._skipEmail) {
+    notificarGestionOT_('CANCELACIÓN', row, usuario, [
+      `Estatus anterior: ${estatusAnterior}`,
+      `Motivo: ${vm.motivo}`,
+      informesCancelados ? `Expediente en SEAINF marcado como CANCELADO.` : ''
+    ]);
+  }
+  return { success: true, message: `OT ${folio} cancelada.`, informesCancelados: informesCancelados };
+}
+
+// ── reprogramarOT_ ────────────────────────────────────────────────────────
+/**
+ * Cambia la fecha de visita y recalcula la fecha límite (sólo SEAOT).
+ * @param {Object} data  { ot, fechaVisita ('yyyy-MM-dd'), motivo }
+ * @param {string} usuario  Email del operador autenticado
+ */
+function reprogramarOT_(data, usuario) {
+  if (!data || !data.ot) return { success: false, error: 'Falta el folio de la OT.' };
+  const vm = validarMotivoGestionOT_(data.motivo);
+  if (!vm.ok) return { success: false, error: vm.error };
+  const nueva = parseFechaGestionOT_(data.fechaVisita);
+  if (!nueva) return { success: false, error: 'La nueva fecha de visita no es válida.' };
+  if (compararFechasGestionOT_(nueva, hoyGestionOT_()) < 0) {
+    return { success: false, error: 'La nueva fecha de visita no puede ser anterior a hoy.' };
+  }
+
+  const sheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT);
+  const values = sheet.getDataRange().getValues();
+  const filas = filasOTGestion_(values, data.ot);
+  if (!filas.length) return { success: false, error: 'OT no encontrada.' };
+
+  const folio = String(values[filas[0]][CO.OT]).trim();
+  const estatus = estatusAgregadoOT_(filas.map(i => values[i][CO.ESTATUS_EXTERNO]));
+  const reglas = evaluarGestionOT_(estatus, otTieneExpediente_(folio));
+  if (!reglas.puedeReprogramar) return { success: false, error: 'No se puede reprogramar. ' + reglas.motivoNoReprogramar };
+  // Todas las filas deben admitirlo (una fila migrada podría ir en otro estatus, p. ej. EN PAUSA).
+  if (!filas.every(i => ESTATUS_REPROGRAMABLES_.indexOf(estatusGestionOT_(values[i][CO.ESTATUS_EXTERNO])) !== -1)) {
+    return { success: false, error: 'No se puede reprogramar: alguna fila de la OT no está NO INICIADO o EN PROCESO.' };
+  }
+
+  const row = values[filas[filas.length - 1]];
+  const anterior = parseFechaGestionOT_(row[CO.FECHA_VISITA]);
+  if (anterior && compararFechasGestionOT_(anterior, nueva) === 0) {
+    return { success: false, error: 'La nueva fecha de visita es igual a la actual.' };
+  }
+  const visitaAnteriorTxt  = textoFechaGestionOT_(row[CO.FECHA_VISITA]) || '(sin fecha)';
+  const entregaAnteriorTxt = textoFechaGestionOT_(row[CO.FECHA_ENTREGA]) || '(sin fecha)';
+  const entregaNueva = sumarDiasFechaGestionOT_(nueva, diasSlaGestionOT_(row[CO.TIPO]));
+  const nota = `REPROGRAMACIÓN (${usuario || 'desconocido'}): visita ${visitaAnteriorTxt} → ${fechaDMYGestionOT_(nueva)}; ` +
+    `entrega límite ${entregaAnteriorTxt} → ${fechaDMYGestionOT_(entregaNueva)}. Motivo: ${vm.motivo}`;
+
+  // Se escribe 'yyyy-MM-dd', igual que SEAOT al registrar la OT: Sheets lo
+  // interpreta como fecha sin ambigüedad de día/mes.
+  filas.forEach(i => {
+    sheet.getRange(i + 1, CO.FECHA_VISITA + 1).setValue(fechaISOGestionOT_(nueva));
+    sheet.getRange(i + 1, CO.FECHA_ENTREGA + 1).setValue(fechaISOGestionOT_(entregaNueva));
+    sheet.getRange(i + 1, CO.OBSERVACIONES + 1).setValue(agregarNotaObservaciones_(values[i][CO.OBSERVACIONES], nota));
+  });
+  SpreadsheetApp.flush();
+  registrarAuditoria_(usuario, 'REPROGRAMAR_OT', folio, 'fecha_visita', visitaAnteriorTxt, fechaDMYGestionOT_(nueva));
+  registrarAuditoria_(usuario, 'REPROGRAMAR_OT', folio, 'fecha_entrega', entregaAnteriorTxt, fechaDMYGestionOT_(entregaNueva));
+  registrarAuditoria_(usuario, 'REPROGRAMAR_OT', folio, 'motivo', '', vm.motivo);
+
+  if (!data._skipEmail) {
+    notificarGestionOT_('REPROGRAMACIÓN', row, usuario, [
+      `Visita: ${visitaAnteriorTxt} → ${fechaDMYGestionOT_(nueva)}`,
+      `Entrega límite: ${entregaAnteriorTxt} → ${fechaDMYGestionOT_(entregaNueva)}`,
+      `Motivo: ${vm.motivo}`
+    ]);
+  }
+  return {
+    success: true,
+    message: `OT ${folio} reprogramada al ${fechaDMYGestionOT_(nueva)}. Nueva fecha límite: ${fechaDMYGestionOT_(entregaNueva)}.`,
+    fechaVisita: fechaDMYGestionOT_(nueva),
+    fechaEntrega: fechaDMYGestionOT_(entregaNueva)
+  };
+}
+
+// Aviso al equipo interno. Una falla de correo no revierte el cambio, que ya
+// quedó en la hoja y en AUDITORIA.
+function notificarGestionOT_(tipo, row, usuario, lineas) {
+  try {
+    const folio = String(row[CO.OT] || '').trim();
+    const cliente = `${row[CO.CLIENTE] || '-'} / ${row[CO.SUCURSAL] || '-'}`;
+    const cuerpo = [
+      `${tipo} DE ORDEN DE TRABAJO`,
+      '',
+      `OT: ${folio} (${row[CO.TIPO] || '-'})`,
+      `Cliente: ${cliente}`,
+      `Servicio: ${row[CO.NOM] || '-'}`,
+      `Personal: ${row[CO.PERSONAL] || '-'}`,
+      ''
+    ].concat(lineas.filter(Boolean)).concat(['', `Realizado por: ${usuario || 'desconocido'} desde SEAOT.`]).join('\n');
+    GmailApp.sendEmail(CONFIG.EMAIL_TO.join(','), `${tipo === 'CANCELACIÓN' ? 'OT cancelada' : 'OT reprogramada'} · ${folio} · ${row[CO.CLIENTE] || ''}`,
+      cuerpo, { name: CONFIG.COMPANY_NAME });
+  } catch (e) {
+    Logger.log('notificarGestionOT_ error: ' + e.message);
+  }
 }
 
 // Actualiza el estatus interno del informe en la hoja INFORMES (col N).

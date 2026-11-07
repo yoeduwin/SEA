@@ -288,7 +288,7 @@
                         <label>Estatus</label>
                         <select id="filter-estatus">
                             <option value="">Todos</option><option value="ENTREGADO">✅ Entregado</option><option value="TIEMPO">🟢 En tiempo</option>
-                            <option value="LIMITE">🟠 En límite</option><option value="ALERTA">🔴 Alerta</option><option value="PENDIENTE">🟡 Pendiente</option><option value="PAUSA">⏸ En Pausa</option>
+                            <option value="LIMITE">🟠 En límite</option><option value="ALERTA">🔴 Alerta</option><option value="PENDIENTE">🟡 Pendiente</option><option value="PAUSA">⏸ En Pausa</option><option value="CANCELADO">⛔ Cancelada</option>
                         </select>
                     </div>
                 </div>
@@ -521,8 +521,11 @@
 
                         const isEntregado = estatusRaw === 'ENTREGADO' || estatusRaw === 'FINALIZADO';
                         const isPausa     = estatusRaw === 'EN PAUSA';
+                        const isCancelado = estatusRaw === 'CANCELADO';
                         let estatusAuto = '';
-                        if (isEntregado) {
+                        if (isCancelado) {
+                            estatusAuto = '⛔ Cancelada'; // se cancela sólo desde SEAOT
+                        } else if (isEntregado) {
                             estatusAuto = '✅ Entregado';
                         } else if (isPausa) {
                             const fechaPausaRaw = row.fechaPausa || '';
@@ -645,6 +648,7 @@
 
 
         function getStatusCategory(row) {
+            if (row.estatusRaw === 'CANCELADO') return 'CANCELADO';
             if (row.estatusRaw === 'EN PAUSA') return 'PAUSA';
             const estatus = row.estatusAuto || '';
             if (estatus.includes('✅') || estatus.includes('Entregado')) return 'ENTREGADO';
@@ -677,8 +681,12 @@
             return Math.ceil((fechaRealEntrega - fechaVisita) / (1000 * 60 * 60 * 24));
         }
 
+        // Las OT canceladas no cuentan en tarjetas, gráficas ni calendario.
+        function esCancelada(r) { return r.estatusRaw === 'CANCELADO'; }
+        function datosMetricas() { return datosSinEstatus.filter(r => !esCancelada(r)); }
+
         function updateKPIs() {
-            const base = datosSinEstatus;
+            const base = datosMetricas();
             const cuenta = cat => base.filter(r => getStatusCategory(r) === cat).length;
             document.getElementById('kpi-tiempo').textContent = cuenta('TIEMPO');
             document.getElementById('kpi-limite').textContent = cuenta('LIMITE');
@@ -747,10 +755,11 @@
         }
 
         function updateMesChart() {
-            const meses = mesesRecientes(datosSinEstatus);
+            const base = datosMetricas();
+            const meses = mesesRecientes(base);
             const serie = { aTiempo: [], tarde: [], sinFecha: [], pendientes: [] };
             meses.forEach(({ clave }) => {
-                const delMes = datosSinEstatus.filter(r => claveMes(r.fechaVisita) === clave);
+                const delMes = base.filter(r => claveMes(r.fechaVisita) === clave);
                 const entregadas = delMes.filter(r => r.entregadoManual.toUpperCase().includes('ENTREGADO'));
                 // Sin fecha real (p. ej. OT migradas) no se sabe si fue a tiempo: va aparte.
                 serie.aTiempo.push(entregadas.filter(r => entregadaATiempo(r) === true).length);
@@ -767,9 +776,10 @@
             ] }, options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, boxWidth: 12 } } }, scales: { x: { stacked: true, grid: { display: false }, ticks: { font: { size: 10 } } }, y: { stacked: true, beginAtZero: true, ticks: { font: { size: 10 }, precision: 0 } } } } });
         }
         function updateTiemposChart() {
-            const meses = mesesRecientes(datosSinEstatus);
+            const base = datosMetricas();
+            const meses = mesesRecientes(base);
             const promedios = meses.map(({ clave }) => {
-                const dias = datosSinEstatus.filter(r => claveMes(r.fechaVisita) === clave && r.entregadoManual.toUpperCase().includes('ENTREGADO'))
+                const dias = base.filter(r => claveMes(r.fechaVisita) === clave && r.entregadoManual.toUpperCase().includes('ENTREGADO'))
                     .map(r => calcularDiasEntrega(r)).filter(d => d !== null && d >= 0);
                 return dias.length ? Math.round(dias.reduce((a, b) => a + b, 0) / dias.length) : null;
             });
@@ -782,11 +792,15 @@
 
         function updateTable() {
             const tbody = document.getElementById('tableBody'); tbody.innerHTML = '';
-            const otsActivas = filteredData.filter(r => !r.entregadoManual.toUpperCase().includes('ENTREGADO'));
-            const otsEntregadas = filteredData.filter(r => r.entregadoManual.toUpperCase().includes('ENTREGADO'));
+            const otsActivas = filteredData.filter(r => !esCancelada(r) && !r.entregadoManual.toUpperCase().includes('ENTREGADO'));
+            const otsEntregadas = filteredData.filter(r => !esCancelada(r) && r.entregadoManual.toUpperCase().includes('ENTREGADO'));
+            const otsCanceladas = filteredData.filter(esCancelada);
+            const divisor = (texto) => { const dividerRow = document.createElement('tr'); dividerRow.innerHTML = `<td colspan="12" class="table-section-divider">${texto}</td>`; tbody.appendChild(dividerRow); };
             otsActivas.forEach(row => { tbody.appendChild(createTableRow(row)); });
-            if (otsActivas.length > 0 && otsEntregadas.length > 0) { const dividerRow = document.createElement('tr'); dividerRow.innerHTML = `<td colspan="12" class="table-section-divider">✅ Entregadas (${otsEntregadas.length})</td>`; tbody.appendChild(dividerRow); }
+            if (otsActivas.length > 0 && otsEntregadas.length > 0) divisor(`✅ Entregadas (${otsEntregadas.length})`);
             otsEntregadas.forEach(row => { tbody.appendChild(createTableRow(row)); });
+            if (otsCanceladas.length > 0 && (otsActivas.length > 0 || otsEntregadas.length > 0)) divisor(`⛔ Canceladas (${otsCanceladas.length})`);
+            otsCanceladas.forEach(row => { tbody.appendChild(createTableRow(row)); });
             document.getElementById('table-count').textContent = filteredData.length;
         }
 
@@ -797,7 +811,9 @@
             const isPausa = row.estatusRaw === 'EN PAUSA';
             const otArg  = jsArg(row.ot);
 
-            const botonesAccion = isEntregado
+            const botonesAccion = esCancelada(row)
+                ? `<span style="color: #c0392b; font-size: 0.75rem; font-weight: 600;" title="Se cancela sólo desde SEAOT">⛔ Cancelada</span>`
+                : isEntregado
                 ? `<span style="color: #27ae60; font-size: 0.75rem; font-weight: 600;">✅ Entregado</span>`
                 : isPausa
                     ? `<button class="action-btn btn-reanudar" onclick="abrirModalReanudar(${otArg}, ${jsArg(row.tipoOrden)})">▶ Reanudar</button>`
@@ -809,7 +825,7 @@
                 <td>${escHtml(row.fechaVisita)}</td><td><strong>${escHtml(row.fechaDigital)}</strong></td><td><strong>${escHtml(row.fechaFisico)}</strong></td><td>${dias !== null ? dias : '-'}</td><td>${escHtml(row.estatusAuto)}</td><td>${escHtml(row.asesorConsultor)}</td>
                 <td>
                     <div class="table-action-btns">
-                        <button class="action-btn whatsapp" onclick="compartirOT(${otArg}, ${jsArg(row.nom)}, ${jsArg(row.fechaVisita)}, ${jsArg(row.personal)}, ${jsArg(row.clienteFinal)})">📤 Compartir</button>
+                        ${esCancelada(row) ? '' : `<button class="action-btn whatsapp" onclick="compartirOT(${otArg}, ${jsArg(row.nom)}, ${jsArg(row.fechaVisita)}, ${jsArg(row.personal)}, ${jsArg(row.clienteFinal)})">📤 Compartir</button>`}
                         ${botonesAccion}
                         ${safeDriveUrl(row.linkOT) !== '#'
                             ? `<button class="action-btn drive" onclick="openDrive(${jsArg(safeDriveUrl(row.linkOT))})">📁 Drive</button>`
@@ -1195,6 +1211,7 @@
             let visitasMesActual = 0; let digitalMesActual = 0;
 
             allData.forEach(row => {
+                if (esCancelada(row)) return;
                 if (row.fechaVisita && calendarFilters.visita) {
                     const fechaVisita = parseFecha(row.fechaVisita);
                     if (fechaVisita) {
