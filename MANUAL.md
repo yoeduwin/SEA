@@ -634,11 +634,15 @@ Las filas históricas de CLIENTES con enlaces legados funcionan sin migración.
 
 ### Regla de identificación de la carpeta del cliente
 
-Una carpeta de sucursal se acepta para un RFC+sucursal si el nombre de la carpeta coincide con la sucursal (normalizado con `sanitizeFileName()`) **y** el nombre de su carpeta padre contiene el **RFC delimitado**: al inicio, como en la convención de SEAPD `{RFC} — {RAZON_SOCIAL}`, o en cualquier otra posición, como en una carpeta creada a mano tipo `RAZON SOCIAL (RFC)`. Un RFC incrustado dentro de otra palabra no cuenta.
+Una carpeta de sucursal se acepta para un RFC+sucursal si el nombre de la carpeta coincide con la sucursal (normalizado con `sucursalComparable_()`: sin espacios al inicio ni al final, saneado con `sanitizeFileName()` y en minúsculas) **y** el nombre de su carpeta padre contiene el **RFC delimitado**: al inicio, como en la convención de SEAPD `{RFC} — {RAZON_SOCIAL}`, o en cualquier otra posición, como en una carpeta creada a mano tipo `RAZON SOCIAL (RFC)`. Un RFC incrustado dentro de otra palabra no cuenta.
 
 El RFC es el único identificador aceptado, y es un dato obligatorio en todo registro. **Deliberadamente no se identifica por razón social**: dos clientes pueden tener nombres donde uno es prefijo del otro (caso real: `BODEGA CRUZ AZUL` y `BODEGA CRUZ AZUL DEL CENTRO`) y una carpeta sin RFC no puede probar por sí sola a cuál pertenece. Una carpeta cuyo nombre no lleve el RFC no será encontrada por el sistema — hay que renombrarla o registrar la sucursal desde SEAPD.
 
 Límites de seguridad: nunca se crea nada en la carpeta raíz, nunca se cruza de sucursal, y la búsqueda directa en Drive sólo inspecciona los hijos directos de la raíz (carpetas anidadas más profundo sólo se alcanzan vía el Link Drive de la fila del cliente).
+
+Los espacios al inicio o al final no cuentan: «BODEGA AURRERA EXPRESS MORELIA » y «BODEGA AURRERA EXPRESS MORELIA» son la misma sucursal, tanto en el nombre de la carpeta como en la columna Sucursal del maestro. Las carpetas nuevas se crean ya sin esos espacios.
+
+Las carpetas del formato anterior (`AAMMDD_Empresa_Sucursal` suelta en la raíz) **no** se aceptan: hay que mover la carpeta dentro de `RFC - EMPRESA` y renombrarla con el nombre exacto de la sucursal. Así conserva su ID, su contenido y el Link Drive del maestro.
 
 > ⚠️ Si un mismo RFC tiene **varias carpetas padre** en la raíz, el sistema toma la primera que contenga una subcarpeta con el nombre de la sucursal. Conviene mantener una sola carpeta por RFC para evitar ambigüedad.
 

@@ -1884,6 +1884,31 @@ function runUnitTests() {
   _eq_('U138: verificarFolioOT exige Google y permiso SEAOT',
     AUTH_MODE.verificarFolioOT + '|' + ACTION_MODULE.verificarFolioOT, 'GOOGLE|SEAOT');
 
+  // ── Sucursales con espacios al inicio o al final (caso Hernos) ───────────
+  var carpetaConEspacio = function(nombre, padre) {
+    var pendiente = true;
+    return {
+      getName: function() { return nombre; },
+      getParents: function() {
+        return { hasNext: function() { return pendiente; },
+                 next: function() { pendiente = false; return { getName: function() { return padre; } }; } };
+      }
+    };
+  };
+  _check_('U140: carpeta con espacio final coincide con la sucursal sin espacio',
+    folderMatchesClientBranch_(carpetaConEspacio('BODEGA AURRERA EXPRESS PORTALES DEL PEDREGAL ', 'HSA070720EW0 - HERNOS SERVICIOS _ CONSTRUCCION'),
+      'HSA070720EW0', 'BODEGA AURRERA EXPRESS PORTALES DEL PEDREGAL', 'HERNOS'));
+  _check_('U141: sucursal con espacio final coincide con carpeta sin espacio',
+    folderMatchesClientBranch_(carpetaConEspacio('BODEGA AURRERA EXPRESS MORELIA', 'HSA070720EW0 - HERNOS'),
+      'HSA070720EW0', ' BODEGA AURRERA EXPRESS MORELIA  ', 'HERNOS'));
+  _check_('U142: el espacio no hace coincidir sucursales distintas',
+    !folderMatchesClientBranch_(carpetaConEspacio('BODEGA AURRERA EXPRESS MORELIA ', 'HSA070720EW0 - HERNOS'),
+      'HSA070720EW0', 'BODEGA AURRERA EXPRESS MORELOS', 'HERNOS'));
+  _eq_('U143: la fila del maestro con espacio final se reconoce al volver a registrar',
+    buscarFilaClienteExistente_([fila22, ['x', 'HERNOS', 'BANCO DE FOMENTO ', 'HSA070720EW0']], 'HSA070720EW0', 'BANCO DE FOMENTO', 'HERNOS'), 2);
+  _eq_('U144: sucursal vacía o solo espacios equivale a Matriz',
+    [sucursalComparable_(''), sucursalComparable_('   '), sucursalComparable_('Matriz ')].join('|'), 'matriz|matriz|matriz');
+
   _eq_('U130: reprogramar rechaza una fecha pasada',
     reprogramarOT_({ ot: TEST_FOLIO, fechaVisita: '2020-01-01', motivo: 'Cliente pidió cambio' }, 'test').error,
     'La nueva fecha de visita no puede ser anterior a hoy.');
