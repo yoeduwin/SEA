@@ -778,6 +778,10 @@ function fase1_RegistrarCliente(data) {
     // Sin espacios al inicio ni al final: una sucursal capturada con espacio
     // final creaba una carpeta que después ya no coincidía con la búsqueda.
     const branchClean = sanitizeFileName(String(data.sucursal || '').trim() || 'Matriz');
+    // Para BUSCAR carpeta y fila existentes se usa el valor original: el
+    // recortado y truncado puede no coincidir con carpetas históricas.
+    // branchClean sólo se usa para nombrar lo que se crea.
+    const sucursalOriginal = data.sucursal || 'Matriz';
     const timestamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'yyMMdd');
     const esPaic = String((data && data.portal_origen) || '').toUpperCase() === 'PAIC';
 
@@ -820,7 +824,7 @@ function fase1_RegistrarCliente(data) {
     }
 
     // 2. LÓGICA DE CARPETA HIJO (Sucursal)
-    let carpetaCliente = buscarSubcarpetaSucursal_(parentFolder, branchClean);
+    let carpetaCliente = buscarSubcarpetaSucursal_(parentFolder, sucursalOriginal);
     if (carpetaCliente) {
       addLog(`Carpeta Sucursal encontrada: ${carpetaCliente.getName()}`);
     } else {
@@ -838,7 +842,7 @@ function fase1_RegistrarCliente(data) {
     // 4. REGISTRAR O ACTUALIZAR EN CLIENTES_MAESTRO (22 Columnas)
     const rowData = construirFilaCliente_(data, carpetaCliente.getUrl());
     const allData = sheet.getDataRange().getValues();
-    const rowIndex = buscarFilaClienteExistente_(allData, rfcClean, branchClean, data.razon_social);
+    const rowIndex = buscarFilaClienteExistente_(allData, rfcClean, sucursalOriginal, data.razon_social);
     // En PAIC, nombre_solicitante es el asesor que envía, no el contacto del
     // cliente: al actualizar una sucursal no debe tocar ese campo del maestro.
     if (esPaic && rowIndex > -1) rowData[CL.SOLICITANTE] = '';
@@ -3641,7 +3645,7 @@ function mismaSucursal_(a, b) {
 }
 
 function buscarSubcarpetaSucursal_(parentFolder, sucursal) {
-  const exacta = parentFolder.getFoldersByName(sucursal);
+  const exacta = parentFolder.getFoldersByName(sanitizeFileName(sucursal || 'Matriz'));
   if (exacta.hasNext()) return exacta.next();
   const subcarpetas = parentFolder.getFolders();
   while (subcarpetas.hasNext()) {

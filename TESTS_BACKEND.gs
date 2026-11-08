@@ -1936,6 +1936,9 @@ function runUnitTests() {
   _check_('U149: carpeta histórica creada con espacio inicial y nombre largo sigue coincidiendo',
     folderMatchesClientBranch_(carpetaConEspacio(sanitizeFileName(largaConEspacio), 'EMP010101AAA - EMPRESA'),
       'EMP010101AAA', largaConEspacio, 'EMPRESA'));
+  _eq_('U151: el registro reutiliza la carpeta histórica de una sucursal larga con espacio inicial',
+    (buscarSubcarpetaSucursal_(padreStub(['OTRA', sanitizeFileName(largaConEspacio)]), largaConEspacio) || { getName: function() { return 'NINGUNA'; } }).getName(),
+    sanitizeFileName(largaConEspacio));
   var anteriorSuc = function(v) { return sanitizeFileName(v || 'Matriz').toLowerCase(); };
   var muestras = ['Matriz', ' Matriz', 'MATRIZ ', '', '  ', 'Planta Norte / Puebla', 'Puebla (5 de mayo)',
     largaConEspacio, sanitizeFileName(largaConEspacio), sucLarga, sanitizeFileName(sucLarga), 'Resurrección Bodega', 'resurreccion bodega'];
