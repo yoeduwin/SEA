@@ -820,11 +820,9 @@ function fase1_RegistrarCliente(data) {
     }
 
     // 2. LÓGICA DE CARPETA HIJO (Sucursal)
-    let carpetaCliente;
-    const bIter = parentFolder.getFoldersByName(branchClean);
-    if (bIter.hasNext()) {
-      carpetaCliente = bIter.next();
-      addLog(`Carpeta Sucursal encontrada: ${branchClean}`);
+    let carpetaCliente = buscarSubcarpetaSucursal_(parentFolder, branchClean);
+    if (carpetaCliente) {
+      addLog(`Carpeta Sucursal encontrada: ${carpetaCliente.getName()}`);
     } else {
       carpetaCliente = parentFolder.createFolder(branchClean);
       addLog(`Carpeta Sucursal creada: ${branchClean}`);
@@ -3627,7 +3625,25 @@ var LEGAL_SUFFIX_REGEX_ = / S\.A\. DE C\.V\.| SA DE CV| S\.A\.| S\.C\./gi;
 function cleanCompanyName(name) { return sanitizeFileName((name || 'Cliente').replace(LEGAL_SUFFIX_REGEX_, '').trim()); }
 // Nombre de sucursal para comparar carpetas y filas: sin espacios al inicio ni
 // al final (filas y carpetas históricas los tienen), saneado y en minúsculas.
-function sucursalComparable_(s) { return sanitizeFileName(String(s == null ? '' : s).trim() || 'Matriz').toLowerCase(); }
+// Se recorta también después de sanear: el truncado a 50 caracteres puede
+// dejar un espacio final, y la comparación debe ser idempotente.
+function sucursalComparable_(s) { return sanitizeFileName(String(s == null ? '' : s).trim() || 'Matriz').trim().toLowerCase(); }
+
+// Subcarpeta de sucursal dentro del padre del cliente. Primero por nombre
+// exacto; si no, con la misma comparación tolerante que el resolver, para
+// reutilizar carpetas históricas (p. ej. con espacio final) en lugar de crear
+// otra y mover el Link Drive del maestro a una carpeta vacía.
+function buscarSubcarpetaSucursal_(parentFolder, sucursal) {
+  const exacta = parentFolder.getFoldersByName(sucursal);
+  if (exacta.hasNext()) return exacta.next();
+  const clave = sucursalComparable_(sucursal);
+  const subcarpetas = parentFolder.getFolders();
+  while (subcarpetas.hasNext()) {
+    const f = subcarpetas.next();
+    if (sucursalComparable_(f.getName()) === clave) return f;
+  }
+  return null;
+}
 function sanitizeFileName(name) { return String(name || 'Sin_nombre').replace(/[^a-z0-9áéíóúñü ]/gi, '_').substring(0, 50); }
 function guardarLogEnDrive(carpetaCliente, logEntries, data) {
   try { const blob = Utilities.newBlob(logEntries.join('\n'), 'text/plain', `LOG_${Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'yyyyMMdd_HHmmss')}.txt`); carpetaCliente.createFile(blob); } catch (e) {}

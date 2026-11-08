@@ -1909,6 +1909,24 @@ function runUnitTests() {
   _eq_('U144: sucursal vacía o solo espacios equivale a Matriz',
     [sucursalComparable_(''), sucursalComparable_('   '), sucursalComparable_('Matriz ')].join('|'), 'matriz|matriz|matriz');
 
+  // 49 caracteres + espacio en la posición 50: el truncado deja el espacio al final.
+  var sucLarga = 'BODEGA AURRERA EXPRESS FRACCIONAMIENTO LOMAS ALTA SECCION NORTE';
+  _eq_('U145: comparación idempotente si el truncado a 50 deja un espacio final',
+    sucursalComparable_(sanitizeFileName(sucLarga)), sucursalComparable_(sucLarga));
+  var padreStub = function(nombres) {
+    var it = function(lista) { var i = 0; return { hasNext: function() { return i < lista.length; }, next: function() { return lista[i++]; } }; };
+    var carpetas = nombres.map(function(n) { return { getName: function() { return n; } }; });
+    return {
+      getFoldersByName: function(n) { return it(carpetas.filter(function(c) { return c.getName() === n; })); },
+      getFolders: function() { return it(carpetas); }
+    };
+  };
+  _eq_('U146: el registro reutiliza la carpeta histórica con espacio final',
+    (buscarSubcarpetaSucursal_(padreStub(['OTRA', 'BANCO DE FOMENTO ']), 'BANCO DE FOMENTO') || { getName: function() { return 'NINGUNA'; } }).getName(),
+    'BANCO DE FOMENTO ');
+  _eq_('U147: sin carpeta equivalente no reutiliza otra sucursal',
+    buscarSubcarpetaSucursal_(padreStub(['BANCO DE FOMENTO ']), 'MORELIA'), null);
+
   _eq_('U130: reprogramar rechaza una fecha pasada',
     reprogramarOT_({ ot: TEST_FOLIO, fechaVisita: '2020-01-01', motivo: 'Cliente pidió cambio' }, 'test').error,
     'La nueva fecha de visita no puede ser anterior a hoy.');
