@@ -775,7 +775,13 @@ function fase1_RegistrarCliente(data) {
     }
 
     const companyClean = cleanCompanyName(data.razon_social || 'Cliente');
-    const branchClean = sanitizeFileName(data.sucursal || 'Matriz');
+    // Sin espacios al inicio ni al final: una sucursal capturada con espacio
+    // final creaba una carpeta que después ya no coincidía con la búsqueda.
+    const branchClean = sanitizeFileName(String(data.sucursal || '').trim() || 'Matriz');
+    // Para BUSCAR carpeta y fila existentes se usa el valor original: el
+    // recortado y truncado puede no coincidir con carpetas históricas.
+    // branchClean sólo se usa para nombrar lo que se crea.
+    const sucursalOriginal = data.sucursal || 'Matriz';
     const timestamp = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'yyMMdd');
     const esPaic = String((data && data.portal_origen) || '').toUpperCase() === 'PAIC';
 
@@ -818,11 +824,9 @@ function fase1_RegistrarCliente(data) {
     }
 
     // 2. LÓGICA DE CARPETA HIJO (Sucursal)
-    let carpetaCliente;
-    const bIter = parentFolder.getFoldersByName(branchClean);
-    if (bIter.hasNext()) {
-      carpetaCliente = bIter.next();
-      addLog(`Carpeta Sucursal encontrada: ${branchClean}`);
+    let carpetaCliente = buscarSubcarpetaSucursal_(parentFolder, sucursalOriginal);
+    if (carpetaCliente) {
+      addLog(`Carpeta Sucursal encontrada: ${carpetaCliente.getName()}`);
     } else {
       carpetaCliente = parentFolder.createFolder(branchClean);
       addLog(`Carpeta Sucursal creada: ${branchClean}`);
@@ -838,7 +842,7 @@ function fase1_RegistrarCliente(data) {
     // 4. REGISTRAR O ACTUALIZAR EN CLIENTES_MAESTRO (22 Columnas)
     const rowData = construirFilaCliente_(data, carpetaCliente.getUrl());
     const allData = sheet.getDataRange().getValues();
-    const rowIndex = buscarFilaClienteExistente_(allData, rfcClean, branchClean, data.razon_social);
+    const rowIndex = buscarFilaClienteExistente_(allData, rfcClean, sucursalOriginal, data.razon_social);
     // En PAIC, nombre_solicitante es el asesor que envía, no el contacto del
     // cliente: al actualizar una sucursal no debe tocar ese campo del maestro.
     if (esPaic && rowIndex > -1) rowData[CL.SOLICITANTE] = '';
@@ -962,7 +966,7 @@ function buscarFilaClienteExistente_(allData, rfcClean, branchClean, razonSocial
   const razon = normalizarValorCliente_(razonSocial);
   for (let i = allData.length - 1; i >= 1; i--) {
     if (String(allData[i][CL.RFC]).toUpperCase().trim() !== rfcClean) continue;
-    if (sanitizeFileName(String(allData[i][CL.SUCURSAL] || 'Matriz')).toLowerCase() !== String(branchClean).toLowerCase()) continue;
+    if (!mismaSucursal_(allData[i][CL.SUCURSAL], branchClean)) continue;
     if (rfcClean === 'SIN_RFC' && normalizarValorCliente_(allData[i][CL.RAZON_SOCIAL]) !== razon) continue;
     return i + 1;
   }
@@ -1134,7 +1138,8 @@ function resolverCambioPendiente_(data, usuario) {
     const sheetCl = ss.getSheetByName(CONFIG.SHEET_CLIENTES);
     const clientes = sheetCl.getDataRange().getValues();
     const rfc = String(cambio[CC_.RFC]).toUpperCase().trim();
-    const fila = buscarFilaClienteExistente_(clientes, rfc, sanitizeFileName(cambio[CC_.SUCURSAL] || 'Matriz'), cambio[CC_.RAZON]);
+    // Valor original, sin sanear: buscarFilaClienteExistente_ normaliza ambos lados igual.
+    const fila = buscarFilaClienteExistente_(clientes, rfc, cambio[CC_.SUCURSAL], cambio[CC_.RAZON]);
     if (fila === -1) return { success: false, error: 'No se encontró la sucursal ' + ref + ' en el maestro.' };
     const actual = clientes[fila - 1][def.col];
     // Si el valor registrado cambió desde que se envió la solicitud (p. ej. se
@@ -1149,7 +1154,7 @@ function resolverCambioPendiente_(data, usuario) {
     for (let i = 1; i < cambios.length; i++) {
       if (i !== filaCambio && cambios[i][CC_.ESTATUS] === 'PENDIENTE' && cambios[i][CC_.CAMPO] === cambio[CC_.CAMPO] &&
           String(cambios[i][CC_.RFC]).toUpperCase().trim() === rfc &&
-          sanitizeFileName(cambios[i][CC_.SUCURSAL] || 'Matriz').toLowerCase() === sanitizeFileName(cambio[CC_.SUCURSAL] || 'Matriz').toLowerCase()) {
+          mismaSucursal_(cambios[i][CC_.SUCURSAL], cambio[CC_.SUCURSAL])) {
         marcarCambioResuelto_(sheetCambios, i, 'OBSOLETO', usuario);
       }
     }
@@ -1427,9 +1432,7 @@ function rfcAppearsDelimited_(folderName, rfc) {
 // carpeta, y es un dato obligatorio en todo registro.
 function folderMatchesClientBranch_(folder, rfc, sucursal, razonSocial) {
   if (!folder) return false;
-  const expectedBranch = sanitizeFileName(sucursal || 'Matriz').toLowerCase();
-  const actualBranch = sanitizeFileName(folder.getName() || 'Matriz').toLowerCase();
-  if (actualBranch !== expectedBranch) return false;
+  if (!mismaSucursal_(folder.getName(), sucursal)) return false;
 
   const expectedRfc = String(rfc || '').toUpperCase().trim();
   if (!expectedRfc) return false;
@@ -1452,12 +1455,11 @@ function findExactClientBranchFolder_(rfc, sucursal, razonSocial) {
   if (!sheetCli) return null;
   const rows = sheetCli.getDataRange().getValues();
   const expectedRfc = String(rfc).toUpperCase().trim();
-  const expectedBranch = sanitizeFileName(sucursal || 'Matriz').toLowerCase();
   const expectedCompany = cleanCompanyName(razonSocial || '');
 
   for (let i = rows.length - 1; i >= 1; i--) {
     if (String(rows[i][CL.RFC]).toUpperCase().trim() !== expectedRfc) continue;
-    if (sanitizeFileName(rows[i][CL.SUCURSAL] || 'Matriz').toLowerCase() !== expectedBranch) continue;
+    if (!mismaSucursal_(rows[i][CL.SUCURSAL], sucursal)) continue;
     if (expectedRfc === 'SIN_RFC' &&
         (!expectedCompany || cleanCompanyName(rows[i][CL.RAZON_SOCIAL] || '') !== expectedCompany)) continue;
     const folder = getFolderByDriveLinkSafe_(rows[i][CL.LINK_DRIVE]);
@@ -1484,7 +1486,6 @@ function findClientBranchByExactPath_(rfc, razonSocial, sucursal) {
   if (!rfc || !sucursal) return null;
   const root = DriveApp.getFolderById(CONFIG.FOLDER_ID);
   const expectedRfc = String(rfc).toUpperCase().trim();
-  const expectedBranch = sanitizeFileName(sucursal || 'Matriz').toLowerCase();
   const expectedSinRfcParent = 'SIN_RFC - ' + cleanCompanyName(razonSocial || 'Cliente');
 
   // Folder.searchFolders limita la consulta a los hijos directos de la raíz.
@@ -1494,11 +1495,11 @@ function findClientBranchByExactPath_(rfc, razonSocial, sucursal) {
   // profundo sólo se alcanzan vía el Link Drive de la fila del cliente.
   return scanParentsForBranch_(
     root.searchFolders(buildClientParentFolderQuery_(expectedRfc, razonSocial)),
-    expectedRfc, razonSocial, expectedBranch, expectedSinRfcParent
+    expectedRfc, razonSocial, sucursal, expectedSinRfcParent
   );
 }
 
-function scanParentsForBranch_(parents, expectedRfc, razonSocial, expectedBranch, expectedSinRfcParent) {
+function scanParentsForBranch_(parents, expectedRfc, razonSocial, sucursal, expectedSinRfcParent) {
   while (parents.hasNext()) {
     const parent = parents.next();
     if (expectedRfc === 'SIN_RFC') {
@@ -1512,7 +1513,7 @@ function scanParentsForBranch_(parents, expectedRfc, razonSocial, expectedBranch
     const branches = parent.getFolders();
     while (branches.hasNext()) {
       const branch = branches.next();
-      if (sanitizeFileName(branch.getName() || 'Matriz').toLowerCase() === expectedBranch) return branch;
+      if (mismaSucursal_(branch.getName(), sucursal)) return branch;
     }
   }
   return null;
@@ -3623,6 +3624,36 @@ function formatFileSize(bytes) {
 }
 var LEGAL_SUFFIX_REGEX_ = / S\.A\. DE C\.V\.| SA DE CV| S\.A\.| S\.C\./gi;
 function cleanCompanyName(name) { return sanitizeFileName((name || 'Cliente').replace(LEGAL_SUFFIX_REGEX_, '').trim()); }
+// Nombre de sucursal para comparar carpetas y filas: sin espacios al inicio ni
+// al final (filas y carpetas históricas los tienen), saneado y en minúsculas.
+// Se recorta también después de sanear: el truncado a 50 caracteres puede
+// dejar un espacio final, y la comparación debe ser idempotente.
+function sucursalComparable_(s) { return sanitizeFileName(String(s == null ? '' : s).trim() || 'Matriz').trim().toLowerCase(); }
+
+// Subcarpeta de sucursal dentro del padre del cliente. Primero por nombre
+// exacto; si no, con la misma comparación tolerante que el resolver, para
+// reutilizar carpetas históricas (p. ej. con espacio final) en lugar de crear
+// otra y mover el Link Drive del maestro a una carpeta vacía.
+// ¿Dos nombres de sucursal (fila del maestro, carpeta o dato recibido) son la
+// misma sucursal? Acepta la comparación anterior (sanear y minúsculas) O la
+// nueva (además ignora espacios al inicio y al final). Así ningún caso que
+// antes coincidía deja de hacerlo, también con nombres de más de 50
+// caracteres que sanitizeFileName() trunca.
+function mismaSucursal_(a, b) {
+  const anterior = v => sanitizeFileName(v || 'Matriz').toLowerCase();
+  return sucursalComparable_(a) === sucursalComparable_(b) || anterior(a) === anterior(b);
+}
+
+function buscarSubcarpetaSucursal_(parentFolder, sucursal) {
+  const exacta = parentFolder.getFoldersByName(sanitizeFileName(sucursal || 'Matriz'));
+  if (exacta.hasNext()) return exacta.next();
+  const subcarpetas = parentFolder.getFolders();
+  while (subcarpetas.hasNext()) {
+    const f = subcarpetas.next();
+    if (mismaSucursal_(f.getName(), sucursal)) return f;
+  }
+  return null;
+}
 function sanitizeFileName(name) { return String(name || 'Sin_nombre').replace(/[^a-z0-9áéíóúñü ]/gi, '_').substring(0, 50); }
 function guardarLogEnDrive(carpetaCliente, logEntries, data) {
   try { const blob = Utilities.newBlob(logEntries.join('\n'), 'text/plain', `LOG_${Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'yyyyMMdd_HHmmss')}.txt`); carpetaCliente.createFile(blob); } catch (e) {}

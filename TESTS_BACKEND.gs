@@ -1884,6 +1884,70 @@ function runUnitTests() {
   _eq_('U138: verificarFolioOT exige Google y permiso SEAOT',
     AUTH_MODE.verificarFolioOT + '|' + ACTION_MODULE.verificarFolioOT, 'GOOGLE|SEAOT');
 
+  // ── Sucursales con espacios al inicio o al final (caso Hernos) ───────────
+  var carpetaConEspacio = function(nombre, padre) {
+    var pendiente = true;
+    return {
+      getName: function() { return nombre; },
+      getParents: function() {
+        return { hasNext: function() { return pendiente; },
+                 next: function() { pendiente = false; return { getName: function() { return padre; } }; } };
+      }
+    };
+  };
+  _check_('U140: carpeta con espacio final coincide con la sucursal sin espacio',
+    folderMatchesClientBranch_(carpetaConEspacio('BODEGA AURRERA EXPRESS PORTALES DEL PEDREGAL ', 'HSA070720EW0 - HERNOS SERVICIOS _ CONSTRUCCION'),
+      'HSA070720EW0', 'BODEGA AURRERA EXPRESS PORTALES DEL PEDREGAL', 'HERNOS'));
+  _check_('U141: sucursal con espacio final coincide con carpeta sin espacio',
+    folderMatchesClientBranch_(carpetaConEspacio('BODEGA AURRERA EXPRESS MORELIA', 'HSA070720EW0 - HERNOS'),
+      'HSA070720EW0', ' BODEGA AURRERA EXPRESS MORELIA  ', 'HERNOS'));
+  _check_('U142: el espacio no hace coincidir sucursales distintas',
+    !folderMatchesClientBranch_(carpetaConEspacio('BODEGA AURRERA EXPRESS MORELIA ', 'HSA070720EW0 - HERNOS'),
+      'HSA070720EW0', 'BODEGA AURRERA EXPRESS MORELOS', 'HERNOS'));
+  _eq_('U143: la fila del maestro con espacio final se reconoce al volver a registrar',
+    buscarFilaClienteExistente_([fila22, ['x', 'HERNOS', 'BANCO DE FOMENTO ', 'HSA070720EW0']], 'HSA070720EW0', 'BANCO DE FOMENTO', 'HERNOS'), 2);
+  _eq_('U144: sucursal vacía o solo espacios equivale a Matriz',
+    [sucursalComparable_(''), sucursalComparable_('   '), sucursalComparable_('Matriz ')].join('|'), 'matriz|matriz|matriz');
+
+  // 49 caracteres + espacio en la posición 50: el truncado deja el espacio al final.
+  var sucLarga = 'BODEGA AURRERA EXPRESS FRACCIONAMIENTO LOMAS ALTA SECCION NORTE';
+  _eq_('U145: comparación idempotente si el truncado a 50 deja un espacio final',
+    sucursalComparable_(sanitizeFileName(sucLarga)), sucursalComparable_(sucLarga));
+  var padreStub = function(nombres) {
+    var it = function(lista) { var i = 0; return { hasNext: function() { return i < lista.length; }, next: function() { return lista[i++]; } }; };
+    var carpetas = nombres.map(function(n) { return { getName: function() { return n; } }; });
+    return {
+      getFoldersByName: function(n) { return it(carpetas.filter(function(c) { return c.getName() === n; })); },
+      getFolders: function() { return it(carpetas); }
+    };
+  };
+  _eq_('U146: el registro reutiliza la carpeta histórica con espacio final',
+    (buscarSubcarpetaSucursal_(padreStub(['OTRA', 'BANCO DE FOMENTO ']), 'BANCO DE FOMENTO') || { getName: function() { return 'NINGUNA'; } }).getName(),
+    'BANCO DE FOMENTO ');
+  _eq_('U147: sin carpeta equivalente no reutiliza otra sucursal',
+    buscarSubcarpetaSucursal_(padreStub(['BANCO DE FOMENTO ']), 'MORELIA'), null);
+
+  // Nunca menos tolerante que la comparación anterior (revisión de Codex en #125).
+  var largaConEspacio = ' ' + Array(51).join('A');   // espacio inicial + 50 «A»
+  var maestroLargo = [fila22, ['x', 'EMPRESA', largaConEspacio, 'EMP010101AAA']];
+  _eq_('U148: aprobar un cambio encuentra la fila con sucursal larga (valor original o saneado)',
+    buscarFilaClienteExistente_(maestroLargo, 'EMP010101AAA', largaConEspacio, 'EMPRESA') + '|' +
+    buscarFilaClienteExistente_(maestroLargo, 'EMP010101AAA', sanitizeFileName(largaConEspacio), 'EMPRESA'), '2|2');
+  _check_('U149: carpeta histórica creada con espacio inicial y nombre largo sigue coincidiendo',
+    folderMatchesClientBranch_(carpetaConEspacio(sanitizeFileName(largaConEspacio), 'EMP010101AAA - EMPRESA'),
+      'EMP010101AAA', largaConEspacio, 'EMPRESA'));
+  _eq_('U151: el registro reutiliza la carpeta histórica de una sucursal larga con espacio inicial',
+    (buscarSubcarpetaSucursal_(padreStub(['OTRA', sanitizeFileName(largaConEspacio)]), largaConEspacio) || { getName: function() { return 'NINGUNA'; } }).getName(),
+    sanitizeFileName(largaConEspacio));
+  var anteriorSuc = function(v) { return sanitizeFileName(v || 'Matriz').toLowerCase(); };
+  var muestras = ['Matriz', ' Matriz', 'MATRIZ ', '', '  ', 'Planta Norte / Puebla', 'Puebla (5 de mayo)',
+    largaConEspacio, sanitizeFileName(largaConEspacio), sucLarga, sanitizeFileName(sucLarga), 'Resurrección Bodega', 'resurreccion bodega'];
+  var regresiones = [];
+  muestras.forEach(function(x) { muestras.forEach(function(y) {
+    if (anteriorSuc(x) === anteriorSuc(y) && !mismaSucursal_(x, y)) regresiones.push(JSON.stringify([x, y]));
+  }); });
+  _eq_('U150: todo par que coincidía antes sigue coincidiendo', regresiones.join(' '), '');
+
   _eq_('U130: reprogramar rechaza una fecha pasada',
     reprogramarOT_({ ot: TEST_FOLIO, fechaVisita: '2020-01-01', motivo: 'Cliente pidió cambio' }, 'test').error,
     'La nueva fecha de visita no puede ser anterior a hoy.');
