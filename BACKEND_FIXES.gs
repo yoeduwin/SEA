@@ -962,7 +962,7 @@ function buscarFilaClienteExistente_(allData, rfcClean, branchClean, razonSocial
   const razon = normalizarValorCliente_(razonSocial);
   for (let i = allData.length - 1; i >= 1; i--) {
     if (String(allData[i][CL.RFC]).toUpperCase().trim() !== rfcClean) continue;
-    if (sucursalComparable_(allData[i][CL.SUCURSAL]) !== sucursalComparable_(branchClean)) continue;
+    if (!mismaSucursal_(allData[i][CL.SUCURSAL], branchClean)) continue;
     if (rfcClean === 'SIN_RFC' && normalizarValorCliente_(allData[i][CL.RAZON_SOCIAL]) !== razon) continue;
     return i + 1;
   }
@@ -1134,7 +1134,8 @@ function resolverCambioPendiente_(data, usuario) {
     const sheetCl = ss.getSheetByName(CONFIG.SHEET_CLIENTES);
     const clientes = sheetCl.getDataRange().getValues();
     const rfc = String(cambio[CC_.RFC]).toUpperCase().trim();
-    const fila = buscarFilaClienteExistente_(clientes, rfc, sanitizeFileName(cambio[CC_.SUCURSAL] || 'Matriz'), cambio[CC_.RAZON]);
+    // Valor original, sin sanear: buscarFilaClienteExistente_ normaliza ambos lados igual.
+    const fila = buscarFilaClienteExistente_(clientes, rfc, cambio[CC_.SUCURSAL], cambio[CC_.RAZON]);
     if (fila === -1) return { success: false, error: 'No se encontró la sucursal ' + ref + ' en el maestro.' };
     const actual = clientes[fila - 1][def.col];
     // Si el valor registrado cambió desde que se envió la solicitud (p. ej. se
@@ -1149,7 +1150,7 @@ function resolverCambioPendiente_(data, usuario) {
     for (let i = 1; i < cambios.length; i++) {
       if (i !== filaCambio && cambios[i][CC_.ESTATUS] === 'PENDIENTE' && cambios[i][CC_.CAMPO] === cambio[CC_.CAMPO] &&
           String(cambios[i][CC_.RFC]).toUpperCase().trim() === rfc &&
-          sucursalComparable_(cambios[i][CC_.SUCURSAL]) === sucursalComparable_(cambio[CC_.SUCURSAL])) {
+          mismaSucursal_(cambios[i][CC_.SUCURSAL], cambio[CC_.SUCURSAL])) {
         marcarCambioResuelto_(sheetCambios, i, 'OBSOLETO', usuario);
       }
     }
@@ -1427,9 +1428,7 @@ function rfcAppearsDelimited_(folderName, rfc) {
 // carpeta, y es un dato obligatorio en todo registro.
 function folderMatchesClientBranch_(folder, rfc, sucursal, razonSocial) {
   if (!folder) return false;
-  const expectedBranch = sucursalComparable_(sucursal);
-  const actualBranch = sucursalComparable_(folder.getName());
-  if (actualBranch !== expectedBranch) return false;
+  if (!mismaSucursal_(folder.getName(), sucursal)) return false;
 
   const expectedRfc = String(rfc || '').toUpperCase().trim();
   if (!expectedRfc) return false;
@@ -1452,12 +1451,11 @@ function findExactClientBranchFolder_(rfc, sucursal, razonSocial) {
   if (!sheetCli) return null;
   const rows = sheetCli.getDataRange().getValues();
   const expectedRfc = String(rfc).toUpperCase().trim();
-  const expectedBranch = sucursalComparable_(sucursal);
   const expectedCompany = cleanCompanyName(razonSocial || '');
 
   for (let i = rows.length - 1; i >= 1; i--) {
     if (String(rows[i][CL.RFC]).toUpperCase().trim() !== expectedRfc) continue;
-    if (sucursalComparable_(rows[i][CL.SUCURSAL]) !== expectedBranch) continue;
+    if (!mismaSucursal_(rows[i][CL.SUCURSAL], sucursal)) continue;
     if (expectedRfc === 'SIN_RFC' &&
         (!expectedCompany || cleanCompanyName(rows[i][CL.RAZON_SOCIAL] || '') !== expectedCompany)) continue;
     const folder = getFolderByDriveLinkSafe_(rows[i][CL.LINK_DRIVE]);
@@ -1484,7 +1482,6 @@ function findClientBranchByExactPath_(rfc, razonSocial, sucursal) {
   if (!rfc || !sucursal) return null;
   const root = DriveApp.getFolderById(CONFIG.FOLDER_ID);
   const expectedRfc = String(rfc).toUpperCase().trim();
-  const expectedBranch = sucursalComparable_(sucursal);
   const expectedSinRfcParent = 'SIN_RFC - ' + cleanCompanyName(razonSocial || 'Cliente');
 
   // Folder.searchFolders limita la consulta a los hijos directos de la raíz.
@@ -1494,11 +1491,11 @@ function findClientBranchByExactPath_(rfc, razonSocial, sucursal) {
   // profundo sólo se alcanzan vía el Link Drive de la fila del cliente.
   return scanParentsForBranch_(
     root.searchFolders(buildClientParentFolderQuery_(expectedRfc, razonSocial)),
-    expectedRfc, razonSocial, expectedBranch, expectedSinRfcParent
+    expectedRfc, razonSocial, sucursal, expectedSinRfcParent
   );
 }
 
-function scanParentsForBranch_(parents, expectedRfc, razonSocial, expectedBranch, expectedSinRfcParent) {
+function scanParentsForBranch_(parents, expectedRfc, razonSocial, sucursal, expectedSinRfcParent) {
   while (parents.hasNext()) {
     const parent = parents.next();
     if (expectedRfc === 'SIN_RFC') {
@@ -1512,7 +1509,7 @@ function scanParentsForBranch_(parents, expectedRfc, razonSocial, expectedBranch
     const branches = parent.getFolders();
     while (branches.hasNext()) {
       const branch = branches.next();
-      if (sucursalComparable_(branch.getName()) === expectedBranch) return branch;
+      if (mismaSucursal_(branch.getName(), sucursal)) return branch;
     }
   }
   return null;
@@ -3633,14 +3630,23 @@ function sucursalComparable_(s) { return sanitizeFileName(String(s == null ? '' 
 // exacto; si no, con la misma comparación tolerante que el resolver, para
 // reutilizar carpetas históricas (p. ej. con espacio final) en lugar de crear
 // otra y mover el Link Drive del maestro a una carpeta vacía.
+// ¿Dos nombres de sucursal (fila del maestro, carpeta o dato recibido) son la
+// misma sucursal? Acepta la comparación anterior (sanear y minúsculas) O la
+// nueva (además ignora espacios al inicio y al final). Así ningún caso que
+// antes coincidía deja de hacerlo, también con nombres de más de 50
+// caracteres que sanitizeFileName() trunca.
+function mismaSucursal_(a, b) {
+  const anterior = v => sanitizeFileName(v || 'Matriz').toLowerCase();
+  return sucursalComparable_(a) === sucursalComparable_(b) || anterior(a) === anterior(b);
+}
+
 function buscarSubcarpetaSucursal_(parentFolder, sucursal) {
   const exacta = parentFolder.getFoldersByName(sucursal);
   if (exacta.hasNext()) return exacta.next();
-  const clave = sucursalComparable_(sucursal);
   const subcarpetas = parentFolder.getFolders();
   while (subcarpetas.hasNext()) {
     const f = subcarpetas.next();
-    if (sucursalComparable_(f.getName()) === clave) return f;
+    if (mismaSucursal_(f.getName(), sucursal)) return f;
   }
   return null;
 }

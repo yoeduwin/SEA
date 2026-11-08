@@ -1927,6 +1927,24 @@ function runUnitTests() {
   _eq_('U147: sin carpeta equivalente no reutiliza otra sucursal',
     buscarSubcarpetaSucursal_(padreStub(['BANCO DE FOMENTO ']), 'MORELIA'), null);
 
+  // Nunca menos tolerante que la comparación anterior (revisión de Codex en #125).
+  var largaConEspacio = ' ' + Array(51).join('A');   // espacio inicial + 50 «A»
+  var maestroLargo = [fila22, ['x', 'EMPRESA', largaConEspacio, 'EMP010101AAA']];
+  _eq_('U148: aprobar un cambio encuentra la fila con sucursal larga (valor original o saneado)',
+    buscarFilaClienteExistente_(maestroLargo, 'EMP010101AAA', largaConEspacio, 'EMPRESA') + '|' +
+    buscarFilaClienteExistente_(maestroLargo, 'EMP010101AAA', sanitizeFileName(largaConEspacio), 'EMPRESA'), '2|2');
+  _check_('U149: carpeta histórica creada con espacio inicial y nombre largo sigue coincidiendo',
+    folderMatchesClientBranch_(carpetaConEspacio(sanitizeFileName(largaConEspacio), 'EMP010101AAA - EMPRESA'),
+      'EMP010101AAA', largaConEspacio, 'EMPRESA'));
+  var anteriorSuc = function(v) { return sanitizeFileName(v || 'Matriz').toLowerCase(); };
+  var muestras = ['Matriz', ' Matriz', 'MATRIZ ', '', '  ', 'Planta Norte / Puebla', 'Puebla (5 de mayo)',
+    largaConEspacio, sanitizeFileName(largaConEspacio), sucLarga, sanitizeFileName(sucLarga), 'Resurrección Bodega', 'resurreccion bodega'];
+  var regresiones = [];
+  muestras.forEach(function(x) { muestras.forEach(function(y) {
+    if (anteriorSuc(x) === anteriorSuc(y) && !mismaSucursal_(x, y)) regresiones.push(JSON.stringify([x, y]));
+  }); });
+  _eq_('U150: todo par que coincidía antes sigue coincidiendo', regresiones.join(' '), '');
+
   _eq_('U130: reprogramar rechaza una fecha pasada',
     reprogramarOT_({ ot: TEST_FOLIO, fechaVisita: '2020-01-01', motivo: 'Cliente pidió cambio' }, 'test').error,
     'La nueva fecha de visita no puede ser anterior a hoy.');
