@@ -43,7 +43,7 @@ function pintarRecientes() {
 function registrarConsulta(ot) {
   recientes = [ot,...recientes.filter(f => f !== ot)].slice(0,6);
   guardarPreferencias();
-  pintarRecientes();
+  if(!el('detail-shell').open) pintarRecientes();
 }
 
 const estadoDe = o => o.estado_traz || o.estatus_ot || 'SIN ESTADO';
@@ -133,13 +133,19 @@ function render() {
   el('results').innerHTML = `<section class="card result-card"><div class="card-head"><h3>Órdenes e informes</h3><span>${items.length} de ${RESUMEN.length} órdenes</span></div>${tabla(items)}</section>${huerfanos()}`;
 }
 function cerrarDetalle() {
+  const folioCerrado = seleccion;
   seleccion = null;
   generacionDetalle++;
   const drawer = el('detail-shell');
   if(drawer.open) drawer.close();
   document.body.classList.remove('drawer-open');
   el('detalle').innerHTML = '';
+  pintarRecientes();
   if(focoAnterior && focoAnterior.isConnected) focoAnterior.focus({preventScroll:true});
+  else if(focoAnterior) {
+    const reciente = [...document.querySelectorAll('#recientes button[data-ot]')].find(b => b.dataset.ot === folioCerrado);
+    reciente?.focus({preventScroll:true});
+  }
   focoAnterior = null;
 }
 async function abrir(ot, enfocar = true, destino = '') {
