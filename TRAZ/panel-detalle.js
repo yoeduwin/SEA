@@ -185,10 +185,10 @@
     if(!informes.length) return '<div class="audit-empty">No hay informes relacionados con esta OT.</div>';
     return '<div class="report-list">' + informes.map(inf => {
       const u = safeUrl(inf.link_drive);
-      return '<div class="report"><div><strong>' + esc(inf.num_informe || '(sin folio)') + '</strong>' +
+      return '<div class="report" tabindex="-1" data-report-folio="' + esc(inf.num_informe || '') + '"><div><strong>' + esc(inf.num_informe || '(sin folio)') + '</strong>' +
         '<small>' + esc(inf.estatus || 'Sin estado') + ' · Servicio: ' + esc(inf.fecha_servicio || '—') +
         ' · Responsable: ' + esc(inf.responsable || '—') + '</small></div>' +
-        (u ? '<a href="' + esc(u) + '" target="_blank" rel="noopener">Abrir ↗</a>' : '') +
+        (u ? '<a href="' + esc(u) + '" target="_blank" rel="noopener">Abrir expediente ↗</a>' : '') +
       '</div>';
     }).join('') + '</div>';
   }
@@ -201,6 +201,28 @@
       '</tbody></table>';
   }
 
+  function ultimoCambioRegistrado(bitacora) {
+    // Solo AUDITORIA. Fechas de visita, informes y entregas no son cambios auditados.
+    return (bitacora || []).map((b,i) => ({...b,ms:fechaMs(b.timestamp),indice:i}))
+      .filter(b => b.ms !== null)
+      .sort((a,b) => b.ms - a.ms || b.indice - a.indice)[0] || null;
+  }
+  function pintarUltimoCambio(bitacora) {
+    const ultimo = ultimoCambioRegistrado(bitacora);
+    const sinFecha = (bitacora || []).filter(b => fechaMs(b.timestamp) === null).length;
+    let cuerpo = !bitacora.length ? '<p>No hay cambios registrados en AUDITORIA para esta orden.</p>' :
+      !ultimo ? '<p>Los eventos registrados no tienen una fecha reconocible. Revisa la bitácora.</p>' :
+      '<div class="audit-when">' + esc(ultimo.timestamp) + '</div><strong class="audit-action">' + esc([ultimo.accion,ultimo.campo].filter(Boolean).join(' · ') || 'Cambio registrado') + '</strong>' +
+      '<p class="audit-change">' + esc(ultimo.valor_anterior || '—') + ' → ' + esc(ultimo.valor_nuevo || '—') + '</p><p>Registrado por ' + esc(ultimo.usuario || 'Usuario no registrado') + '</p>';
+    if(sinFecha && ultimo) cuerpo += '<p>' + sinFecha + ' evento(s) sin fecha reconocible en la bitácora.</p>';
+    return '<section class="card latest-change" id="ultimo-cambio" tabindex="-1"><div class="card-head"><h3>Último cambio con fecha</h3><span>AUDITORIA</span></div><div class="audit-brief">' + cuerpo +
+      (bitacora.length ? '<button type="button" class="quiet" onclick="abrirBitacora()">Ver bitácora completa</button>' : '') + '</div></section>';
+  }
+  function abrirBitacora() {
+    const tab = document.getElementById('tab-auditoria');
+    if(tab) {mostrarTab({currentTarget:tab},'auditoria'); document.getElementById('panel-auditoria').focus();}
+  }
+
   function pintarDetalle(r){
     const ot = r.ot || {};
     const estado = r.estado_traz || ot.estatus || 'SIN ESTADO';
@@ -209,7 +231,7 @@
 
     document.getElementById('detalle').innerHTML =
       '<div class="kicker-row"><span class="kicker">Trazabilidad del servicio</span><span class="updated">' +
-        (ultimaActualizacion ? 'Actualizado ' + esc(ultimaActualizacion) : '') + '</span></div>' +
+        ('Consultado ' + esc(new Intl.DateTimeFormat('es-MX',{timeZone:'America/Mexico_City',timeStyle:'short'}).format(new Date())) + ' · CDMX') + '</span></div>' +
 
       '<section class="hero"><div><h2>' + esc(ot.folio || '') + '</h2>' +
         '<div class="hero-client">' + esc(ot.cliente || '—') + '</div>' +
@@ -217,18 +239,17 @@
         '<div class="status-box"><span class="status-pill ' + estadoClase(estado) + '">' + esc(estado) + '</span>' +
         '<div class="sea-status">Estatus SEA: ' + esc(ot.estatus || '—') + '</div></div></section>' +
 
+      '<div class="quick-detail"><section class="card" id="documentos-servicio" tabindex="-1"><div class="card-head"><h3>Documentos del servicio</h3><span>Expediente e informes</span></div>' +
+        pintarAcciones(r) + '</section>' + pintarUltimoCambio(bit) + '</div>' +
+      '<div class="detail-warnings">' + pintarAdvertencias(r) + '</div>' +
       '<section class="route"><div class="route-head"><strong>Ruta del servicio</strong>' +
-        '<span>Qué existe y hasta dónde llegó la OT</span></div>' + pintarRuta(r) + '</section>' +
-
-      '<div class="workspace"><section class="card"><div class="card-head"><h3>Historia de esta OT</h3>' +
-        '<span>Hitos disponibles + AUDITORIA real</span></div>' + pintarHistoria(r) + '</section>' +
-        '<aside><section class="card" id="documentos-servicio" tabindex="-1"><div class="card-head"><h3>Documentos del servicio</h3><span>Accesos directos</span></div>' +
-        pintarAcciones(r) + '</section>' + pintarAdvertencias(r) + '</aside></div>' +
+        '<span>Según los registros disponibles</span></div>' + pintarRuta(r) + '</section>' +
+      '<details class="history-disclosure"><summary>Historia completa del servicio</summary><section class="card">' + pintarHistoria(r) + '</section></details>' +
 
       '<div class="tabs">' +
         '<button class="tab active" onclick="mostrarTab(event,\'datos\')">Datos del servicio</button>' +
-        '<button class="tab" onclick="mostrarTab(event,\'informes\')">Informes</button>' +
-        '<button class="tab" onclick="mostrarTab(event,\'auditoria\')">AUDITORIA</button>' +
+        '<button class="tab" id="tab-informes" onclick="mostrarTab(event,\'informes\')">Informes</button>' +
+        '<button class="tab" id="tab-auditoria" onclick="mostrarTab(event,\'auditoria\')">AUDITORIA</button>' +
       '</div>' +
 
       '<div class="panel active" id="panel-datos"><div class="data-card">' +
@@ -247,7 +268,7 @@
       '</div></div>' +
 
       '<div class="panel" id="panel-informes">' + pintarInformes(informes) + '</div>' +
-      '<div class="panel" id="panel-auditoria">' + pintarAuditoria(bit) + '</div>';
+      '<div class="panel" id="panel-auditoria" tabindex="-1">' + pintarAuditoria(bit) + '</div>';
   }
 
   function mostrarTab(ev,nombre){

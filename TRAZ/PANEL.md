@@ -11,8 +11,8 @@ continúa disponible y no se modifica.
 - Solo solicita `trazResumen` y `trazDetalle`; la comprobación de acceso del
   módulo compartido usa `verificarAcceso`. Aunque el transporte sea POST,
   estas acciones no escriben datos.
-- No agrega base de datos, hojas, columnas, automatizaciones ni almacenamiento
-  de datos operativos en el navegador.
+- No agrega base de datos, hojas, columnas ni automatizaciones. Solo guarda
+  preferencias de consulta en el navegador, separadas por cuenta Google.
 - Publicar bajo el mismo origen Google autorizado que el frontend actual.
   No necesita un nuevo despliegue de Apps Script.
 
@@ -43,6 +43,27 @@ No aplica; el detalle omite únicamente la advertencia genérica de informe ause
 y marca ese hito como no aplicable. Si una OTC sí tiene informes, se muestran.
 Los informes con OT inexistente solo aparecen cuando hay registros, en un
 bloque desplegable independiente de los filtros.
+
+## Retomar consultas y encontrar documentos
+
+Después de una consulta autenticada correcta, recupera búsqueda y filtros de esa
+cuenta desde localStorage. Guarda seis folios consultados con éxito y muestra
+sus nombres actuales usando exclusivamente el resumen autorizado de esa sesión.
+No copia datos del expediente, bitácora ni tokens. Si el navegador bloquea el
+almacenamiento o las preferencias están dañadas, la consulta sigue funcionando.
+Limpiar filtros y Limpiar recientes son acciones locales. Las preferencias no
+se sincronizan entre equipos ni cuentas.
+
+Los folios de informe son accesos a la ficha correspondiente dentro de la OT;
+Ver documentos enfoca los enlaces de carpeta. El backend entrega carpetas,
+no URLs directas de los PDF. El detalle presenta primero documentos y último
+cambio con fecha de AUDITORIA, seguido de la ruta y la historia desplegable.
+Ver cambios enfoca ese resumen; Ver bitácora completa abre la tabla original.
+
+El último cambio se calcula únicamente entre eventos auditados con fecha
+reconocible, sin usar fechas de programación como evidencia de actividad.
+Se avisa si hay eventos sin fecha reconocible. No se consultan todas las
+bitácoras para inventar una columna global de últimos movimientos.
 
 ## Interpretación
 

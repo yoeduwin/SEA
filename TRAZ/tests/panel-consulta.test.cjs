@@ -7,12 +7,13 @@ const vm = require('node:vm');
 function entorno() {
   const elements = new Map();
   const get = id => {
-    if(!elements.has(id)) elements.set(id, {value:'',innerHTML:'',textContent:'',hidden:false,open:false,showModal(){this.open=true;},close(){this.open=false;},addEventListener(){},focus(){},insertAdjacentHTML(_where,html){this.innerHTML += html;}});
+    if(!elements.has(id)) elements.set(id, {value:'',options:[{value:''}],classList:{add(){},remove(){}},innerHTML:'',textContent:'',hidden:false,open:false,showModal(){this.open=true;},close(){this.open=false;},addEventListener(){},focus(){},insertAdjacentHTML(_where,html){this.innerHTML += html;}});
     return elements.get(id);
   };
   const llamadas = [];
   const ctx = vm.createContext({
     URLSearchParams, Intl, Date, console,
+    localStorage:{getItem(){return null;},setItem(){}},
     document: {getElementById:get, querySelectorAll:()=>[],body:{classList:{add(){},remove(){}}}},
     SEAAuth:{init(){},logout(){},wrapFetch:async url => {
       llamadas.push(new URL(url).searchParams.get('action'));
@@ -113,4 +114,58 @@ test('abrir y cerrar detalle conserva la tabla y los filtros',async()=>{
   assert.equal(e.get('results').hidden,false);
   assert.equal(e.get('buscar').value,'empresa');
   assert.equal(focus.restaurado,true);
+});
+
+
+test('recupera filtros y recientes por cuenta, sin guardar datos del expediente',()=>{
+  const almacen = new Map();
+  const storage={getItem:k=>almacen.get(k)||null,setItem:(k,v)=>almacen.set(k,v)};
+  const a=entorno();a.ctx.localStorage=storage;
+  a.run("prepararPreferencias({sub:'usuario-A'}); restaurarPreferencias(); serieActiva='OTB'");
+  a.get('buscar').value='INF-123';
+  a.run("registrarConsulta('OTB2611-01'); registrarConsulta('OTB2611-02'); registrarConsulta('OTB2611-01')");
+  const b=entorno();b.ctx.localStorage=storage;
+  b.run("prepararPreferencias({sub:'usuario-A'}); restaurarPreferencias()");
+  assert.equal(b.get('buscar').value,'INF-123');
+  assert.equal(b.run('serieActiva'),'OTB');
+  assert.equal(b.run('recientes.join()'),'OTB2611-01,OTB2611-02');
+  const c=entorno();c.ctx.localStorage=storage;
+  c.run("prepararPreferencias({sub:'usuario-B'}); restaurarPreferencias()");
+  assert.equal(c.run('recientes.length'),0);
+  assert.equal(c.get('buscar').value,'');
+  const contenido=JSON.parse([...almacen.values()][0]);
+  assert.deepEqual(Object.keys(contenido).sort(),['filtros','recientes','version']);
+});
+
+test('almacenamiento bloqueado o preferencias dañadas no impiden consultar',()=>{
+  const e=entorno();
+  e.ctx.localStorage={getItem(){throw Error('Bloqueado');},setItem(){throw Error('Bloqueado');}};
+  assert.doesNotThrow(()=>e.run("prepararPreferencias({sub:'A'}); restaurarPreferencias(); guardarPreferencias()"));
+  e.ctx.localStorage={getItem(){return '{datos dañados';},setItem(){}};
+  assert.doesNotThrow(()=>e.run("prepararPreferencias({sub:'A'}); restaurarPreferencias()"));
+});
+
+test('último cambio usa AUDITORIA fechada y no el orden de las filas',()=>{
+  const e=entorno();
+  const r=e.run(`ultimoCambioRegistrado([
+    {timestamp:'09/11/2026 10:00',accion:'REVISAR',usuario:'A'},
+    {timestamp:'08/11/2026 19:00',accion:'CREAR',usuario:'B'},
+    {timestamp:'sin fecha',accion:'OTRO',usuario:'C'}
+  ])`);
+  assert.equal(r.accion,'REVISAR');
+  const html=e.run(`pintarUltimoCambio([{timestamp:'09/11/2026',usuario:'<img src=x>',accion:'CAMBIO',valor_nuevo:'<script>mal</script>'}])`);
+  assert.ok(!html.includes('<img src=x>'));
+  assert.ok(!html.includes('<script>mal'));
+  assert.equal(e.run('ultimoCambioRegistrado([])'),null);
+  assert.ok(e.run('pintarUltimoCambio([])').includes('No hay cambios registrados en AUDITORIA'));
+});
+
+test('consultas fallidas no aparecen en recientes y solo se muestran OT vigentes',async()=>{
+  const e=entorno();
+  e.ctx.SEAAuth.wrapFetch=async()=>({ok:true,json:async()=>({success:false,error:'Sin acceso'})});
+  await e.run("abrir('OTB2611-01')");
+  assert.equal(e.run('recientes.length'),0);
+  e.run("RESUMEN=[{ot:'OTB2611-02',cliente:'Cliente actual'}]; recientes=['OTB2611-01','OTB2611-02']; pintarRecientes()");
+  assert.ok(e.get('recientes').innerHTML.includes('OTB2611-02'));
+  assert.ok(!e.get('recientes').innerHTML.includes('OTB2611-01'));
 });
