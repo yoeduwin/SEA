@@ -120,13 +120,14 @@
   function pintarRuta(r){
     return '<div class="steps">' + (r.linea_tiempo || []).map(p => {
       const ok = p.estado === 'ok';
+      const noAplica = p.estado === 'no-aplica';
       const fecha = p.fecha || p.extra || '';
       let titulo = p.titulo || '';
       if(p.clave === 'ejecucion' && !ok){
         titulo = fecha ? 'Servicio programado' : 'Servicio pendiente';
       }
-      return '<div class="step ' + (ok ? 'ok' : 'pending') + '">' +
-        '<div class="dot">' + (ok ? '✓' : '•') + '</div>' +
+      return '<div class="step ' + (noAplica ? 'not-applicable' : ok ? 'ok' : 'pending') + '">' +
+        '<div class="dot">' + (noAplica ? '—' : ok ? '✓' : '•') + '</div>' +
         '<div class="step-title">' + esc(titulo) + '</div>' +
         '<div class="step-date">' + esc(fecha) + '</div>' +
       '</div>';
@@ -221,7 +222,7 @@
 
       '<div class="workspace"><section class="card"><div class="card-head"><h3>Historia de esta OT</h3>' +
         '<span>Hitos disponibles + AUDITORIA real</span></div>' + pintarHistoria(r) + '</section>' +
-        '<aside><section class="card"><div class="card-head"><h3>Documentos del servicio</h3><span>Accesos directos</span></div>' +
+        '<aside><section class="card" id="documentos-servicio" tabindex="-1"><div class="card-head"><h3>Documentos del servicio</h3><span>Accesos directos</span></div>' +
         pintarAcciones(r) + '</section>' + pintarAdvertencias(r) + '</aside></div>' +
 
       '<div class="tabs">' +

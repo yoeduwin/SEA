@@ -16,30 +16,42 @@ continúa disponible y no se modifica.
 - Publicar bajo el mismo origen Google autorizado que el frontend actual.
   No necesita un nuevo despliegue de Apps Script.
 
-## Vistas
+## Experiencia de consulta
 
-1. **Resumen:** indicadores y distribución por estado dentro de los filtros.
-2. **Órdenes:** búsqueda por OT, cliente, sucursal, informe o personal, con
-   filtros por estado TRAZ, servicio y personal de OT.
-3. **Informes:** índice de los folios relacionados expuestos por el resumen.
-   Estados y expedientes individuales se consultan en el detalle de la OT.
-4. **Alertas:** ausencia de carpeta de OT o de informe relacionado. Los informes
-   con OT inexistente se muestran como consulta global independiente del filtro.
-5. **Detalle:** ruta, historia, datos, informes y bitácora real, con enlaces a
-   las carpetas existentes. Conserva separados estado TRAZ y estatus SEA.
+Una sola tabla muestra orden, cliente/sucursal, servicio, estado TRAZ, todos los
+folios de informe relacionados y acceso al expediente/detalle. Una fila por OT:
+varios informes no duplican la orden. Sin resumen general ni vistas separadas
+de informes o alertas.
+
+La búsqueda encuentra OT, clientes, sucursales, personal y folios de informe.
+Los filtros principales son serie (Todas, OT, OTB, OTC), estado y servicio.
+Personal está en Más filtros y se señala cuando está activo. La serie se toma
+del tipo explícito OT/OTB/OTC; si falta, se reconoce un prefijo de folio válido.
+No se asume OT cuando la serie es desconocida.
+
+El detalle abre un diálogo lateral con ruta, datos, documentos y bitácora real.
+La tabla mantiene búsqueda, filtros y posición de desplazamiento; cerrar o
+pulsar Escape devuelve el foco al botón de origen. El foco de teclado queda
+dentro del diálogo mientras está abierto.
+
+Consultar carpeta obtiene solo el detalle de esa orden y enfoca sus documentos,
+donde el enlace existente abre Drive. El resumen no expone URLs de carpetas:
+no se inventan enlaces ni se consultan masivamente las órdenes para obtenerlos.
+
+Los datos faltantes aparecen junto al dato afectado. Una OTC sin informes muestra
+No aplica; el detalle omite únicamente la advertencia genérica de informe ausente
+y marca ese hito como no aplicable. Si una OTC sí tiene informes, se muestran.
+Los informes con OT inexistente solo aparecen cuando hay registros, en un
+bloque desplegable independiente de los filtros.
 
 ## Interpretación
 
-Los indicadores usan el estado y las relaciones que devuelve el backend actual.
-Las alertas de resumen no comprueban el contenido de Drive ni equivalen a una
-evaluación de cumplimiento. Una OT entregada también puede presentar datos
-faltantes. El detalle expone las advertencias completas del backend al abrirla.
-Los hitos de ejecución dependen de fechas registradas, no de una verificación
-independiente de campo. Revisión y emisión solo aparecen si fueron auditadas.
+Estado TRAZ y estatus SEA se conservan separados. Los enlaces no comprueban el
+contenido de Drive. Los hitos de ejecución dependen de fechas registradas;
+revisión y emisión solo aparecen si fueron auditadas.
 
-El panel realiza una consulta de resumen y consulta el detalle únicamente al
-abrir una OT. Actualizar es una acción manual; ante error conserva la última
-consulta y muestra su antigüedad. No carga masivamente detalles ni bitácoras.
+Actualizar es manual; ante error se conserva la última consulta y se muestra su
+antigüedad. Solo se consulta detalle al abrir una orden; no hay carga masiva.
 
 ## Verificación
 

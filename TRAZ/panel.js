@@ -1,26 +1,24 @@
 'use strict';
-// Conexión existente. Únicamente se permiten las dos acciones de consulta.
+// Las acciones disponibles continúan limitadas a consultas del backend existente.
 const API_URL = 'https://script.google.com/macros/s/AKfycbw9A7lgw0zI4f3V7YLVnuplLoShTS-5Qfprtw-E-iKTTMNd-F9Sh6_u3y2d3Xg0o3s/exec';
 let RESUMEN = [], HUERFANOS = [], seleccion = null, ultimaActualizacion = null;
-let vista = 'resumen', autorizado = false, cargando = false, generacionDetalle = 0;
+let autorizado = false, cargando = false, generacionDetalle = 0, serieActiva = '', focoAnterior = null;
 const el = id => document.getElementById(id);
-const titles = {
-  resumen: ['Resumen general', 'De la orden de trabajo al informe. Toda la ruta, en una sola consulta.'],
-  ordenes: ['Órdenes de trabajo', 'Encuentra una orden y consulta su expediente, informes e historia.'],
-  informes: ['Informes relacionados', 'Folios asociados a las OT. Abre una orden para consultar el expediente y su estado.'],
-  alertas: ['Alertas de trazabilidad', 'Datos faltantes y relaciones por revisar en los módulos de origen.']
-};
 const estadoDe = o => o.estado_traz || o.estatus_ot || 'SIN ESTADO';
-const cancelada = o => estadoDe(o).toUpperCase() === 'CANCELADO';
-const entregada = o => o.entregado === true;
-const abierta = o => !entregada(o) && !cancelada(o);
-const alertasDe = o => [!o.tiene_carpeta && 'Sin carpeta de OT', !Number(o.num_informes) && 'Sin informe relacionado'].filter(Boolean);
 const normalizar = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-
+// Coincidencia exacta: OT nunca debe incluir OTB/OTC. No inventar una serie si falta.
+function serieDe(o) {
+  const tipo = String(o.tipo || '').trim().toUpperCase();
+  if(['OT','OTB','OTC'].includes(tipo)) return tipo;
+  const m = String(o.ot || '').trim().toUpperCase().match(/^(OTB|OTC|OT)(?=[\s\d-]|$)/);
+  return m ? m[1] : '';
+}
+const alertasDe = o => [!o.tiene_carpeta && 'Sin carpeta de OT', !Number(o.num_informes) && serieDe(o) !== 'OTC' && 'Sin informe relacionado'].filter(Boolean);
 function filtrados() {
   const q = normalizar(el('buscar').value.trim());
   return RESUMEN.filter(o =>
     (!q || normalizar([o.ot,o.cliente,o.sucursal,o.nom,o.personal,estadoDe(o),...(o.folios_informe || [])].join(' ')).includes(q)) &&
+    (!serieActiva || serieDe(o) === serieActiva) &&
     (!el('estado').value || estadoDe(o) === el('estado').value) &&
     (!el('servicio').value || o.nom === el('servicio').value) &&
     (!el('personal').value || o.personal === el('personal').value));
@@ -69,86 +67,83 @@ async function cargarResumen() {
     el('btnRefresh').disabled = false;
   }
 }
-function tarjeta(numero, titulo, nota, tono = '') {
-  return `<div class="metric ${tono}"><div>${esc(titulo)}</div><strong>${esc(numero)}</strong><small>${esc(nota)}</small></div>`;
+function celdaInformes(o) {
+  const folios = o.folios_informe || [];
+  const sinFolio = Math.max(0,(Number(o.num_informes)||0)-folios.length);
+  if(!folios.length && !sinFolio) return serieDe(o) === 'OTC' ? '<span class="cell-sub">No aplica · OTC</span>' : '<span class="alert-chip">Sin informe relacionado</span>';
+  return folios.map(f => `<span class="report-folio">${esc(f)}</span>`).join('') + (sinFolio ? `<span class="alert-chip">${sinFolio} registro(s) sin folio</span>` : '');
 }
-function resumen(items) {
-  const estados = new Map();
-  items.forEach(o => estados.set(estadoDe(o), (estados.get(estadoDe(o)) || 0) + 1));
-  const dist = [...estados].sort((a,b) => b[1]-a[1]);
-  return `<div class="metrics">${tarjeta(items.length,'Órdenes consultadas',RESUMEN.length + ' OT en la fuente')}${tarjeta(items.filter(abierta).length,'Órdenes abiertas','Excluye entregadas y canceladas')}${tarjeta(items.filter(entregada).length,'Entregadas / finalizadas','Según estado informado por TRAZ','green')}${tarjeta(items.filter(o => alertasDe(o).length).length,'OT con datos faltantes','Carpeta de OT o informe relacionado','amber')}</div>
-    <div class="overview-grid"><section class="card distribution"><div class="card-head"><h3>Distribución por estado</h3><span>Según filtros</span></div><div class="bars">${dist.length ? dist.map(([s,n]) => `<div class="bar-row"><div><span>${esc(s)}</span><strong>${n}</strong></div><div class="bar-track"><span style="width:${Math.round(n/items.length*100)}%"></span></div></div>`).join('') : '<p>Sin registros para esta selección.</p>'}</div></section>
-    <section class="consult-note"><div class="eyebrow">CONTINUIDAD DOCUMENTAL</div><h2>Una orden.<br>Su historia completa.</h2><p>Selecciona una OT para ver la ruta del servicio, el expediente y los cambios registrados en AUDITORIA.</p><div class="mini-route"><span>Orden</span><span>→</span><span>Expediente</span><span>→</span><span>Informe</span></div><small>Una carpeta vinculada no confirma que su contenido esté completo.</small></section></div>`;
-}
-function tabla(items, soloAlertas = false) {
-  if(!items.length) return '<div class="empty">No hay órdenes que coincidan con esta consulta.</div>';
-  return `<div class="table-scroll"><table class="orders"><thead><tr><th>Orden / cliente</th><th>Servicio / sucursal</th><th>Estado TRAZ</th><th>Personal / visita OT</th><th>${soloAlertas ? 'Datos por revisar' : 'Documentación'}</th><th>Consulta</th></tr></thead><tbody>${items.map(o => `<tr><td><strong>${esc(o.ot)}</strong><span class="cell-sub">${esc(o.cliente || 'Sin cliente registrado')}</span></td><td>${esc(o.nom || 'Sin servicio')}<span class="cell-sub">${esc(o.sucursal || 'Sin sucursal registrada')}</span></td><td><span class="state-mini ${estadoClase(estadoDe(o))}">${esc(estadoDe(o))}</span></td><td>${esc(o.personal || 'Sin personal registrado')}<span class="cell-sub">${esc(o.fecha_visita || 'Sin fecha registrada')}</span></td><td>${soloAlertas ? alertasDe(o).map(a => `<span class="alert-chip">${esc(a)}</span>`).join('') : `<span class="cell-sub">${o.tiene_carpeta ? 'Carpeta de OT vinculada' : 'Sin carpeta de OT'}</span><span class="cell-sub">${Number(o.num_informes) || 0} informe(s)</span>`}</td><td><button class="open-ot" data-ot="${esc(o.ot)}">Ver ruta ↗</button></td></tr>`).join('')}</tbody></table></div>`;
-}
-function informes(items) {
-  const rows = items.flatMap(o => (o.folios_informe || []).map(f => ({o, f})));
-  const sinFolio = items.reduce((s,o) => s + Math.max(0,(Number(o.num_informes)||0) - (o.folios_informe || []).length),0);
-  return `<p class="section-note">El resumen expone los folios y el estado de la OT. El detalle de cada informe se consulta dentro de su orden.${sinFolio ? ' Hay ' + sinFolio + ' registro(s) de informe sin folio dentro de las OT filtradas.' : ''}</p>` +
-    (rows.length ? `<div class="table-scroll"><table class="orders"><thead><tr><th>Folio de informe</th><th>Orden</th><th>Cliente</th><th>Servicio</th><th>Consulta</th></tr></thead><tbody>${rows.map(({o,f}) => `<tr><td><strong>${esc(f)}</strong></td><td>${esc(o.ot)}</td><td>${esc(o.cliente)}</td><td>${esc(o.nom)}</td><td><button class="open-ot" data-ot="${esc(o.ot)}">Ver detalle ↗</button></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No hay folios de informe para esta selección.</div>');
+function tabla(items) {
+  if(!items.length) return '<div class="empty">No hay resultados con estos filtros. <button class="open-ot" data-clear>Limpiar filtros</button></div>';
+  return `<div class="table-scroll"><table class="orders"><thead><tr><th>Orden</th><th>Cliente / sucursal</th><th>Servicio</th><th>Estado TRAZ</th><th>Informes</th><th>Expediente</th><th>Detalle</th></tr></thead><tbody>${items.map(o => `<tr><td><button class="order-link" data-ot="${esc(o.ot)}">${esc(o.ot)}</button><span class="cell-sub">${esc(o.fecha_visita || 'Sin fecha de visita')}</span></td><td><strong>${esc(o.cliente || 'Sin cliente registrado')}</strong><span class="cell-sub">${esc(o.sucursal || 'Sin sucursal registrada')}</span></td><td>${esc(o.nom || 'Sin servicio')}</td><td><span class="state-mini ${estadoClase(estadoDe(o))}">${esc(estadoDe(o))}</span></td><td>${celdaInformes(o)}</td><td><button class="open-ot" data-ot="${esc(o.ot)}" data-documents>Consultar carpeta</button>${!o.tiene_carpeta ? '<span class="alert-chip">Sin carpeta de OT</span>' : ''}</td><td><button class="open-ot" data-ot="${esc(o.ot)}" aria-label="Ver trazabilidad de ${esc(o.ot)}">Ver ruta ↗</button></td></tr>`).join('')}</tbody></table></div>`;
 }
 function huerfanos() {
-  return `<section class="orphan-section"><h3>Informes con OT no encontrada <span class="count-pill">${HUERFANOS.length}</span></h3><p class="section-note">Consulta global, independiente de los filtros. Se muestran las relaciones que reporta el backend.</p>${HUERFANOS.length ? `<div class="table-scroll"><table class="orders"><thead><tr><th>Informe</th><th>OT referenciada</th><th>Relación</th></tr></thead><tbody>${HUERFANOS.map(h => `<tr><td>${esc(h.num_informe || 'Sin folio')}</td><td>${esc(h.ot)}</td><td>OT no encontrada en ORDENES_TRABAJO</td></tr>`).join('')}</tbody></table></div>` : '<div class="good">No se reportan informes con OT inexistente en esta consulta.</div>'}</section>`;
+  if(!HUERFANOS.length) return '';
+  return `<details class="orphan-section"><summary>Informes con OT no encontrada <span class="count-pill">${HUERFANOS.length}</span></summary><p class="section-note">Consulta global, independiente de los filtros.</p><div class="table-scroll"><table class="orders"><thead><tr><th>Informe</th><th>OT referenciada</th></tr></thead><tbody>${HUERFANOS.map(h => `<tr><td>${esc(h.num_informe || 'Sin folio')}</td><td>${esc(h.ot)}</td></tr>`).join('')}</tbody></table></div></details>`;
 }
 function render() {
   const items = filtrados();
-  const afectados = items.filter(o => alertasDe(o).length);
-  el('overview').innerHTML = vista === 'resumen' ? resumen(items) : '';
-  let contenido = vista === 'informes' ? informes(items) : tabla(vista === 'alertas' ? afectados : items, vista === 'alertas');
-  if(vista === 'alertas') contenido = '<p class="section-note">Estos indicadores señalan datos faltantes; no determinan incumplimientos. Abre la OT para consultar las advertencias completas de su expediente.</p>' + contenido + huerfanos();
-  el('results').innerHTML = `<section class="card result-card"><div class="card-head"><h3>${vista === 'informes' ? 'Índice de informes' : vista === 'alertas' ? 'Órdenes por revisar' : 'Órdenes de trabajo'}</h3><span>${vista === 'alertas' ? afectados.length : items.length} OT · ${RESUMEN.length} en la fuente</span></div>${contenido}</section>`;
+  el('extra-label').textContent = el('personal').value ? 'Más filtros · 1 activo' : 'Más filtros';
+  el('results').innerHTML = `<section class="card result-card"><div class="card-head"><h3>Órdenes e informes</h3><span>${items.length} de ${RESUMEN.length} órdenes</span></div>${tabla(items)}</section>${huerfanos()}`;
 }
 function cerrarDetalle() {
   seleccion = null;
   generacionDetalle++;
-  el('detail-shell').hidden = true;
+  const drawer = el('detail-shell');
+  if(drawer.open) drawer.close();
+  document.body.classList.remove('drawer-open');
   el('detalle').innerHTML = '';
-  el('results').hidden = false;
-  el('overview').hidden = false;
+  if(focoAnterior && focoAnterior.isConnected) focoAnterior.focus({preventScroll:true});
+  focoAnterior = null;
 }
-async function abrir(ot, enfocar = true) {
+async function abrir(ot, enfocar = true, documentos = false) {
   seleccion = ot;
-  const version = ++generacionDetalle;
-  el('results').hidden = true;
-  el('overview').hidden = true;
-  el('detail-shell').hidden = false;
-  el('detalle').innerHTML = '<div class="loading" role="status">Consultando la ruta del servicio…</div>';
-  if(enfocar) el('detalle').focus();
+  const version = ++generacionDetalle, drawer = el('detail-shell');
+  if(!drawer.open) {
+    focoAnterior = document.activeElement;
+    drawer.showModal();
+    document.body.classList.add('drawer-open');
+  }
+  el('detail-title').textContent = 'Orden ' + ot;
+  el('detalle').innerHTML = '<div class="loading" role="status">Consultando el servicio…</div>';
+  if(enfocar) {drawer.scrollTop = 0; el('close-detail').focus({preventScroll:true});}
   try {
     const r = await consultar('trazDetalle',{ot});
     if(version !== generacionDetalle || ot !== seleccion) return;
     if(!r.success) throw new Error(r.message || r.error || 'No se pudo consultar la orden.');
-    pintarDetalle(r);
-    el('detalle').insertAdjacentHTML('beforeend','<p class="section-note">Los hitos de ejecución provienen de las fechas registradas en SEA; no constituyen una verificación independiente de campo. Revisión y emisión solo se muestran si están registradas en AUDITORIA.</p>');
+    // OTC es una serie sin informe. No presentar su ausencia como incidencia.
+    const sinInformeOTC = serieDe({tipo:r.ot?.tipo,ot:r.ot?.folio}) === 'OTC' && !(r.informes || []).length;
+    const detalle = sinInformeOTC ? {...r,
+      advertencias:(r.advertencias || []).filter(w => w !== 'La OT no tiene ningún informe relacionado.'),
+      linea_tiempo:(r.linea_tiempo || []).map(p => p.clave === 'informe' ? {...p,titulo:'Informe no aplica',extra:'Serie OTC',estado:'no-aplica'} : p)
+    } : r;
+    pintarDetalle(detalle);
+    if(documentos) el('documentos-servicio')?.focus();
   } catch(e) {
     if(version !== generacionDetalle) return;
     el('detalle').innerHTML = '<div class="empty" role="alert">' + esc(e.message) + '</div>';
   }
 }
-document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => {
-  vista = b.dataset.view;
-  cerrarDetalle();
-  document.querySelectorAll('[data-view]').forEach(n => {n.classList.toggle('selected',n === b); n.setAttribute('aria-current',n === b ? 'page' : 'false');});
-  el('view-title').textContent = titles[vista][0];
-  el('view-subtitle').textContent = titles[vista][1];
+function limpiarFiltros() {
+  ['buscar','estado','servicio','personal'].forEach(id => el(id).value = '');
+  serieActiva = '';
+  document.querySelectorAll('input[name="serie"]').forEach(r => r.checked = r.value === '');
+  if(autorizado && ultimaActualizacion) render();
+}
+document.querySelectorAll('input[name="serie"]').forEach(r => r.addEventListener('change', () => {
+  serieActiva = r.value;
   if(autorizado && ultimaActualizacion) render();
 }));
 ['buscar','estado','servicio','personal'].forEach(id => el(id).addEventListener(id === 'buscar' ? 'input' : 'change', () => {
-  cerrarDetalle();
   if(autorizado && ultimaActualizacion) render();
 }));
-el('clear').addEventListener('click', () => {
-  ['buscar','estado','servicio','personal'].forEach(id => el(id).value = '');
-  cerrarDetalle();
-  if(autorizado && ultimaActualizacion) render();
-});
+el('clear').addEventListener('click',limpiarFiltros);
 el('results').addEventListener('click', e => {
+  if(e.target.closest('[data-clear]')) {limpiarFiltros(); return;}
   const b = e.target.closest('button[data-ot]');
-  if(b && autorizado) abrir(b.dataset.ot);
+  if(b && autorizado) abrir(b.dataset.ot,true,b.hasAttribute('data-documents'));
 });
 el('close-detail').addEventListener('click',cerrarDetalle);
+el('detail-shell').addEventListener('cancel',e => {e.preventDefault(); cerrarDetalle();});
 el('btnRefresh').addEventListener('click',cargarResumen);
 SEAAuth.init(() => { autorizado = true; cargarResumen(); },{gasUrl:API_URL});
