@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>SEATRAZ · Panel de consulta | Ejecutiva Ambiental</title>
+  <link rel="icon" href="../logo.png">
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body class="dashboard">
+  <aside class="navigation">
+    <a class="identity" href="panel.html"><span class="identity-mark">EA</span><span>Ejecutiva Ambiental<small>SEATRAZ · Trazabilidad</small></span></a>
+    <div class="nav-label">CONSULTA OPERATIVA</div>
+    <nav aria-label="Vistas del panel">
+      <button data-view="resumen" class="selected"><span>◫</span>Resumen general</button>
+      <button data-view="ordenes"><span>▤</span>Órdenes de trabajo</button>
+      <button data-view="informes"><span>▱</span>Informes relacionados</button>
+      <button data-view="alertas"><span>△</span>Alertas de trazabilidad</button>
+    </nav>
+    <div class="nav-bottom"><div class="read-label">● Solo consulta</div><p>Una vista de la información que ya existe en SEA.</p><a href="TRAZ.html">Abrir SEATRAZ actual ↗</a></div>
+  </aside>
+  <div class="content-shell">
+    <header class="topbar"><div class="breadcrumb">SISTEMA SEA <span>/</span> SEATRAZ</div><div class="head-actions"><div id="sea-user-info" class="auth-user"></div><button id="btnRefresh" class="refresh">↻ Actualizar consulta</button></div></header>
+    <main class="panel-main">
+      <div class="page-heading"><div><div class="eyebrow">EJECUTIVA AMBIENTAL / SEGUIMIENTO DEL SERVICIO</div><h1 id="view-title">Resumen general</h1><p id="view-subtitle">De la orden de trabajo al informe. Toda la ruta, en una sola consulta.</p></div><div class="live-stamp"><span class="read-label">Solo lectura</span><span id="sync">Esperando acceso autorizado</span></div></div>
+      <div id="notice" role="status" aria-live="polite"></div>
+      <section class="filters" aria-label="Filtros de consulta">
+        <label class="search-filter">Buscar<input id="buscar" type="search" placeholder="OT, cliente, sucursal, informe…"></label>
+        <label>Estado<select id="estado"><option value="">Todos los estados</option></select></label>
+        <label>Servicio<select id="servicio"><option value="">Todos los servicios</option></select></label>
+        <label>Personal de OT<select id="personal"><option value="">Todo el personal</option></select></label>
+        <button id="clear" class="quiet">Limpiar filtros</button>
+      </section>
+      <div id="overview"></div>
+      <section id="results" aria-live="polite"><div class="empty">Inicia sesión con tu cuenta Google autorizada para consultar SEATRAZ.</div></section>
+      <section id="detail-shell" hidden aria-label="Detalle de la orden seleccionada"><div class="detail-toolbar"><button id="close-detail" class="quiet">← Volver a resultados</button><span>Detalle del servicio · Solo consulta</span></div><div id="detalle" tabindex="-1"></div></section>
+      <footer class="panel-footer"><span>Fuente: ORDENES_TRABAJO · INFORMES · AUDITORIA</span><span>Los cambios se realizan en los módulos de origen.</span></footer>
+    </main>
+  </div>
+  <script src="../auth.js"></script>
+  <script src="panel-detalle.js"></script>
+  <script src="panel.js"></script>
+  <script src="https://accounts.google.com/gsi/client" onload="onGISLoaded()" async defer></script>
+</body>
+</html>
