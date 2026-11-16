@@ -6,10 +6,12 @@
   login Google + verificación en el servidor contra la lista de acceso.
   Sin sesión verificada no se ve ni se usa la página (el contenido queda
   oculto detrás del overlay de login) y no se carga ningún dato.
-- **SEAPD:** el formulario de alta para clientes **nuevos sigue público**.
-  "Ya soy cliente" (consulta de datos por RFC) exige login del equipo. La
-  búsqueda sigue devolviendo solo la vista pública enmascarada (razón
-  social, sucursales, correo/teléfono enmascarados); nunca la ficha completa.
+- **SEAPD: fuera de este candado.** El SEAPD en vivo es una copia aparte
+  en el hosting (`www.ejecutivambiental.com/clientes`), no la versión de
+  GitHub Pages, y no lleva OAuth: nada se aprueba automáticamente ni se
+  revelan datos (la búsqueda por RFC devuelve solo la vista pública
+  enmascarada); todo pasa por autorizaciones. "Ya soy cliente" lo usan
+  tanto los clientes (actualizar sus datos) como el equipo.
 - **Índice (index.html):** ya no pasa el `id_token` en la URL (quedaba en
   historial y logs); ahora va por POST en el body.
 
@@ -22,6 +24,9 @@
    columna del módulo).
 3. Solo entonces se muestra la página y se cargan datos (siempre con
    `SEAAuth.wrapFetch`, que inyecta el token en el body, nunca en la URL).
+   Un token guardado en el navegador no basta: en cada carga de página se
+   vuelve a verificar con el servidor antes de aceptarlo
+   (`SEAAuth.isVerified()`).
 4. El backend niega por defecto cualquier acción no registrada (`AUTH_MODE`
    en `BACKEND_FIXES.gs` / `TRAZ/TRAZ.gs`).
 
@@ -52,7 +57,7 @@
       de Apps Script (SEA y SEATRAZ) y que la hoja `USUARIOS_AUTORIZADOS`
       tiene al equipo con las columnas de módulo correctas.
 - [ ] Revisar este PR, hacer merge y comprobar en producción que cada
-      módulo pide login y que "Ya soy cliente" lo pide también.
+      módulo pide login.
 
 ## Cómo probarlo (tras el merge)
 
@@ -60,5 +65,5 @@
 2. Entrar con una cuenta del equipo: la página se muestra y carga datos.
 3. Entrar con una cuenta fuera de la lista: mensaje "no tiene acceso" y la
    página no se muestra.
-4. En SEAPD sin login: el formulario de alta funciona; "Ya soy cliente"
-   pide login primero.
+4. SEAPD no entra en este PR: queda público como antes (su copia en vivo
+   está en el hosting, no en este repo).
