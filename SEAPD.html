@@ -1,3 +1,4 @@
+successfully downloaded text file (SHA: 218c1692f540204c732373d04b995392f74e9a06)
 <!DOCTYPE html><html lang="es"><head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -197,7 +198,7 @@
   <div id="returningModal" class="modal-overlay">
     <div class="rfc-search-modal" style="background:white; border-radius:10px; max-width:500px; width:90%; padding:30px; box-shadow:0 10px 40px rgba(0,0,0,0.3);">
       <h2 style="color:#1e5a3e; margin:0 0 5px 0; font-size:20px;">Ya soy cliente</h2>
-      <p style="color:#666; font-size:13px; margin:0 0 15px 0;">Ingrese su RFC y pre-llenaremos sus datos para agilizar el proceso.</p>
+      <p style="color:#666; font-size:13px; margin:0 0 15px 0;">Uso interno del equipo: ingrese el RFC del cliente para localizar su ficha. Solo se muestran datos enmascarados.</p>
       <div class="modal-search-box">
         <input type="text" id="rfcSearch" placeholder="RFC (ej. ABC123456XX0)" maxlength="13" autocomplete="off">
         <button type="button" class="btn-search" id="btnSearchRFC" onclick="searchClientByRFC()">Buscar</button>
@@ -215,6 +216,9 @@
       <div class="modal-body" id="confirmationContent"></div>
     </div>
   </div>
+
+  <!-- Barra de sesión del equipo (solo se llena tras iniciar sesión) -->
+  <div id="sea-user-info" style="position:fixed;top:12px;right:16px;z-index:9999;display:flex;align-items:center;gap:6px;"></div>
 
   <div class="main-container">
     <div class="header">
@@ -1439,6 +1443,18 @@
 
     let isReturningClient = false;
     function openReturningModal() {
+      // Candado de acceso (PR seguridad/acceso-real): "Ya soy cliente" es
+      // consulta de datos y va detrás de login. El alta de clientes nuevos
+      // (el formulario) sigue pública. Sin sesión verificada se pide login
+      // y el modal se abre tras verificar la cuenta.
+      if (typeof SEAAuth === 'undefined' || SEAAuth.isExpired(SEAAuth.getToken())) {
+        if (typeof SEAAuth !== 'undefined') {
+          SEAAuth.requireAuth(function() { openReturningModal(); }, { gasUrl: SCRIPT_URL });
+        } else {
+          alert('No se pudo cargar el módulo de acceso. Recarga la página.');
+        }
+        return;
+      }
       const modal = document.getElementById('returningModal');
       if (modal) modal.style.display = 'flex';
       const input = document.getElementById('rfcSearch');
@@ -1468,6 +1484,18 @@
     // NUEVA LÓGICA DE BÚSQUEDA MULTI-SUCURSAL
     // =======================================================
     async function searchClientByRFC() {
+      // Candado de acceso: la búsqueda por RFC es consulta de datos y exige
+      // sesión verificada (defensa en profundidad; el botón ya la exige).
+      // La búsqueda sigue usando reCAPTCHA (vista pública enmascarada): con
+      // SEAAuth.wrapFetch el backend devolvería la ficha COMPLETA al navegador.
+      if (typeof SEAAuth === 'undefined' || SEAAuth.isExpired(SEAAuth.getToken())) {
+        if (typeof SEAAuth !== 'undefined') {
+          SEAAuth.requireAuth(function() { searchClientByRFC(); }, { gasUrl: SCRIPT_URL });
+        } else {
+          alert('No se pudo cargar el módulo de acceso. Recarga la página.');
+        }
+        return;
+      }
       const rfcInput = document.getElementById('rfcSearch');
       const resultDiv = document.getElementById('rfcSearchResult');
       const btnSearch = document.getElementById('btnSearchRFC');
@@ -1770,5 +1798,9 @@
   <!-- La Site Key es pública por diseño. La Secret Key vive solo en GAS Script Properties. -->
   <script src="https://www.google.com/recaptcha/enterprise.js?render=6LdIq4csAAAAAHCggurLxQbsc15M8MnAD8UIOR1E" async defer></script>
   <script src="recaptcha.js"></script>
+
+  <!-- ── Autenticación Google (solo para "Ya soy cliente"; el alta nueva sigue pública) ── -->
+  <script src="https://accounts.google.com/gsi/client" onload="onGISLoaded()" async defer></script>
+  <script src="auth.js"></script>
 </body>
 </html>

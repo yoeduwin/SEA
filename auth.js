@@ -1,13 +1,30 @@
 /**
- * auth.js — Módulo de autenticación Google OAuth para SEA
+ * auth.js — Módulo de autenticación Google OAuth para EA Suite
  *
- * USO: Páginas internas (SEAPD, SEAOT, SEAINF).
+ * USO: Páginas internas (SEAOT, SEADB, SEAINF, SEATRAZ, SEAPD, res-ejecutivo).
  *
- * CONFIGURACIÓN:
- *   1. Reemplaza CLIENT_ID con el OAuth 2.0 Client ID de Google Cloud Console.
- *      El Client ID NO es secreto — es público por diseño de Google.
+ * CONFIGURACIÓN (un solo valor):
+ *   1. CLIENT_ID abajo: el OAuth 2.0 Client ID de Google Cloud Console.
+ *      Es el MISMO cliente para todos los módulos (un proyecto Cloud, un
+ *      client ID). El Client ID NO es secreto — es público por diseño de Google.
+ *      La lista de acceso NO vive aquí: está en la hoja USUARIOS_AUTORIZADOS
+ *      del Sheet del backend (GAS), que la verifica en el servidor.
  *   2. En cada HTML: <script src="auth.js"></script>
  *      Llama a SEAAuth.init(callback) en lugar de inicializar la app directamente.
+ *   3. Páginas públicas con una acción interna (SEAPD "Ya soy cliente"):
+ *      usa SEAAuth.requireAuth(callback, { gasUrl }) bajo demanda, sin
+ *      bloquear el uso público de la página.
+ *
+ * CANDADO REAL (no solo modal): mientras no haya sesión verificada, el
+ * contenido de la página queda oculto (body visibility:hidden) y solo se ve
+ * el overlay de login. Sin esto, el modal se podía quitar con DevTools y la
+ * estructura de la página quedaba a la vista. Los datos, además, nunca se
+ * cargan sin verificar: el backend (GAS) valida el id_token contra Google y
+ * la lista USUARIOS_AUTORIZADOS en cada llamada.
+ *
+ * LÍMITE HONESTO: el HTML/JS estático siempre es descargable (GitHub Pages
+ * no tiene servidor). La garantía real está en el backend: sin token válido
+ * de un usuario autorizado, GAS no devuelve datos.
  *
  * REUTILIZABLE: Copiar este archivo a cualquier repo del proyecto.
  * Solo cambiar CLIENT_ID si usas un proyecto Google Cloud diferente.
@@ -69,11 +86,16 @@ const SEAAuth = (() => {
   function createOverlay() {
     if (document.getElementById('sea-auth-overlay')) return;
 
+    // Candado real: ocultar el contenido de la página hasta verificar el
+    // acceso. El overlay es lo único visible; sin esto, quitar el modal con
+    // DevTools dejaba ver (y usar) la estructura de la página.
+    if (document.body) document.body.style.visibility = 'hidden';
+
     const overlay = document.createElement('div');
     overlay.id = 'sea-auth-overlay';
     overlay.style.cssText = [
       'position:fixed', 'inset:0', 'z-index:99999',
-      'background:#003810',
+      'background:#003810', 'visibility:visible',
       'display:flex', 'align-items:center', 'justify-content:center'
     ].join(';');
 
@@ -110,6 +132,8 @@ const SEAAuth = (() => {
   function removeOverlay() {
     const overlay = document.getElementById('sea-auth-overlay');
     if (overlay) overlay.remove();
+    // Restaurar la visibilidad del contenido (sesión verificada).
+    if (document.body) document.body.style.visibility = '';
   }
 
   function showAuthError(msg) {
@@ -164,6 +188,33 @@ const SEAAuth = (() => {
       return;
     }
 
+    _showLogin();
+  }
+
+  /**
+   * Login bajo demanda (p. ej. SEAPD "Ya soy cliente", res-ejecutivo).
+   * Si ya hay sesión válida, ejecuta el callback de inmediato sin mostrar nada.
+   * Si no, muestra el overlay de login y ejecuta el callback tras verificar
+   * la cuenta contra la lista de acceso. No bloquea el uso público de la página.
+   * @param {function(token:string, payload:object):void} onAuthed
+   * @param {{gasUrl:string}} [options]
+   */
+  function requireAuth(onAuthed, options) {
+    const existing = getToken();
+
+    if (existing && !isExpired(existing)) {
+      const payload = getPayload(existing);
+      showUserBar(payload);
+      if (onAuthed) onAuthed(existing, payload);
+      return;
+    }
+
+    _onAuthSuccess = onAuthed || null;
+    _gasUrl = (options && options.gasUrl) || null;
+    _showLogin();
+  }
+
+  function _showLogin() {
     clearToken();
     createOverlay();
 
@@ -320,7 +371,7 @@ const SEAAuth = (() => {
   }
 
   // ─── API pública del módulo ───────────────────────────────────────────────
-  return { init, logout, getToken, isExpired, wrapFetch };
+  return { init, requireAuth, logout, getToken, isExpired, wrapFetch };
 })();
 
 /**
@@ -332,3 +383,4 @@ function onGISLoaded() {
     window._seaAuthInitGIS();
   }
 }
+
