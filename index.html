@@ -196,7 +196,9 @@
       try {
         const checks = await Promise.all(
           MODULES.map(mod =>
-            fetch(`${SCRIPT_URL}?action=verificarAcceso&id_token=${encodeURIComponent(token)}&modulo=${mod.id}`)
+            // El id_token NUNCA va en la URL (quedaba en historial y logs):
+            // wrapFetch lo envía por POST en el body (B-03).
+            SEAAuth.wrapFetch(`${SCRIPT_URL}?action=verificarAcceso&modulo=${mod.id}`)
               .then(r => r.json())
               .catch(() => ({ success: false }))
           )

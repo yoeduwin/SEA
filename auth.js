@@ -1,13 +1,38 @@
 /**
- * auth.js — Módulo de autenticación Google OAuth para SEA
+ * auth.js — Módulo de autenticación Google OAuth para EA Suite
  *
- * USO: Páginas internas (SEAPD, SEAOT, SEAINF).
+ * USO: Páginas internas (SEAOT, SEADB, SEAINF, SEATRAZ, res-ejecutivo).
  *
- * CONFIGURACIÓN:
- *   1. Reemplaza CLIENT_ID con el OAuth 2.0 Client ID de Google Cloud Console.
- *      El Client ID NO es secreto — es público por diseño de Google.
+ * CONFIGURACIÓN (un solo valor):
+ *   1. CLIENT_ID abajo: el OAuth 2.0 Client ID de Google Cloud Console.
+ *      Es el MISMO cliente para todos los módulos (un proyecto Cloud, un
+ *      client ID). El Client ID NO es secreto — es público por diseño de Google.
+ *      La lista de acceso NO vive aquí: está en la hoja USUARIOS_AUTORIZADOS
+ *      del Sheet del backend (GAS), que la verifica en el servidor.
  *   2. En cada HTML: <script src="auth.js"></script>
  *      Llama a SEAAuth.init(callback) en lugar de inicializar la app directamente.
+ *   3. Acciones internas bajo demanda (p. ej. generar en res-ejecutivo):
+ *      usa SEAAuth.requireAuth(callback, { gasUrl }), que pide login solo
+ *      cuando hace falta y reintenta tras verificar la cuenta.
+ *
+ * CANDADO REAL (no solo modal): mientras no haya sesión verificada, el
+ * contenido de la página queda oculto (body visibility:hidden) y solo se ve
+ * el overlay de login. Sin esto, el modal se podía quitar con DevTools y la
+ * estructura de la página quedaba a la vista. Los datos, además, nunca se
+ * cargan sin verificar: el backend (GAS) valida el id_token contra Google y
+ * la lista USUARIOS_AUTORIZADOS en cada llamada.
+ *
+ * TOKEN GUARDADO ≠ SESIÓN VERIFICADA: un token en sessionStorage solo se
+ * acepta tras verificarlo con el servidor (GAS, acción verificarAcceso)
+ * en cada carga de página. isExpired() solo lee la fecha del payload, sin
+ * validar la firma, así que un token inventado con fecha futura no pasa.
+ * Solo el token que pasó la verificación del servidor en esta sesión
+ * (SEAAuth.isVerified()) habilita la app, los guards de generación y
+ * wrapFetch.
+ *
+ * LÍMITE HONESTO: el HTML/JS estático siempre es descargable (GitHub Pages
+ * no tiene servidor). La garantía real está en el backend: sin token válido
+ * de un usuario autorizado, GAS no devuelve datos.
  *
  * REUTILIZABLE: Copiar este archivo a cualquier repo del proyecto.
  * Solo cambiar CLIENT_ID si usas un proyecto Google Cloud diferente.
@@ -69,11 +94,16 @@ const SEAAuth = (() => {
   function createOverlay() {
     if (document.getElementById('sea-auth-overlay')) return;
 
+    // Candado real: ocultar el contenido de la página hasta verificar el
+    // acceso. El overlay es lo único visible; sin esto, quitar el modal con
+    // DevTools dejaba ver (y usar) la estructura de la página.
+    if (document.body) document.body.style.visibility = 'hidden';
+
     const overlay = document.createElement('div');
     overlay.id = 'sea-auth-overlay';
     overlay.style.cssText = [
       'position:fixed', 'inset:0', 'z-index:99999',
-      'background:#003810',
+      'background:#003810', 'visibility:visible',
       'display:flex', 'align-items:center', 'justify-content:center'
     ].join(';');
 
@@ -110,6 +140,8 @@ const SEAAuth = (() => {
   function removeOverlay() {
     const overlay = document.getElementById('sea-auth-overlay');
     if (overlay) overlay.remove();
+    // Restaurar la visibilidad del contenido (sesión verificada).
+    if (document.body) document.body.style.visibility = '';
   }
 
   function showAuthError(msg) {
@@ -143,6 +175,10 @@ const SEAAuth = (() => {
   // ─── Inicialización ───────────────────────────────────────────────────────
   let _onAuthSuccess = null;
   let _gasUrl = null; // URL del GAS para verificación pre-carga
+  // Token verificado por el servidor EN ESTA sesión de la página. Solo este
+  // token habilita la app y wrapFetch. Un token guardado a mano en
+  // sessionStorage nunca llega aquí sin pasar por GAS (ver init/requireAuth).
+  let _verifiedToken = null;
 
   /**
    * Punto de entrada principal.
@@ -152,18 +188,100 @@ const SEAAuth = (() => {
    *   gasUrl: URL del GAS. Si se proporciona, verifica la whitelist ANTES de
    *   mostrar la app. Sin esta opción, la UI se carga antes de la verificación.
    */
-  function init(onAuthSuccess, options) {
+  async function init(onAuthSuccess, options) {
     _onAuthSuccess = onAuthSuccess;
     _gasUrl = (options && options.gasUrl) || null;
     const existing = getToken();
 
     if (existing && !isExpired(existing)) {
-      const payload = getPayload(existing);
-      showUserBar(payload);
-      onAuthSuccess(existing, payload);
+      // Ya verificado en esta sesión: aceptar sin otra llamada al servidor.
+      if (existing === _verifiedToken) {
+        const payload = getPayload(existing);
+        showUserBar(payload);
+        onAuthSuccess(existing, payload);
+        return;
+      }
+      // Token guardado: NO es una sesión verificada. isExpired() solo lee
+      // la fecha del payload; un token inventado con fecha futura pasaría.
+      // Se verifica con el servidor antes de aceptarlo.
+      _showVerifying();
+      const status = await _verifyWithGas(existing);
+      if (status === 'ok') {
+        _verifiedToken = existing;
+        const payload = getPayload(existing);
+        removeOverlay();
+        showUserBar(payload);
+        onAuthSuccess(existing, payload);
+      } else {
+        clearToken();
+        if (status === 'denied') {
+          const payload = getPayload(existing);
+          showAuthError(
+            `Tu cuenta (${payload ? (payload.email || '') : ''}) no tiene acceso a este sistema.\n` +
+            'Contacta al administrador para solicitar acceso.'
+          );
+        }
+        _showLogin();
+      }
       return;
     }
 
+    _showLogin();
+  }
+
+  /**
+   * Login bajo demanda (p. ej. SEAPD "Ya soy cliente", res-ejecutivo).
+   * Si ya hay sesión válida, ejecuta el callback de inmediato sin mostrar nada.
+   * Si no, muestra el overlay de login y ejecuta el callback tras verificar
+   * la cuenta contra la lista de acceso. No bloquea el uso público de la página.
+   * @param {function(token:string, payload:object):void} onAuthed
+   * @param {{gasUrl:string}} [options]
+   */
+  async function requireAuth(onAuthed, options) {
+    _onAuthSuccess = onAuthed || null;
+    _gasUrl = (options && options.gasUrl) || null;
+    const existing = getToken();
+
+    if (existing && !isExpired(existing)) {
+      // Ya verificado en esta sesión: ejecutar sin otra llamada al servidor.
+      if (existing === _verifiedToken) {
+        const payload = getPayload(existing);
+        showUserBar(payload);
+        if (onAuthed) onAuthed(existing, payload);
+        return;
+      }
+      // Igual que init(): el token guardado se verifica con el servidor
+      // antes de aceptarlo.
+      _showVerifying();
+      const status = await _verifyWithGas(existing);
+      if (status === 'ok') {
+        _verifiedToken = existing;
+        const payload = getPayload(existing);
+        removeOverlay();
+        showUserBar(payload);
+        if (onAuthed) onAuthed(existing, payload);
+      } else {
+        clearToken();
+        _showLogin();
+      }
+      return;
+    }
+
+    _showLogin();
+  }
+
+  /**
+   * Overlay de "Verificando acceso..." mientras se valida un token guardado
+   * con el servidor. Reutiliza el overlay de login (oculta el contenido);
+   * si la verificación falla, _showLogin() vuelve a dibujar el botón.
+   */
+  function _showVerifying() {
+    createOverlay();
+    const btn = document.getElementById('sea-signin-btn');
+    if (btn) btn.innerHTML = '<p style="color:#5f6368;font-size:14px;margin:8px 0;">Verificando acceso...</p>';
+  }
+
+  function _showLogin() {
     clearToken();
     createOverlay();
 
@@ -199,6 +317,32 @@ const SEAAuth = (() => {
   }
 
   /**
+   * Verifica un id_token con el backend (GAS, acción verificarAcceso).
+   * Devuelve 'ok' solo si el servidor confirma la cuenta autorizada;
+   * 'denied' si el servidor la rechaza; 'error' si no se pudo contactar
+   * al servidor o no hay gasUrl configurado. Falla cerrado: sin 'ok' el
+   * token no se acepta.
+   * @param {string} token  id_token de Google
+   * @returns {Promise<'ok'|'denied'|'error'>}
+   */
+  async function _verifyWithGas(token) {
+    if (!_gasUrl) return 'error';
+    try {
+      // POST para mantener el token fuera de la URL (B-03)
+      const resp = await fetch(_gasUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'verificarAcceso', id_token: token })
+      });
+      const data = await resp.json();
+      if (data && data.success && data.error !== 'AUTH_REQUIRED') return 'ok';
+      return 'denied';
+    } catch (_) {
+      return 'error';
+    }
+  }
+
+  /**
    * Llama a GAS para verificar que el usuario está en la whitelist.
    * Se invoca ANTES de cerrar el overlay — la UI nunca se muestra a no autorizados.
    * @param {string} token  id_token de Google
@@ -214,46 +358,34 @@ const SEAAuth = (() => {
 
     // Si hay gasUrl configurado, verificar con GAS antes de abrir la app
     if (_gasUrl) {
-      try {
-        // Usar POST para mantener el token fuera de la URL (B-03)
-        const resp = await fetch(_gasUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'verificarAcceso', id_token: token })
-        });
-        const data = await resp.json();
-
-        if (!data.success || data.error === 'AUTH_REQUIRED') {
-          // Usuario NO autorizado — mostrar error en overlay, nunca cerrar
-          if (window.google && window.google.accounts) {
-            google.accounts.id.disableAutoSelect();
-          }
-          const email = payload ? (payload.email || '') : '';
+      const status = await _verifyWithGas(token);
+      if (status !== 'ok') {
+        // Usuario NO autorizado (o no se pudo verificar) — mostrar error
+        // en overlay, nunca cerrar la app.
+        if (window.google && window.google.accounts) {
+          google.accounts.id.disableAutoSelect();
+        }
+        const email = payload ? (payload.email || '') : '';
+        if (status === 'denied') {
           showAuthError(
             `Tu cuenta (${email}) no tiene acceso a este sistema.\n` +
             'Contacta al administrador para solicitar acceso.'
           );
-          // Restaurar botón de login para que pueda intentar con otra cuenta
-          if (btn) {
-            google.accounts.id.renderButton(btn,
-              { theme: 'outline', size: 'large', text: 'signin_with', locale: 'es', width: 280 }
-            );
-          }
-          return; // ← la app NO se carga
+        } else {
+          showAuthError('No se pudo verificar el acceso. Revisa tu conexión e intenta de nuevo.');
         }
-      } catch (_err) {
-        // Error de red al verificar — mostrar mensaje pero no bloquear indefinidamente
-        showAuthError('No se pudo verificar el acceso. Revisa tu conexión e intenta de nuevo.');
+        // Restaurar botón de login para que pueda intentar con otra cuenta
         if (btn) {
           google.accounts.id.renderButton(btn,
             { theme: 'outline', size: 'large', text: 'signin_with', locale: 'es', width: 280 }
           );
         }
-        return;
+        return; // ← la app NO se carga
       }
     }
 
     // ✅ Autorizado (o no se configuró gasUrl) — proceder normalmente
+    _verifiedToken = token;
     saveToken(token);
     removeOverlay();
     showUserBar(payload);
@@ -263,6 +395,7 @@ const SEAAuth = (() => {
   // ─── Logout ───────────────────────────────────────────────────────────────
   function logout() {
     const token = getToken();
+    _verifiedToken = null;
     clearToken();
     if (window.google && window.google.accounts) {
       google.accounts.id.disableAutoSelect();
@@ -287,10 +420,14 @@ const SEAAuth = (() => {
   async function wrapFetch(url, options = {}) {
     const token = getToken();
 
-    if (isExpired(token)) {
+    // Solo vale el token verificado por el servidor en esta sesión. Un
+    // token guardado a mano (aunque no haya expirado) no pasa: el backend
+    // lo rechazaría de todos modos, pero aquí se corta antes de enviarlo.
+    if (!token || token !== _verifiedToken || isExpired(token)) {
+      _verifiedToken = null;
       clearToken();
       location.reload();
-      return Promise.reject(new Error('Sesión expirada. Por favor inicia sesión nuevamente.'));
+      return Promise.reject(new Error('Sesión no verificada. Por favor inicia sesión nuevamente.'));
     }
 
     const method = (options.method || 'GET').toUpperCase();
@@ -319,8 +456,19 @@ const SEAAuth = (() => {
     }
   }
 
+  /**
+   * True solo si el token actual pasó la verificación del servidor en esta
+   * sesión de la página. Un token guardado arbitrariamente en sessionStorage
+   * nunca cumple esto: al cargar la página, init/requireAuth lo verifican
+   * con GAS antes de aceptarlo.
+   */
+  function isVerified() {
+    const token = getToken();
+    return !!token && token === _verifiedToken && !isExpired(token);
+  }
+
   // ─── API pública del módulo ───────────────────────────────────────────────
-  return { init, logout, getToken, isExpired, wrapFetch };
+  return { init, requireAuth, logout, getToken, isExpired, isVerified, wrapFetch };
 })();
 
 /**
@@ -332,3 +480,4 @@ function onGISLoaded() {
     window._seaAuthInitGIS();
   }
 }
+
