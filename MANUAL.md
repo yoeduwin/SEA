@@ -1007,6 +1007,39 @@ Pasos para actualizar sin romper los frontends:
 
 > **Serie OTC:** desplegar el backend antes de publicar los HTML. Un backend anterior no conoce la serie OTC; SEAOT lo detecta, avisa y no propone folio, y ese backend tampoco crea expedientes sin número.
 
+
+### 8.6 Envío de la OT desde operaciones@ (SEAOT → "✉️ Enviar OT")
+
+SEAOT ya no abre el cliente de correo de la computadora (`mailto:`). El botón **✉️ Enviar OT**:
+
+1. Revisa la revisión de contrato, la cronología y que la OT esté registrada (no cancelada, mismo cliente y servicio, serie OT/OTB/OTC con 4 dígitos).
+2. Genera el PDF por código (html2canvas + jsPDF) con el mismo diseño de impresión, en **una hoja A4**. Si no cabe, lo reduce y lo avisa ("reducido al 97 %").
+3. Abre la ventana de preverificación: **De** (fijo), **Para** (correos del cliente separados por coma, editables solo para este envío), **CC** (copias internas fijas y campo para adicionales), **Asunto**, PDF adjunto y vista previa del mensaje.
+4. Al confirmar, el Apps Script guarda el PDF en Drive (carpeta de la sucursal → `ORDENES DE TRABAJO`), envía el correo con `GmailApp.sendEmail` desde `operaciones@ejecutivambiental.com` y registra el envío en la hoja **ENVIOS_OT**. Ese mismo PDF se descarga en la computadora como `OT_{folio}_{razón social}.pdf`.
+
+Configuración en `BACKEND_FIXES.gs` → `CONFIG.ENVIO_OT` (remitente, nombre visible, replyTo, copias fijas, subcarpeta de Drive).
+
+**Hoja ENVIOS_OT** (se crea sola): una fila por intento con fecha, folio, tipo (ENVÍO / REENVÍO / PRUEBA), cliente, sucursal, RFC, servicio, remitente, Para, CC, usuario, liga del PDF, estatus (`Enviada` / `Error de envío`), motivo del reenvío y detalle del error. `ORDENES_TRABAJO` no se modifica.
+
+**Reglas:** una OT con estatus `Enviada` solo se vuelve a mandar marcando **Reenviar** y escribiendo el motivo. Un `Error de envío` se puede reintentar. Si se marca "Actualizar también en el perfil del cliente", el correo nuevo va a **Cambios pendientes**; nunca se escribe directo en `CLIENTES_MAESTRO`. El aviso de la NOM-081 solo aparece en el correo cuando la OT incluye esa norma.
+
+**Folios de prueba:** `PRUEBA-0001`, `PRUEBA-0002`… no se registran ni consumen folios, no aparecen en el tablero, llevan `[PRUEBA]` en el asunto, su PDF va a `_PRUEBAS_ENVIO_OT` en la carpeta raíz y el servidor solo permite destinatarios `@ejecutivambiental.com`.
+
+#### Pasos manuales (una sola vez)
+
+1. **"Enviar como" en la cuenta dueña del script** (la de "Ejecutar como: Yo"): Gmail → ⚙️ → *Ver toda la configuración* → *Cuentas e importación* → *Enviar como* → *Añadir otra dirección de correo*. Nombre `Ejecutiva Ambiental - Operaciones`, dirección `operaciones@ejecutivambiental.com`; **desmarcar** "Tratar como alias"; servidor SMTP de HostGator (p. ej. `mail.ejecutivambiental.com`, puerto 465 SSL o 587 TLS, usuario = la dirección completa y su contraseña). Confirmar con el código que llega a operaciones@. Si falta este paso, SEAOT muestra "no tiene dado de alta … como Enviar como" y no envía nada.
+2. Copiar `BACKEND_FIXES.gs` y `TESTS_BACKEND.gs` al editor, ejecutar `runUnitTests` (0 FAIL) y publicar **Nueva versión** sobre la implementación existente (ver 8.5). Debe seguir en *Ejecutar como: Yo* y *Cualquier usuario*.
+3. Al ejecutar por primera vez, aceptar los permisos que pida Google (Gmail, Drive y Hojas de cálculo; el script ya los usaba).
+
+#### Prueba de punta a punta
+
+1. En SEAOT cargar un cliente real, elegir servicio, completar la revisión de contrato y escribir el folio `PRUEBA-0001` (sin registrar).
+2. **✉️ Enviar OT** → revisar la ventana: De = operaciones@, CC fijas visibles, asunto con `[PRUEBA]`, abrir el PDF (una hoja A4) y escanear el QR (debe marcar 222-941-7295).
+3. Escribir en Para un correo del cliente → el botón se bloquea ("solo correos @ejecutivambiental.com"). Cambiarlo por un correo interno → **Confirmar y enviar**.
+4. Verificar: correo recibido **de operaciones@** con el PDF adjunto de una hoja; copia en `_PRUEBAS_ENVIO_OT/ORDENES DE TRABAJO`; PDF descargado; fila en **ENVIOS_OT** con estatus `Enviada`.
+5. Volver a dar **✉️ Enviar OT** con el mismo folio → aparece "ya se envió" y el botón queda bloqueado hasta marcar **Reenviar** y escribir el motivo. Cancelar.
+6. Comparar el PDF descargado con el de **🖨️ Imprimir** del mismo formulario.
+
 ---
 
 ## 9. Sistema de Respaldos
