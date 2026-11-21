@@ -22,6 +22,7 @@ const CONFIG = {
   SHEET_USUARIOS:  'USUARIOS_AUTORIZADOS',
   SHEET_AUDITORIA: 'AUDITORIA',
   SHEET_CAMBIOS:   'CAMBIOS_PENDIENTES',
+  SHEET_ENVIOS_OT: 'ENVIOS_OT',       // bitácora de envíos de OT por correo (se crea sola)
 
   // ── Registro de informes enviados (lo escribe el script local de envíos) ──
   // Archivo "PANEL DE EJECUTIVA". SEADB lo lee por getInformesEnviados en lugar
@@ -46,6 +47,30 @@ const CONFIG = {
 
   // ── Identidad de la empresa ───────────────────────────────────────────────
   COMPANY_NAME: 'Ejecutiva Ambiental',
+
+  // ── Envío de la OT al cliente desde el servidor (SEAOT → enviarOT) ───────
+  // El correo sale de la cuenta dueña del script con el alias REMITENTE, que
+  // debe estar dado de alta en Gmail → Configuración → Cuentas → "Enviar como".
+  ENVIO_OT: {
+    REMITENTE:        'operaciones@ejecutivambiental.com',
+    NOMBRE_REMITENTE: 'Ejecutiva Ambiental - Operaciones',
+    REPLY_TO:         'operaciones@ejecutivambiental.com',
+    // Copias internas fijas: no dependen de quién captura la OT.
+    CC_FIJOS: [
+      'aclientes@ejecutivambiental.com',
+      'direccion.general@ejecutivambiental.com'
+    ],
+    DOMINIO_INTERNO:  'ejecutivambiental.com',
+    TELEFONO:         '222-941-7295',
+    // Subcarpeta dentro de la carpeta de la sucursal del cliente en Drive.
+    SUBCARPETA_DRIVE: 'ORDENES DE TRABAJO',
+    // Envíos de prueba (folio PRUEBA-0001): no tocan ORDENES_TRABAJO ni
+    // consumen folios, y sólo pueden ir a correos del dominio interno.
+    PREFIJO_PRUEBA:   'PRUEBA-',
+    CARPETA_PRUEBAS:  '_PRUEBAS_ENVIO_OT',
+    MAX_PDF_BYTES:    8 * 1024 * 1024,
+    MIN_MOTIVO_REENVIO: 10
+  },
 
   // ── Reintentos de correo ──────────────────────────────────────────────────
   EMAIL_RETRY_ATTEMPTS: 3,
@@ -223,6 +248,8 @@ const AUTH_MODE = {
   cancelarOT:             'GOOGLE',   // SEAOT: cancelación oficial
   reprogramarOT:          'GOOGLE',   // SEAOT: cambio de fecha de visita
   verificarFolioOT:       'GOOGLE',   // SEAOT: folio registrado antes de imprimir/enviar
+  prepararEnvioOT:        'GOOGLE',   // SEAOT: datos del modal de preverificación (sólo lectura)
+  enviarOT:               'GOOGLE',   // SEAOT: envía la OT con PDF desde operaciones@ y la registra
   // SEAINF
   getOrdenes:             'GOOGLE',
   getConsecutivo:         'GOOGLE',
@@ -259,6 +286,8 @@ const ACTION_MODULE = {
   cancelarOT:             'SEAOT',
   reprogramarOT:          'SEAOT',
   verificarFolioOT:       'SEAOT',
+  prepararEnvioOT:        'SEAOT',
+  enviarOT:               'SEAOT',
   getOrdenes:             'SEAINF',
   getConsecutivo:         'SEAINF',
   createExpediente:       'SEAINF',
@@ -679,6 +708,8 @@ function doPost(e) {
       case 'cancelarOT': return output_(cancelarOT_(data, _usuario));
       case 'reprogramarOT': return output_(reprogramarOT_(data, _usuario));
       case 'verificarFolioOT': return output_(verificarFolioOT_(data));
+      case 'prepararEnvioOT': return output_(prepararEnvioOT_(data));
+      case 'enviarOT': return output_(enviarOT_(data, _usuario));
       case 'updateEstatusInforme': return output_(updateEstatusInformeSafe_(data, _usuario));
       case 'updateResponsable': return output_(updateResponsableSafe_(data, _usuario));
       // Acciones GET migradas a POST para mantener token fuera de la URL (B-03)
@@ -2672,6 +2703,505 @@ function verificarFolioOT_(data) {
     folio: folio, rfc: data.rfc, cliente: data.cliente, sucursal: data.sucursal, servicio: data.servicio
   });
   return { success: true, folio: folio, permitido: r.permitido, motivo: r.motivo, mensaje: r.mensaje };
+}
+
+// =========================================================================
+// ENVÍO DE LA OT POR CORREO DESDE EL SERVIDOR (SEAOT → prepararEnvioOT / enviarOT)
+// =========================================================================
+// El correo sale siempre de CONFIG.ENVIO_OT.REMITENTE (alias "Enviar como" de
+// la cuenta dueña del script), con el PDF generado en SEAOT adjunto, copia en
+// la carpeta del cliente en Drive y una fila por intento en la hoja ENVIOS_OT.
+// ORDENES_TRABAJO no se toca: su contrato A-Q es inmutable.
+
+const ENVIOS_OT_HEADERS_ = ['ID', 'Fecha envío', 'Folio', 'Tipo', 'Cliente', 'Sucursal', 'RFC', 'Servicio',
+  'Remitente', 'Para', 'CC', 'Usuario', 'Link PDF Drive', 'Estatus', 'Motivo reenvío', 'Detalle', 'Intento'];
+const CE_ = { ID: 0, FECHA: 1, FOLIO: 2, TIPO: 3, CLIENTE: 4, SUCURSAL: 5, RFC: 6, SERVICIO: 7, REMITENTE: 8,
+  PARA: 9, CC: 10, USUARIO: 11, LINK_PDF: 12, ESTATUS: 13, MOTIVO: 14, DETALLE: 15, INTENTO: 16 };
+
+// Identificador que SEAOT genera al abrir la ventana de envío y repite en
+// cada reintento de esa misma ventana. Si la respuesta de un envío se pierde,
+// el reintento con el mismo intento no vuelve a mandar el correo.
+function normalizarIntentoOT_(id) {
+  const s = String(id == null ? '' : id).trim();
+  return /^[A-Za-z0-9-]{8,64}$/.test(s) ? s : '';
+}
+
+// Estado más reciente de un intento: 'Enviada', 'Enviando', 'Error de envío' o ''.
+function estadoIntentoOT_(envios, intento) {
+  if (!intento) return { estatus: '' };
+  const filas = (envios || []).filter(e => e.intento === intento);
+  const ok = filas.filter(e => e.estatus === ESTATUS_ENVIO_OK_);
+  if (ok.length) return Object.assign({}, ok[ok.length - 1]);
+  const pend = filas.filter(e => e.estatus === ESTATUS_ENVIO_PENDIENTE_);
+  if (pend.length) return Object.assign({}, pend[pend.length - 1]);
+  return filas.length ? Object.assign({}, filas[filas.length - 1]) : { estatus: '' };
+}
+const ESTATUS_ENVIO_OK_ = 'Enviada';
+const ESTATUS_ENVIO_ERROR_ = 'Error de envío';
+// Se escribe ANTES de llamar a Gmail. Si después no se puede marcar como
+// Enviada o Error, queda así y bloquea reintentos automáticos: el correo pudo
+// haber salido y sólo se vuelve a mandar con "Reenviar" y motivo.
+const ESTATUS_ENVIO_PENDIENTE_ = 'Enviando';
+
+// ── Lógica pura (cubierta por runUnitTests) ──────────────────────────────
+
+// Folio de una OT a enviar: serie OT/OTB/OTC con consecutivo de 4 dígitos, o
+// folio de prueba PRUEBA-0001 (no existe en ORDENES_TRABAJO).
+function normalizarFolioEnvioOT_(folio) {
+  const f = String(folio == null ? '' : folio).trim().toUpperCase();
+  const prefijo = CONFIG.ENVIO_OT.PREFIJO_PRUEBA;
+  const mp = f.match(new RegExp('^' + prefijo + '(\\d{1,4})$'));
+  if (mp) return { folio: prefijo + String(parseInt(mp[1], 10)).padStart(4, '0'), prueba: true, valido: true };
+  const n = normalizarFolioOT_(f);
+  return { folio: n, prueba: false, valido: /^OT[BC]?\d{4}-\d{4}$/.test(n) };
+}
+
+const REGEX_CORREO_OT_ = /^[^\s@,;<>()"']+@[^\s@,;<>()"']+\.[a-z]{2,}$/i;
+
+// Acepta texto separado por coma, punto y coma, espacios o saltos de línea, o
+// un arreglo. Devuelve correos en minúsculas sin duplicados y los inválidos.
+function parsearCorreosOT_(entrada) {
+  const partes = Array.isArray(entrada) ? entrada : String(entrada == null ? '' : entrada).split(/[,;\s]+/);
+  const validos = [], invalidos = [];
+  partes.forEach(function(p) {
+    const c = String(p == null ? '' : p).trim().replace(/^<|>$/g, '').toLowerCase();
+    if (!c) return;
+    if (!REGEX_CORREO_OT_.test(c)) { if (invalidos.indexOf(c) === -1) invalidos.push(c); return; }
+    if (validos.indexOf(c) === -1) validos.push(c);
+  });
+  return { validos: validos, invalidos: invalidos };
+}
+
+function esCorreoInternoOT_(correo) {
+  const dominio = '@' + CONFIG.ENVIO_OT.DOMINIO_INTERNO.toLowerCase();
+  const c = String(correo || '').toLowerCase();
+  return c.length > dominio.length && c.slice(-dominio.length) === dominio;
+}
+
+// Para = correos del cliente; CC = copias fijas + adicionales. Un correo que
+// ya va en Para no se repite en CC.
+function armarDestinatariosOT_(paraEntrada, ccEntrada, prueba) {
+  const para = parsearCorreosOT_(paraEntrada);
+  const ccExtra = parsearCorreosOT_(ccEntrada);
+  const invalidos = para.invalidos.concat(ccExtra.invalidos);
+  if (invalidos.length) {
+    return { success: false, code: 'CORREO_INVALIDO', error: 'Correo(s) con formato inválido: ' + invalidos.join(', ') + '.' };
+  }
+  if (!para.validos.length) {
+    return { success: false, code: 'SIN_DESTINATARIO', error: 'Agrega al menos un destinatario en "Para".' };
+  }
+  const cc = [];
+  CONFIG.ENVIO_OT.CC_FIJOS.concat(ccExtra.validos).forEach(function(c) {
+    const n = String(c).toLowerCase().trim();
+    if (n && para.validos.indexOf(n) === -1 && cc.indexOf(n) === -1) cc.push(n);
+  });
+  if (prueba) {
+    const externos = para.validos.concat(cc).filter(function(c) { return !esCorreoInternoOT_(c); });
+    if (externos.length) {
+      return { success: false, code: 'PRUEBA_EXTERNA',
+        error: 'Un envío de prueba sólo puede ir a correos @' + CONFIG.ENVIO_OT.DOMINIO_INTERNO + '. Quita: ' + externos.join(', ') + '.' };
+    }
+  }
+  return { success: true, para: para.validos, cc: cc };
+}
+
+function incluyeNom081_(texto) {
+  return /NOM[\s-]?081/i.test(String(texto || ''));
+}
+
+function nombrePdfOT_(folio, razonSocial) {
+  const limpio = s => String(s || '').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return 'OT_' + limpio(folio) + '_' + (limpio(razonSocial) || 'Cliente') + '.pdf';
+}
+
+function asuntoCorreoOT_(folio, razonSocial, prueba) {
+  return (prueba ? '[PRUEBA] ' : '') + 'Orden de Trabajo ' + folio + ' - ' + (razonSocial || '') + ' - Ejecutiva Ambiental';
+}
+
+function escHtmlOT_(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function fechaDMYEnvioOT_(iso) {
+  const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? m[3] + '/' + m[2] + '/' + m[1] : String(iso || '');
+}
+
+// Mismo contenido que el correo que armaba SEAOT con mailto:, en texto plano
+// y en HTML sencillo. El aviso de la NOM-081 sólo aparece si la OT la incluye.
+// @param {Object} d { folio, cliente, sucursal, giro, registro_patronal, capacidad_instalada,
+//                    capacidad_operacion, direccion, servicio, servicios:[{servicio, fecha, cantidad}] }
+function construirCorreoOT_(d) {
+  d = d || {};
+  const v = (x, def) => { const s = String(x == null ? '' : x).trim(); return s || def; };
+  const tel = CONFIG.ENVIO_OT.TELEFONO;
+  const direccion = v(d.direccion, '');
+  const maps = direccion ? 'https://maps.google.com/maps?q=' + encodeURIComponent(direccion) : '';
+  const servicios = (Array.isArray(d.servicios) ? d.servicios : []).filter(s => s && String(s.servicio || '').trim())
+    .map(s => [String(s.servicio).trim(), s.fecha ? 'Fecha: ' + fechaDMYEnvioOT_(s.fecha) : '', String(s.cantidad || '').trim()]
+      .filter(Boolean).join(' | '));
+  const conNom081 = incluyeNom081_(d.servicio) || servicios.some(incluyeNom081_);
+  const datos = [['🏢 Razón Social', v(d.cliente, '')], ['Sucursal', v(d.sucursal, 'No especificada')],
+    ['Giro/Actividad', v(d.giro, 'No especificado')]];
+  const tecnica = [['⚙️ Capacidad Instalada', v(d.capacidad_instalada, 'No especificada')],
+    ['⚙️ Capacidad de Operación', v(d.capacidad_operacion, 'No especificada')],
+    ['⚙️ Registro Patronal', v(d.registro_patronal, 'No especificado')]];
+  const aviso081 = 'Para los servicios relacionados con la NOM-081-SEMARNAT-1994, y como parte de nuestras ' +
+    'obligaciones de registro en el Padrón de Laboratorios Autorizados, notificamos este servicio a la autoridad ' +
+    'ambiental correspondiente. Esta notificación es un proceso estándar y no requiere ninguna acción adicional de su parte.';
+  const sigue = ['Revise la orden adjunta.', 'Comparta este correo con su contacto en planta o en sitio.',
+    'Si hay restricciones de acceso, horarios o requisitos adicionales, respóndanos por este medio.'];
+  const epp = 'Nuestro personal acudirá con el EPP correspondiente: botas, casco, lentes, y guantes de seguridad, protección auditiva, y chaleco.';
+  const ajuste = 'Si requiere algún ajuste o desea compartir indicaciones de acceso, puede responder a este correo o comunicarse al ' + tel + '.';
+
+  const texto = [
+    'Estimado,', '',
+    'Su Orden de Trabajo ' + d.folio + ' ha sido generada correctamente.', '',
+    'Datos principales'].concat(datos.map(p => '  • ' + p[0] + ': ' + p[1])).concat([
+    '', 'Ubicación del servicio',
+    '📍 Dirección: ' + direccion,
+    '🔗 Google Maps: ' + (maps || 'Dirección no disponible'), '',
+    '📋 Servicios incluidos'
+  ]).concat(servicios.length ? servicios.map(s => '  - ' + s) : ['• Ver detalle en la orden de trabajo adjunta.'])
+    .concat(['', 'Información técnica']).concat(tecnica.map(p => p[0] + ': ' + p[1]))
+    .concat(conNom081 ? ['', '✅ Notificación requerida por normativa ambiental', aviso081] : [])
+    .concat(['', 'Qué sigue']).concat(sigue.map(s => '• ' + s))
+    .concat(['', '📌 Requisitos de seguridad', epp, '', ajuste, '', 'Gracias,', 'Ejecutiva Ambiental', 'Tel: ' + tel])
+    .join('\n');
+
+  const h = escHtmlOT_;
+  const lista = items => '<ul style="margin:4px 0 12px 18px;padding:0;">' + items.map(i => '<li>' + i + '</li>').join('') + '</ul>';
+  const titulo = t => '<p style="margin:14px 0 4px;font-weight:bold;color:#1e5a3e;">' + h(t) + '</p>';
+  const html = '<div style="font-family:Arial,sans-serif;font-size:14px;color:#222;line-height:1.45;max-width:640px;">' +
+    '<p>Estimado,</p>' +
+    '<p>Su Orden de Trabajo <b>' + h(d.folio) + '</b> ha sido generada correctamente.</p>' +
+    titulo('Datos principales') + lista(datos.map(p => h(p[0]) + ': <b>' + h(p[1]) + '</b>')) +
+    titulo('Ubicación del servicio') +
+    '<p style="margin:4px 0;">📍 Dirección: ' + h(direccion) + '<br>🔗 Google Maps: ' +
+      (maps ? '<a href="' + h(maps) + '">Ver ubicación</a>' : 'Dirección no disponible') + '</p>' +
+    titulo('📋 Servicios incluidos') +
+      (servicios.length ? lista(servicios.map(h)) : '<p style="margin:4px 0;">Ver detalle en la orden de trabajo adjunta.</p>') +
+    titulo('Información técnica') + lista(tecnica.map(p => h(p[0]) + ': ' + h(p[1]))) +
+    (conNom081 ? titulo('✅ Notificación requerida por normativa ambiental') + '<p style="margin:4px 0;">' + h(aviso081) + '</p>' : '') +
+    titulo('Qué sigue') + lista(sigue.map(h)) +
+    titulo('📌 Requisitos de seguridad') + '<p style="margin:4px 0;">' + h(epp) + '</p>' +
+    '<p>' + h(ajuste) + '</p>' +
+    '<p>Gracias,<br><b>Ejecutiva Ambiental</b><br>Tel: ' + h(tel) + '</p></div>';
+  return { texto: texto, html: html, conNom081: conNom081 };
+}
+
+// ¿Se puede enviar? Una OT con un envío "Enviada" sólo se vuelve a mandar con
+// "Reenviar" explícito y motivo.
+function evaluarEnvioPrevioOT_(envios, reenviar, motivo) {
+  const previos = (envios || []).filter(e => e.estatus === ESTATUS_ENVIO_OK_ || e.estatus === ESTATUS_ENVIO_PENDIENTE_);
+  if (!previos.length) return { permitido: true, reenvio: false };
+  const ultimo = previos[previos.length - 1];
+  if (!reenviar) {
+    const error = ultimo.estatus === ESTATUS_ENVIO_PENDIENTE_
+      ? 'Hay un envío de esta OT del ' + ultimo.fecha + ' a ' + ultimo.para + ' que no se pudo confirmar: el correo pudo haber salido. ' +
+        'Revisa "Enviados" de ' + CONFIG.ENVIO_OT.REMITENTE + ' y, si no salió, usa "Reenviar".'
+      : 'Esta OT ya se envió el ' + ultimo.fecha + ' a ' + ultimo.para + '. Para mandarla otra vez usa "Reenviar".';
+    return { permitido: false, code: 'YA_ENVIADA', ultimo: ultimo, error: error };
+  }
+  if (String(motivo || '').trim().length < CONFIG.ENVIO_OT.MIN_MOTIVO_REENVIO) {
+    return { permitido: false, code: 'MOTIVO_REENVIO',
+      error: 'Escribe el motivo del reenvío (mínimo ' + CONFIG.ENVIO_OT.MIN_MOTIVO_REENVIO + ' caracteres).' };
+  }
+  return { permitido: true, reenvio: true };
+}
+
+// Decodifica el PDF que manda SEAOT (base64, con o sin prefijo data:).
+function decodificarPdfOT_(base64) {
+  const limpio = String(base64 || '').replace(/^data:[^,]*,/, '').replace(/\s+/g, '');
+  if (!limpio) return { success: false, error: 'No llegó el PDF de la OT.' };
+  let bytes;
+  try { bytes = Utilities.base64Decode(limpio); } catch (e) { return { success: false, error: 'El PDF de la OT llegó dañado.' }; }
+  if (bytes.length > CONFIG.ENVIO_OT.MAX_PDF_BYTES) return { success: false, error: 'El PDF de la OT es demasiado grande.' };
+  const cabecera = String.fromCharCode.apply(null, bytes.slice(0, 5).map(b => b & 0xff));
+  if (cabecera !== '%PDF-') return { success: false, error: 'El archivo adjunto no es un PDF válido.' };
+  return { success: true, bytes: bytes };
+}
+
+// ── Hoja ENVIOS_OT ────────────────────────────────────────────────────────
+function hojaEnviosOT_() {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  let sheet = ss.getSheetByName(CONFIG.SHEET_ENVIOS_OT);
+  if (!sheet) {
+    sheet = ss.insertSheet(CONFIG.SHEET_ENVIOS_OT);
+    sheet.appendRow(ENVIOS_OT_HEADERS_);
+    sheet.getRange(1, 1, 1, ENVIOS_OT_HEADERS_.length).setFontWeight('bold').setBackground('#1e5a3e').setFontColor('#ffffff');
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+function leerEnviosOT_(folio) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = ss.getSheetByName(CONFIG.SHEET_ENVIOS_OT);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, ENVIOS_OT_HEADERS_.length).getDisplayValues();
+  return values.filter(r => String(r[CE_.FOLIO]).trim().toUpperCase() === folio).map(r => ({
+    fecha: r[CE_.FECHA], tipo: r[CE_.TIPO], para: r[CE_.PARA], cc: r[CE_.CC], usuario: r[CE_.USUARIO],
+    link_pdf: r[CE_.LINK_PDF], estatus: r[CE_.ESTATUS], detalle: r[CE_.DETALLE], intento: r[CE_.INTENTO] || ''
+  }));
+}
+
+function registrarEnvioOT_(r) {
+  const fila = [];
+  fila[CE_.ID] = Utilities.getUuid();
+  fila[CE_.FECHA] = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'dd/MM/yyyy HH:mm:ss');
+  fila[CE_.FOLIO] = r.folio; fila[CE_.TIPO] = r.tipo; fila[CE_.CLIENTE] = r.cliente || '';
+  fila[CE_.SUCURSAL] = r.sucursal || ''; fila[CE_.RFC] = r.rfc || ''; fila[CE_.SERVICIO] = r.servicio || '';
+  fila[CE_.REMITENTE] = CONFIG.ENVIO_OT.REMITENTE;
+  fila[CE_.PARA] = (r.para || []).join(', '); fila[CE_.CC] = (r.cc || []).join(', ');
+  fila[CE_.USUARIO] = r.usuario || 'desconocido'; fila[CE_.LINK_PDF] = r.link_pdf || '';
+  fila[CE_.ESTATUS] = r.estatus; fila[CE_.MOTIVO] = r.motivo || ''; fila[CE_.DETALLE] = r.detalle || '';
+  fila[CE_.INTENTO] = r.intento || '';
+  const sheet = hojaEnviosOT_();
+  const numFila = sheet.getLastRow() + 1;
+  sheet.getRange(numFila, 1, 1, ENVIOS_OT_HEADERS_.length).setValues([fila.map(textoSeguroSheet_)]);
+  SpreadsheetApp.flush();
+  return numFila;
+}
+
+// Cierra el intento "Enviando" con su resultado final.
+function cerrarEnvioOT_(numFila, estatus, detalle) {
+  const sheet = hojaEnviosOT_();
+  sheet.getRange(numFila, CE_.ESTATUS + 1).setValue(estatus);
+  if (detalle) sheet.getRange(numFila, CE_.DETALLE + 1).setValue(textoSeguroSheet_(detalle));
+  SpreadsheetApp.flush();
+}
+
+// ── Contexto común de preparar y enviar ──────────────────────────────────
+// Aplica las reglas de emisión: OT registrada, no cancelada, mismos datos que
+// el formulario y serie OT/OTB/OTC de 4 dígitos. Los folios PRUEBA- no se
+// buscan en ORDENES_TRABAJO.
+function contextoEnvioOT_(data) {
+  data = data || {};
+  const nf = normalizarFolioEnvioOT_(data.folio);
+  if (!nf.folio) return { success: false, error: 'Falta el folio de la OT.' };
+  if (!nf.valido) {
+    return { success: false, code: 'FOLIO_INVALIDO',
+      error: 'El folio ' + nf.folio + ' no tiene el formato de las series OT, OTB u OTC con consecutivo de 4 dígitos (ej. OTB2611-0012).' };
+  }
+  const ctx = { success: true, folio: nf.folio, prueba: nf.prueba, cliente: String(data.cliente || '').trim(),
+    sucursal: String(data.sucursal || '').trim(), rfc: String(data.rfc || '').toUpperCase().trim(),
+    servicio: String(data.servicio || '').trim(), linkDrive: '', correosPerfil: [] };
+  if (!ctx.prueba) {
+    const v = verificarFolioOT_({ folio: nf.folio, rfc: ctx.rfc, cliente: ctx.cliente, sucursal: ctx.sucursal, servicio: ctx.servicio });
+    if (!v.success) return { success: false, error: v.error };
+    if (!v.permitido) return { success: false, code: v.motivo, error: v.mensaje };
+    const values = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_OT).getDataRange().getDisplayValues();
+    for (let i = values.length - 1; i >= 1; i--) {
+      if (normalizarFolioOT_(values[i][CO.OT]) !== nf.folio) continue;
+      if (diferenciasFolioOT_({ cliente: values[i][CO.CLIENTE], sucursal: values[i][CO.SUCURSAL], rfc: values[i][CO.RFC],
+          nom: values[i][CO.NOM] }, { folio: nf.folio, rfc: ctx.rfc, cliente: ctx.cliente, sucursal: ctx.sucursal, servicio: ctx.servicio }).length) continue;
+      ctx.cliente = values[i][CO.CLIENTE] || ctx.cliente;
+      ctx.sucursal = values[i][CO.SUCURSAL] || ctx.sucursal;
+      ctx.linkDrive = values[i][CO.LINK_DRIVE] || '';
+      break;
+    }
+  }
+  if (!ctx.cliente) return { success: false, error: 'Falta la razón social del cliente.' };
+  ctx.correosPerfil = correosPerfilClienteOT_(ctx.rfc, ctx.sucursal, ctx.cliente);
+  return ctx;
+}
+
+// Correo(s) registrados en CLIENTES_MAESTRO para RFC + sucursal.
+function correosPerfilClienteOT_(rfc, sucursal, razonSocial) {
+  if (!rfc || !sucursal) return { texto: '', lista: [] };
+  try {
+    const all = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID).getSheetByName(CONFIG.SHEET_CLIENTES).getDataRange().getValues();
+    const fila = buscarFilaClienteExistente_(all, rfc, sucursal, razonSocial);
+    if (fila === -1) return { texto: '', lista: [] };
+    const texto = String(all[fila - 1][CL.CORREO] || '').trim();
+    return { texto: texto, lista: parsearCorreosOT_(texto).validos };
+  } catch (e) {
+    Logger.log('correosPerfilClienteOT_ error: ' + e.message);
+    return { texto: '', lista: [] };
+  }
+}
+
+// El alias debe estar dado de alta como "Enviar como" en la cuenta dueña del script.
+function remitenteDisponibleOT_() {
+  const remitente = CONFIG.ENVIO_OT.REMITENTE.toLowerCase();
+  try {
+    if (String(Session.getEffectiveUser().getEmail() || '').toLowerCase() === remitente) return { ok: true };
+    const alias = GmailApp.getAliases().map(a => String(a).toLowerCase());
+    if (alias.indexOf(remitente) !== -1) return { ok: true };
+    return { ok: false, error: 'La cuenta que ejecuta el script no tiene dado de alta ' + CONFIG.ENVIO_OT.REMITENTE +
+      ' como "Enviar como" en Gmail. No se envió nada; avisa al administrador.' };
+  } catch (e) {
+    return { ok: false, error: 'No se pudo comprobar el remitente ' + CONFIG.ENVIO_OT.REMITENTE + ': ' + e.message };
+  }
+}
+
+function obtenerSubcarpetaOT_(padre, nombre) {
+  const it = padre.getFoldersByName(nombre);
+  return it.hasNext() ? it.next() : padre.createFolder(nombre);
+}
+
+// Guarda el PDF en la carpeta de la sucursal → ORDENES DE TRABAJO. Un reenvío
+// con el mismo PDF reutiliza el archivo; si cambió, se guarda como versión.
+function guardarPdfOTEnDrive_(ctx, blob) {
+  let base;
+  if (ctx.prueba) {
+    base = obtenerSubcarpetaOT_(DriveApp.getFolderById(CONFIG.FOLDER_ID), CONFIG.ENVIO_OT.CARPETA_PRUEBAS);
+  } else {
+    // Mismo resolvedor que SEAINF: el maestro RFC+sucursal manda, y la liga
+    // guardada en la OT sólo se acepta si la carpeta pertenece a ese cliente y
+    // sucursal (nunca la raíz ni la carpeta de otro cliente).
+    base = resolveClientBranchFolder_({ rfc: ctx.rfc, sucursal: ctx.sucursal, cliente: ctx.cliente, linkDrive: ctx.linkDrive });
+    if (!base) throw new Error('No se encontró la carpeta de Drive de este cliente y sucursal para guardar el PDF.');
+  }
+  const destino = obtenerSubcarpetaOT_(base, CONFIG.ENVIO_OT.SUBCARPETA_DRIVE);
+  const nombre = sanitizeDriveFileName_(blob.getName());
+  blob.setName(nombre);
+  const existentes = destino.getFilesByName(nombre);
+  if (existentes.hasNext()) {
+    const actual = existentes.next();
+    if (driveFileMatchesBlob_(actual, blob)) return actual.getUrl();
+    blob.setName(versionedFileName_(destino, nombre));
+  }
+  return destino.createFile(blob).getUrl();
+}
+
+// ── Acciones ──────────────────────────────────────────────────────────────
+
+/**
+ * Datos del modal de preverificación. No escribe nada.
+ * @param {Object} data { folio, rfc, cliente, sucursal, servicio, cuerpo:{...} }
+ */
+function prepararEnvioOT_(data) {
+  const ctx = contextoEnvioOT_(data);
+  if (!ctx.success) return ctx;
+  const envios = leerEnviosOT_(ctx.folio);
+  const previo = evaluarEnvioPrevioOT_(envios, false, '');
+  const estadoIntento = estadoIntentoOT_(envios, normalizarIntentoOT_(data && data.intento_id));
+  const cuerpo = construirCorreoOT_(Object.assign({}, (data && data.cuerpo) || {},
+    { folio: ctx.folio, cliente: ctx.cliente, sucursal: ctx.sucursal, servicio: ctx.servicio }));
+  return {
+    success: true, folio: ctx.folio, prueba: ctx.prueba,
+    remitente: CONFIG.ENVIO_OT.REMITENTE, nombre_remitente: CONFIG.ENVIO_OT.NOMBRE_REMITENTE,
+    cc_fijos: CONFIG.ENVIO_OT.CC_FIJOS.slice(), dominio_interno: CONFIG.ENVIO_OT.DOMINIO_INTERNO,
+    asunto: asuntoCorreoOT_(ctx.folio, ctx.cliente, ctx.prueba),
+    nombre_pdf: nombrePdfOT_(ctx.folio, ctx.cliente),
+    correos_perfil: ctx.correosPerfil.lista, correo_perfil_texto: ctx.correosPerfil.texto,
+    cuerpo_html: cuerpo.html,
+    ya_enviada: !previo.permitido, ultimo_envio: previo.ultimo || null,
+    envios: envios.slice(-5),
+    estado_intento: estadoIntento.estatus,
+    min_motivo_reenvio: CONFIG.ENVIO_OT.MIN_MOTIVO_REENVIO
+  };
+}
+
+/**
+ * Envía la OT con el PDF adjunto y la registra en ENVIOS_OT.
+ * @param {Object} data { folio, rfc, cliente, sucursal, servicio, para, cc_extra, pdf_base64,
+ *                        reenviar, motivo_reenvio, actualizar_perfil, cuerpo:{...} }
+ */
+function enviarOT_(data, usuario) {
+  const ctx = contextoEnvioOT_(data);
+  if (!ctx.success) return ctx;
+  const dest = armarDestinatariosOT_(data.para, data.cc_extra, ctx.prueba);
+  if (!dest.success) return dest;
+  const envios = leerEnviosOT_(ctx.folio);
+  // Reintento de un intento que ya llegó a Gmail (respuesta perdida): no se
+  // vuelve a enviar, ni siquiera con "Reenviar" marcado.
+  const intento = normalizarIntentoOT_(data.intento_id);
+  const previoIntento = estadoIntentoOT_(envios, intento);
+  if (previoIntento.estatus === ESTATUS_ENVIO_OK_) {
+    return { success: true, duplicado: true, estatus: ESTATUS_ENVIO_OK_, folio: ctx.folio, tipo: previoIntento.tipo,
+      para: String(previoIntento.para || '').split(/,\s*/).filter(Boolean), cc: String(previoIntento.cc || '').split(/,\s*/).filter(Boolean),
+      remitente: CONFIG.ENVIO_OT.REMITENTE, link_pdf: previoIntento.link_pdf, cambio_perfil: '' };
+  }
+  if (previoIntento.estatus === ESTATUS_ENVIO_PENDIENTE_) {
+    return { success: false, code: 'SIN_CONFIRMAR', error: 'Este envío (' + previoIntento.fecha + ') no se pudo confirmar: el correo pudo haber salido. ' +
+      'Revisa "Enviados" de ' + CONFIG.ENVIO_OT.REMITENTE + ' antes de volver a intentarlo.' };
+  }
+  const previo = evaluarEnvioPrevioOT_(envios, !!data.reenviar, data.motivo_reenvio);
+  if (!previo.permitido) return { success: false, code: previo.code, error: previo.error };
+  const pdf = decodificarPdfOT_(data.pdf_base64);
+  if (!pdf.success) return { success: false, code: 'PDF_INVALIDO', error: pdf.error };
+
+  const tipo = ctx.prueba ? 'PRUEBA' : (previo.reenvio ? 'REENVÍO' : 'ENVÍO');
+  const registro = { folio: ctx.folio, tipo: tipo, cliente: ctx.cliente, sucursal: ctx.sucursal, rfc: ctx.rfc,
+    servicio: ctx.servicio, para: dest.para, cc: dest.cc, usuario: usuario, intento: intento,
+    motivo: previo.reenvio ? String(data.motivo_reenvio || '').trim() : '' };
+  const fallo = (detalle, linkPdf) => {
+    registrarEnvioOT_(Object.assign({}, registro, { estatus: ESTATUS_ENVIO_ERROR_, detalle: detalle, link_pdf: linkPdf || '' }));
+    registrarAuditoria_(usuario, 'ENVIO_OT_ERROR', ctx.folio, 'envio', '', detalle);
+    return { success: false, code: 'ERROR_ENVIO', estatus: ESTATUS_ENVIO_ERROR_, error: detalle };
+  };
+
+  const remitente = remitenteDisponibleOT_();
+  if (!remitente.ok) return fallo(remitente.error);
+  try {
+    if (MailApp.getRemainingDailyQuota() < dest.para.length + dest.cc.length) {
+      return fallo('Se agotó la cuota diaria de correos de la cuenta del script. Intenta mañana.');
+    }
+  } catch (_) { /* si no se puede consultar la cuota, se intenta el envío */ }
+
+  const blob = Utilities.newBlob(pdf.bytes, 'application/pdf', nombrePdfOT_(ctx.folio, ctx.cliente));
+  let linkPdf = '';
+  try {
+    linkPdf = guardarPdfOTEnDrive_(ctx, blob.copyBlob());
+  } catch (e) {
+    return fallo('No se pudo guardar el PDF en Drive: ' + e.message);
+  }
+
+  const correo = construirCorreoOT_(Object.assign({}, data.cuerpo || {},
+    { folio: ctx.folio, cliente: ctx.cliente, sucursal: ctx.sucursal, servicio: ctx.servicio }));
+  // El intento queda escrito antes del envío: si algo falla después de que
+  // Gmail lo mandó, la fila "Enviando" impide un segundo envío automático.
+  const filaEnvio = registrarEnvioOT_(Object.assign({}, registro, { estatus: ESTATUS_ENVIO_PENDIENTE_, link_pdf: linkPdf }));
+  try {
+    GmailApp.sendEmail(dest.para.join(','), asuntoCorreoOT_(ctx.folio, ctx.cliente, ctx.prueba), correo.texto, {
+      from: CONFIG.ENVIO_OT.REMITENTE,
+      name: CONFIG.ENVIO_OT.NOMBRE_REMITENTE,
+      replyTo: CONFIG.ENVIO_OT.REPLY_TO,
+      cc: dest.cc.join(','),
+      htmlBody: correo.html,
+      attachments: [blob]
+    });
+  } catch (e) {
+    const detalle = 'Gmail no envió el correo: ' + e.message;
+    cerrarEnvioOT_(filaEnvio, ESTATUS_ENVIO_ERROR_, detalle);
+    registrarAuditoria_(usuario, 'ENVIO_OT_ERROR', ctx.folio, 'envio', '', detalle);
+    return { success: false, code: 'ERROR_ENVIO', estatus: ESTATUS_ENVIO_ERROR_, error: detalle };
+  }
+
+  try {
+    cerrarEnvioOT_(filaEnvio, ESTATUS_ENVIO_OK_);
+  } catch (e) {
+    // El correo sí salió; la fila se queda en "Enviando" y sigue bloqueando reenvíos.
+    Logger.log('enviarOT_: correo enviado pero no se pudo marcar como Enviada: ' + e.message);
+  }
+  registrarAuditoria_(usuario, tipo === 'REENVÍO' ? 'REENVIO_OT' : 'ENVIO_OT', ctx.folio, 'envio', '',
+    'Para: ' + dest.para.join(', ') + ' | CC: ' + dest.cc.join(', '));
+
+  // El cambio de correo en el perfil nunca se aplica directo: es dato crítico
+  // y entra al flujo de aprobación de CAMBIOS_PENDIENTES.
+  let cambioPerfil = '';
+  if (data.actualizar_perfil && !ctx.prueba) {
+    try {
+      const nuevo = dest.para.join(', ');
+      if (normalizarValorCliente_(nuevo) !== normalizarValorCliente_(ctx.correosPerfil.lista.join(', '))) {
+        registrarCambiosPendientes_({ rfc: ctx.rfc, sucursal: ctx.sucursal, razon_social: ctx.cliente },
+          [{ campo: 'correo_informe', etiqueta: 'Correo para informes', anterior: ctx.correosPerfil.texto, nuevo: nuevo }],
+          'SEAOT', { nombre_solicitante: usuario });
+        cambioPerfil = 'PENDIENTE';
+      } else {
+        cambioPerfil = 'SIN_CAMBIO';
+      }
+    } catch (e) {
+      Logger.log('enviarOT_ cambio de perfil: ' + e.message);
+      cambioPerfil = 'ERROR';
+    }
+  }
+  return { success: true, estatus: ESTATUS_ENVIO_OK_, folio: ctx.folio, tipo: tipo, para: dest.para, cc: dest.cc,
+    remitente: CONFIG.ENVIO_OT.REMITENTE, link_pdf: linkPdf, cambio_perfil: cambioPerfil };
 }
 
 // Aviso al equipo interno. Una falla de correo no revierte el cambio, que ya

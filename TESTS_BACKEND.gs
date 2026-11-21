@@ -1952,8 +1952,67 @@ function runUnitTests() {
     reprogramarOT_({ ot: TEST_FOLIO, fechaVisita: '2020-01-01', motivo: 'Cliente pidió cambio' }, 'test').error,
     'La nueva fecha de visita no puede ser anterior a hoy.');
 
+  _unitTestsEnvioOT_();
+
   var pass = _results_.filter(function(r){ return r.indexOf('PASS') === 0; }).length;
   var fail = _results_.filter(function(r){ return r.indexOf('FAIL') === 0; }).length;
   Logger.log('');
   Logger.log('  UNIT: ' + pass + ' PASS | ' + fail + ' FAIL');
+}
+
+// ── Envío de OT desde el servidor (enviarOT): lógica pura ─────────────────
+function _unitTestsEnvioOT_() {
+  var nf = normalizarFolioEnvioOT_('otb2611-12');
+  _eq_('U160: folio real se normaliza a 4 dígitos', nf.folio + '|' + nf.prueba + '|' + nf.valido, 'OTB2611-0012|false|true');
+  nf = normalizarFolioEnvioOT_('prueba-1');
+  _eq_('U161: folio de prueba PRUEBA-0001', nf.folio + '|' + nf.prueba + '|' + nf.valido, 'PRUEBA-0001|true|true');
+  _eq_('U162: folio fuera de serie se rechaza', normalizarFolioEnvioOT_('OTA2611-0001').valido, false);
+  _eq_('U163: folio TEST-E2E no es enviable', normalizarFolioEnvioOT_(TEST_FOLIO).valido, false);
+
+  var pc = parsearCorreosOT_(' Ana@Cliente.com, ana@cliente.com; jose@cliente.mx\nmal@correo , sin-arroba ');
+  _eq_('U164: correos en minúsculas y sin duplicados', pc.validos.join(','), 'ana@cliente.com,jose@cliente.mx');
+  _eq_('U165: correos inválidos detectados', pc.invalidos.join(','), 'mal@correo,sin-arroba');
+
+  var d = armarDestinatariosOT_('ana@cliente.com, ANA@cliente.com', 'extra@cliente.com, aclientes@ejecutivambiental.com', false);
+  _eq_('U166: Para sin duplicados', d.para.join(','), 'ana@cliente.com');
+  _eq_('U167: CC = fijas + adicionales sin repetir', d.cc.join(','),
+    'aclientes@ejecutivambiental.com,direccion.general@ejecutivambiental.com,extra@cliente.com');
+  _eq_('U168: sin destinatario en Para se bloquea', armarDestinatariosOT_('', 'x@y.com', false).code, 'SIN_DESTINATARIO');
+  _eq_('U169: correo inválido se bloquea', armarDestinatariosOT_('ana@cliente', '', false).code, 'CORREO_INVALIDO');
+  _eq_('U170: un correo que va en Para no se repite en CC',
+    armarDestinatariosOT_('aclientes@ejecutivambiental.com', '', false).cc.join(','), 'direccion.general@ejecutivambiental.com');
+  _eq_('U171: prueba a correo externo se bloquea', armarDestinatariosOT_('ana@cliente.com', '', true).code, 'PRUEBA_EXTERNA');
+  _eq_('U172: prueba a correo interno se permite', armarDestinatariosOT_('operaciones@ejecutivambiental.com', '', true).success, true);
+  _eq_('U173: dominio parecido no cuenta como interno', esCorreoInternoOT_('x@noejecutivambiental.com'), false);
+
+  var envios = [{ estatus: 'Error de envío', fecha: '01/11/2026', para: 'a@b.com' }];
+  _eq_('U174: un error previo no bloquea el reintento', evaluarEnvioPrevioOT_(envios, false, '').permitido, true);
+  envios.push({ estatus: 'Enviada', fecha: '02/11/2026 10:00:00', para: 'a@b.com' });
+  _eq_('U175: OT ya enviada se bloquea sin Reenviar', evaluarEnvioPrevioOT_(envios, false, '').code, 'YA_ENVIADA');
+  _eq_('U176: Reenviar exige motivo', evaluarEnvioPrevioOT_(envios, true, 'corto').code, 'MOTIVO_REENVIO');
+  var re = evaluarEnvioPrevioOT_(envios, true, 'El cliente pidió el PDF otra vez');
+  _eq_('U177: Reenviar con motivo se permite y queda marcado', re.permitido + '|' + re.reenvio, 'true|true');
+
+  _eq_('U178: asunto igual al de hoy', asuntoCorreoOT_('OT2611-0005', 'EMPRESA SA', false),
+    'Orden de Trabajo OT2611-0005 - EMPRESA SA - Ejecutiva Ambiental');
+  _eq_('U179: asunto de prueba marcado', asuntoCorreoOT_('PRUEBA-0001', 'EMPRESA', true).indexOf('[PRUEBA] '), 0);
+  _eq_('U180: nombre del PDF', nombrePdfOT_('OTB2611-0012', 'EMPRESA / NORTE: SA'), 'OT_OTB2611-0012_EMPRESA NORTE SA.pdf');
+
+  var base = { folio: 'OTB2611-0012', cliente: 'EMPRESA <SA>', sucursal: 'Norte', giro: 'Alimentos', registro_patronal: 'Y12',
+    capacidad_instalada: '100 t', capacidad_operacion: '80 t', direccion: 'Av. Reforma 1, Puebla',
+    servicio: 'NOM-035-STPS-2018', servicios: [{ servicio: 'NOM-035-STPS-2018', fecha: '2026-11-25', cantidad: '10 puntos' }] };
+  var c = construirCorreoOT_(base);
+  _check_('U181: texto con razón social, giro, registro patronal y capacidades',
+    ['EMPRESA <SA>', 'Alimentos', 'Y12', '100 t', '80 t', 'Av. Reforma 1, Puebla', '222-941-7295'].every(function(x) { return c.texto.indexOf(x) !== -1; }));
+  _check_('U182: liga de Google Maps', c.texto.indexOf('https://maps.google.com/maps?q=Av.%20Reforma%201%2C%20Puebla') !== -1);
+  _check_('U183: servicio con fecha dd/mm/yyyy', c.texto.indexOf('NOM-035-STPS-2018 | Fecha: 25/11/2026 | 10 puntos') !== -1);
+  _check_('U184: HTML escapa datos del cliente', c.html.indexOf('EMPRESA &lt;SA&gt;') !== -1 && c.html.indexOf('<SA>') === -1);
+  _check_('U185: sin NOM-081 no hay aviso a la autoridad', !c.conNom081 && c.texto.indexOf('NOM-081') === -1);
+  _check_('U186: ya no se menciona a la SMADSOT en copia', c.texto.indexOf('SMADSOT') === -1);
+  var c81 = construirCorreoOT_(Object.assign({}, base, { servicio: 'NOM-081-SEMARNAT-1994', servicios: [] }));
+  _check_('U187: con NOM-081 aparece el aviso de notificación', c81.conNom081 && c81.texto.indexOf('notificamos este servicio') !== -1);
+  _eq_('U190: un envío sin confirmar ("Enviando") también bloquea el reintento',
+    evaluarEnvioPrevioOT_([{ estatus: 'Enviando', fecha: '03/11/2026', para: 'a@b.com' }], false, '').code, 'YA_ENVIADA');
+  _check_('U188: PDF válido se acepta', decodificarPdfOT_('data:application/pdf;base64,JVBERi0xLjQK').success);
+  _eq_('U189: archivo que no es PDF se rechaza', decodificarPdfOT_('aG9sYQ==').success, false);
 }

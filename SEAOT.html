@@ -143,6 +143,30 @@
     .og-modal-botones{display:flex;gap:8px;margin-top:15px;}
     .og-modal-botones button{flex:1;border:0;border-radius:4px;padding:9px;cursor:pointer;font-weight:bold;color:#fff;}
     .og-modal-botones button:disabled{opacity:.5;cursor:not-allowed;}
+    /* Envío de la OT: ventana de redacción con preverificación de destinatarios */
+    .envio-modal{max-width:720px;padding:0;overflow:hidden;display:flex;flex-direction:column;max-height:calc(100vh - 40px);}
+    .envio-titulo{background:#1e5a3e;color:#fff;padding:10px 14px;font-weight:bold;font-size:13px;display:flex;align-items:center;gap:8px;}
+    .envio-titulo .envio-cerrar{margin-left:auto;background:transparent;border:0;color:#fff;font-size:18px;cursor:pointer;line-height:1;}
+    .envio-chip-prueba{background:#ffc107;color:#5c4400;border-radius:10px;padding:1px 8px;font-size:10px;}
+    .envio-cuerpo{overflow-y:auto;padding:0 14px 12px;}
+    .envio-fila{display:grid;grid-template-columns:64px 1fr;align-items:center;gap:8px;border-bottom:1px solid #e9ecef;padding:7px 0;font-size:12px;}
+    .envio-fila > label{color:#555;font-weight:bold;}
+    .envio-fila input[type="text"]{width:100%;border:0;background:transparent;padding:4px 0;font-size:12px;outline:none;}
+    .envio-fila input[type="text"]:focus{border-bottom:1px solid #1e5a3e;}
+    .envio-ro{color:#333;word-break:break-word;}
+    .envio-chips{display:flex;flex-wrap:wrap;gap:4px;align-items:center;}
+    .envio-chip{background:#e9ecef;border-radius:12px;padding:2px 9px;font-size:11px;color:#333;}
+    .envio-chip.fija{background:#d4edda;color:#155724;}
+    .envio-chip.mal{background:#f8d7da;color:#721c24;}
+    .envio-adjunto{display:flex;align-items:center;gap:8px;margin:10px 0;padding:8px 10px;border:1px solid #dee2e6;border-radius:6px;background:#f8f9fa;font-size:12px;}
+    .envio-adjunto a{color:#1e5a3e;font-weight:bold;word-break:break-all;}
+    .envio-check{display:flex;gap:6px;align-items:flex-start;font-size:11px;margin:8px 0;color:#333;}
+    .envio-modal label{text-transform:none;letter-spacing:normal;}
+    .envio-fila > label{text-transform:uppercase;font-size:10px;}
+    .envio-modal iframe{width:100%;height:260px;border:1px solid #dee2e6;border-radius:6px;background:#fff;}
+    .envio-modal textarea{width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;font-size:11px;font-family:inherit;margin-top:4px;}
+    .envio-modal .og-modal-botones{padding:0 14px 14px;margin-top:6px;}
+    @media (max-width:640px){.envio-fila{grid-template-columns:1fr;gap:2px;}}
     @media (max-width:640px){.og-detalle{grid-template-columns:1fr;}.og-filtros input[type="search"]{min-width:0;flex:1 1 100%;}}
     @media print{
       .nav-tabs,.excel-controls,.excel-mapping-info,.no-print,.modal-overlay,#sea-user-info,.data-sync-indicator{display:none !important;}
@@ -312,8 +336,8 @@
       <strong>🔧 Gestión de Orden:</strong>
       <button onclick="generateWorkOrder()">Generar desde Perfil</button>
       <button onclick="registerToSheets(event)" style="background:#007bff;">🚀 Registrar OT en API</button>
-      <button onclick="printWorkOrder()">Imprimir/PDF</button>
-      <button onclick="sendWorkOrder()">Enviar por Email</button>
+      <button onclick="printWorkOrder()">🖨️ Imprimir</button>
+      <button id="btnEnviarOT" onclick="abrirEnvioOT()" style="background:#c0392b;">✉️ Enviar OT</button>
       <button onclick="openFormatosModal()" style="background:#6f42c1;">📄 Formatos asociados</button>
       <span id="workorderStatus"></span>
     </div>
@@ -545,9 +569,48 @@
       </div>
     </div>
   </div>
+
+  <div id="otEnvioModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="envTitulo">
+    <div class="modal-content envio-modal">
+      <div class="envio-titulo">
+        <span id="envTitulo">✉️ Enviar Orden de Trabajo <span id="envFolio"></span></span>
+        <span id="envPruebaChip" class="envio-chip-prueba" hidden>PRUEBA · solo correos internos</span>
+        <button type="button" class="envio-cerrar" onclick="cerrarEnvioOT()" aria-label="Cerrar">×</button>
+      </div>
+      <div class="envio-cuerpo">
+        <div class="envio-fila"><label>De</label><div id="envDe" class="envio-ro"></div></div>
+        <div class="envio-fila"><label for="envPara">Para</label>
+          <div><input type="text" id="envPara" autocomplete="off" placeholder="correo@cliente.com, otro@cliente.com">
+            <div id="envParaChips" class="envio-chips"></div></div></div>
+        <div class="envio-fila"><label for="envCc">CC</label>
+          <div><div id="envCcFijos" class="envio-chips" title="Copias internas fijas"></div>
+            <input type="text" id="envCc" autocomplete="off" placeholder="Agregar CC adicionales, separados por coma">
+            <div id="envCcChips" class="envio-chips"></div></div></div>
+        <div class="envio-fila"><label>Asunto</label><div id="envAsunto" class="envio-ro"></div></div>
+        <div class="envio-adjunto">📎 <a id="envPdfLink" href="#" target="_blank" rel="noopener"></a><span id="envPdfInfo" class="og-ayuda"></span></div>
+        <label class="envio-check" id="envPerfilWrap"><input type="checkbox" id="envActualizarPerfil">
+          <span>Actualizar también en el perfil del cliente<br><span class="og-ayuda">Los cambios en "Para" aplican solo a este envío. Si marcas esta casilla, el nuevo correo queda en "Cambios pendientes" para aprobarse.</span></span></label>
+        <div id="envYaEnviada" class="og-aviso" hidden>
+          <div id="envYaEnviadaTexto"></div>
+          <label class="envio-check"><input type="checkbox" id="envReenviar"> <b>Reenviar</b> esta OT (quedará registrado como reenvío)</label>
+          <textarea id="envMotivo" rows="2" maxlength="300" placeholder="Motivo del reenvío (mínimo 10 caracteres)" hidden></textarea>
+        </div>
+        <div id="envError" class="og-aviso og-peligro" hidden></div>
+        <div class="og-ayuda" style="margin:8px 0 4px;">Vista previa del mensaje</div>
+        <iframe id="envVistaPrevia" sandbox="" title="Vista previa del correo"></iframe>
+      </div>
+      <div class="og-modal-botones">
+        <button type="button" style="background:#6c757d;" onclick="cerrarEnvioOT()" id="envCancelarBtn">Cancelar</button>
+        <button type="button" style="background:#1e5a3e;" onclick="confirmarEnvioOT()" id="envEnviarBtn">Confirmar y enviar</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- PDF de la OT por código (adjunto del correo, copia en Drive y descarga) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="catalogo-servicios.js"></script>
 <script>
   // ✅ NUEVA API CENTRAL
@@ -1069,6 +1132,12 @@
     ['og_texto'].forEach(id => document.getElementById(id).addEventListener('input', renderOrdenesGestion));
     ['og_serie', 'og_estatus', 'og_desde', 'og_hasta'].forEach(id => document.getElementById(id).addEventListener('change', renderOrdenesGestion));
     document.getElementById('otCancelarMotivo').addEventListener('input', actualizarFormCancelarOT);
+    ['envPara', 'envCc', 'envMotivo'].forEach(id => document.getElementById(id).addEventListener('input', revisarDestinatariosEnvio));
+    document.getElementById('envActualizarPerfil').addEventListener('change', revisarDestinatariosEnvio);
+    document.getElementById('envReenviar').addEventListener('change', function () {
+      document.getElementById('envMotivo').hidden = !this.checked;
+      revisarDestinatariosEnvio();
+    });
     document.getElementById('otReprogramarMotivo').addEventListener('input', actualizarFormReprogramarOT);
     document.getElementById('otReprogramarFecha').addEventListener('input', actualizarFormReprogramarOT);
     ['otVerModal', 'otCancelarModal', 'otReprogramarModal'].forEach(id => {
@@ -1249,9 +1318,12 @@
     document.getElementById('wo_issueDate').value = fechaLocalISO();
     updateOrderNumber(); syncData(); generateQRCode(); showStatus('workorderStatus','Orden de trabajo generada automáticamente','success');
   }
+  // QR fijo con "tel:2229417295", incrustado para que el PDF generado por código
+  // lo incluya (una imagen de otro dominio no se puede capturar en el PDF).
+  const QR_TEL_EMPRESA_ = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAADIAQAAAACFI5MzAAAAyElEQVR42u2Yuw7DMAwDeUX+/5evgx9Jh84tg2QwIngiJB0JY758rzw3v7+Jq0FezkQ79RxLAx+KaO3PcdGCxF3VT6JB2/fnOH8xxDvomYvDBxJ69bD6g+yqVA9XPyX18xbdFqSzLvaf12LbBLWD2lbzmgEDEyAx0M0Dg8xjIa6ZB8g01AkF7OfblLQcqHbe2PnaEJnGeot87dmwZr7BkARIInfIozu6jZhdr8fhQ2EQvD5fj4ydkUqL/Wfx7Vwdq/U8r0V/fPMGjBVcgwZOC40AAAAASUVORK5CYII=';
   function generateQRCode() {
     const cont = document.getElementById('qrCodeContainer'); if (!cont) return; cont.innerHTML = '';
-    const img = document.createElement('img'); img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=tel:2229417295'; img.style.cssText = 'width:80px;height:80px;border:1px solid #ccc;border-radius:4px;'; cont.appendChild(img);
+    const img = document.createElement('img'); img.src = QR_TEL_EMPRESA_; img.alt = 'QR: llamar al 222-941-7295'; img.style.cssText = 'width:80px;height:80px;border:1px solid #ccc;border-radius:4px;'; cont.appendChild(img);
   }
   function addWorkRow() {
     const tbody = document.getElementById('workTableBody'); const tr = document.createElement('tr');
@@ -1374,80 +1446,355 @@
     window.print();
     setTimeout(() => { replaced.forEach(({ sel, span }) => { sel.style.display = ''; span.remove(); }); replacedDates.forEach(({ inp, span }) => { inp.style.display = ''; span.remove(); }); controls.forEach(e => e.style.display = ''); document.getElementById('profileTab').style.display = ''; switchTab('workorder'); document.title = prevTitle; }, 800);
   }
-  async function sendWorkOrder() {
-    if (!validarRevisionContrato() || !confirmarCronologiaOT()) return;
-    if (!(await verificarFolioParaEmitir())) return;
-    const email = document.getElementById('wo_email')?.value;
-    const orderNumber = document.getElementById('wo_orderNumber')?.value || 'Nueva';
-    if (!email) { showStatus('workorderStatus','No hay email de cliente disponible','warning'); return; }
+  // ================== ENVÍO DE LA OT DESDE EL SERVIDOR ==================
+  // El correo lo envía el Apps Script desde operaciones@ con el PDF adjunto.
+  // Ya no se usa mailto: (salía de la cuenta instalada en cada computadora).
+  // Flujo: validar → prepararEnvioOT (reglas del servidor) → generar PDF →
+  // ventana de preverificación → enviarOT → descarga local del mismo PDF.
 
-    const cc = 'eduwin.ejecutiva@gmail.com';
-    const company = profileData.companyName || '';
-    const branch = profileData.branch || 'No especificada';
-    const giro = profileData.businessType || 'No especificado';
-    const patronal = profileData.patronalRegistry || 'No especificado';
-    const installed = profileData.installedCapacity || 'No especificada';
-    const operation = profileData.operationCapacity || 'No especificada';
-    const address = profileData.evaluationAddress || '';
-    const maps = address ? `https://maps.google.com/maps?q=${encodeURIComponent(address.trim())}` : 'Dirección no disponible';
+  // A4 con márgenes de 10 mm, igual que @page en la impresión.
+  const PDF_OT_ = { ancho: 210, alto: 297, margen: 10 };
+  const REGEX_CORREO_OT = /^[^\s@,;<>()"']+@[^\s@,;<>()"']+\.[a-z]{2,}$/i;
+  const envioOT = { prep: null, datos: null, cuerpo: null, pdf: null, pdfUrl: '', huella: '', intento: '', enviando: false };
+  // Un intento por ventana abierta: los reintentos de esa ventana repiten el
+  // mismo id y el servidor no vuelve a mandar uno que ya salió.
+  function nuevoIntentoOT_() {
+    try { if (crypto.randomUUID) return crypto.randomUUID(); } catch (_) {}
+    return 'i' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
+  }
 
-    const subject = `Orden de Trabajo ${orderNumber} - ${company} - Ejecutiva Ambiental`;
+  // Huella de TODO lo que va en el correo y en el PDF: cada control de la OT
+  // (fechas, cantidades, observaciones, casillas…) y los datos del perfil del
+  // cuerpo. Correo y PDF salen de la misma captura: si cambia, se rehace.
+  function huellaOT_() {
+    const controles = Array.from(document.querySelectorAll('#workorderTab input, #workorderTab select, #workorderTab textarea'))
+      .map(el => el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value);
+    return JSON.stringify([controles, cuerpoCorreoOT_()]);
+  }
 
-    let serviciosDetalle = '';
-    document.querySelectorAll('#workTableBody tr').forEach(row => {
-      const fields = row.querySelectorAll('input, select, textarea');
-      if (fields.length >= 5 && fields[0].value) {
-        serviciosDetalle += `\n  - ${fields[0].value}`;
-        if (fields[2].value) serviciosDetalle += ` | Fecha: ${fields[2].value}`;
-        if (fields[3].value) serviciosDetalle += ` | ${fields[3].value}`;
-      }
+  function parsearCorreos(texto) {
+    const validos = [], invalidos = [];
+    String(texto || '').split(/[,;\s]+/).forEach(p => {
+      const c = p.trim().replace(/^<|>$/g, '').toLowerCase();
+      if (!c) return;
+      if (!REGEX_CORREO_OT.test(c)) { if (!invalidos.includes(c)) invalidos.push(c); }
+      else if (!validos.includes(c)) validos.push(c);
     });
+    return { validos, invalidos };
+  }
 
-    const body = `Estimado,
+  // Datos del cuerpo del correo: los mismos que usaba el mailto.
+  function cuerpoCorreoOT_() {
+    const servicios = [];
+    document.querySelectorAll('#workTableBody tr').forEach(row => {
+      const f = row.querySelectorAll('input, select, textarea');
+      if (f.length >= 5 && f[0].value) servicios.push({ servicio: f[0].value.trim(), fecha: f[2].value || '', cantidad: (f[3].value || '').trim() });
+    });
+    return {
+      giro: profileData.businessType || '', registro_patronal: profileData.patronalRegistry || '',
+      capacidad_instalada: profileData.installedCapacity || '', capacidad_operacion: profileData.operationCapacity || '',
+      direccion: profileData.evaluationAddress || _valCampo('wo_serviceAddress'), servicios
+    };
+  }
 
-Su Orden de Trabajo ${orderNumber} ha sido generada correctamente.
+  // Estilos de impresión aplicados a la captura: las reglas de @media print se
+  // copian bajo body.modo-pdf, así el PDF sale con el mismo diseño que Imprimir
+  // sin mantener dos hojas de estilo.
+  function prepararEstilosPdf_() {
+    if (document.getElementById('estilosModoPdf')) return;
+    const reglas = [];
+    const prefijar = sel => sel.split(',').map(x => {
+      x = x.trim();
+      return /^body\b/.test(x) ? x.replace(/^body/, 'body.modo-pdf') : 'body.modo-pdf ' + x;
+    }).join(',');
+    Array.from(document.styleSheets).forEach(hoja => {
+      let lista; try { lista = hoja.cssRules; } catch (_) { return; }
+      Array.from(lista || []).forEach(r => {
+        if (!(r instanceof CSSMediaRule) || !/\bprint\b/.test(r.media.mediaText)) return;
+        Array.from(r.cssRules).forEach(x => { if (x instanceof CSSStyleRule) reglas.push(prefijar(x.selectorText) + '{' + x.style.cssText + '}'); });
+      });
+    });
+    const st = document.createElement('style');
+    st.id = 'estilosModoPdf';
+    st.textContent = reglas.join('\n');
+    document.head.appendChild(st);
+  }
 
-Datos principales
-  • 🏢 Razón Social: ${company}
-  • Sucursal: ${branch}
-  • Giro/Actividad: ${giro}
-  
-Ubicación del servicio
-📍 Dirección: ${address}
-🔗 Google Maps: ${maps}
+  // Igual que printWorkOrder: <select> y fechas como texto, sin controles.
+  // Se hace sobre la copia que crea html2canvas, así la pantalla no cambia.
+  function ajustarCopiaParaPdf_(doc, anchoPx) {
+    const orig = document.getElementById('workorderTab');
+    const tab = doc.getElementById('workorderTab');
+    doc.body.classList.add('modo-pdf');
+    tab.style.display = 'block';
+    tab.style.width = anchoPx + 'px';
+    const pares = sel => [Array.from(orig.querySelectorAll(sel)), Array.from(tab.querySelectorAll(sel))];
+    const comoTexto = (el, texto, extra) => {
+      const span = doc.createElement('span');
+      span.textContent = texto;
+      span.style.cssText = 'font-size:11px;color:#333;' + (extra || '');
+      el.parentNode.insertBefore(span, el);
+      el.style.display = 'none';
+      return span;
+    };
+    let [o, c] = pares('select');
+    c.forEach((el, i) => comoTexto(el, o[i] && o[i].options[o[i].selectedIndex] ? o[i].options[o[i].selectedIndex].text : ''));
+    [o, c] = pares('input[type="date"]');
+    c.forEach((el, i) => comoTexto(el, fechaADMY_(o[i] ? o[i].value : '')));
+    // html2canvas no ajusta el texto de un <textarea> al ancho: se dibuja como bloque.
+    [o, c] = pares('textarea');
+    c.forEach((el, i) => {
+      const cs = doc.defaultView.getComputedStyle(el);
+      // Vacío: como al imprimir, se ve el texto de ayuda (p. ej. el recordatorio de EPP) en gris.
+      const valor = o[i] ? o[i].value : '';
+      const ayuda = !valor && el.getAttribute('placeholder') ? el.getAttribute('placeholder') : '';
+      comoTexto(el, valor || ayuda, (ayuda ? 'color:#757575;' : '') + `display:block;white-space:pre-wrap;word-wrap:break-word;box-sizing:border-box;` +
+        `width:${cs.width};min-height:${cs.height};padding:${cs.padding};border:${cs.border};border-radius:${cs.borderRadius};background:${cs.backgroundColor};`);
+    });
+    // html2canvas dibuja el placeholder como si fuera texto capturado.
+    [o, c] = pares('input');
+    c.forEach((el, i) => { el.removeAttribute('placeholder'); if (o[i]) { el.value = o[i].value; el.checked = o[i].checked; } });
+  }
 
+  async function generarPdfOT_() {
+    if (!window.html2canvas || !window.jspdf) throw new Error('No cargó el generador de PDF. Recarga la página e intenta de nuevo.');
+    prepararEstilosPdf_();
+    const utilAncho = PDF_OT_.ancho - 2 * PDF_OT_.margen, utilAlto = PDF_OT_.alto - 2 * PDF_OT_.margen;
+    const anchoPx = Math.round(utilAncho / 25.4 * 96);   // 190 mm a 96 ppp, como el diálogo de impresión
+    if (document.fonts && document.fonts.ready) await document.fonts.ready;
+    const canvas = await html2canvas(document.getElementById('workorderTab'), {
+      scale: 2, backgroundColor: '#ffffff', logging: false, useCORS: true,
+      windowWidth: anchoPx, scrollX: 0, scrollY: 0,
+      onclone: doc => ajustarCopiaParaPdf_(doc, anchoPx)
+    });
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
+    let w = utilAncho, h = canvas.height * utilAncho / canvas.width, escala = 1;
+    if (h > utilAlto) { escala = utilAlto / h; h = utilAlto; w = utilAncho * escala; }   // siempre una sola hoja
+    pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', PDF_OT_.margen + (utilAncho - w) / 2, PDF_OT_.margen, w, h);
+    const blob = pdf.output('blob');
+    const base64 = pdf.output('datauristring').split(',')[1];
+    return { blob, base64, escala, kb: Math.round(blob.size / 1024) };
+  }
 
-📋 Servicios incluidos
-${serviciosDetalle || '• Ver detalle en la orden de trabajo adjunta.'}
+  function chips(contenedor, correos, clase, agregar) {
+    const el = document.getElementById(contenedor);
+    if (!agregar) el.innerHTML = '';
+    correos.forEach(c => {
+      const s = document.createElement('span');
+      s.className = 'envio-chip ' + (clase || '');
+      s.textContent = clase === 'mal' ? '✖ ' + c : c;
+      if (clase === 'mal') s.title = 'Formato de correo inválido';
+      el.appendChild(s);
+    });
+  }
 
-Información técnica
-⚙️ Capacidad Instalada: ${installed}
-⚙️ Capacidad de Operación: ${operation}
-⚙️ Registro Patronal: ${patronal}
+  function errorEnvio(msg) {
+    const el = document.getElementById('envError');
+    el.textContent = msg || '';
+    el.hidden = !msg;
+  }
 
-✅ Notificación requerida por normativa ambiental
-Para los servicios relacionados con la NOM-081-SEMARNAT-1994, y como parte de nuestras obligaciones de registro en el Padrón de Laboratorios Autorizados, realizamos una notificación a la autoridad ambiental correspondiente.
-Por este motivo, la SMADSOT se encuentra incluida en copia en este correo. Esta notificación es un proceso estándar y no requiere ninguna acción adicional de su parte.
+  // Revisión en vivo de Para y CC: formato, duplicados y destinatario mínimo.
+  function revisarDestinatariosEnvio() {
+    const prep = envioOT.prep;
+    if (!prep) return null;
+    const para = parsearCorreos(document.getElementById('envPara').value);
+    const fijos = prep.cc_fijos.map(c => c.toLowerCase());
+    const extra = parsearCorreos(document.getElementById('envCc').value);
+    const ccExtra = extra.validos.filter(c => !fijos.includes(c) && !para.validos.includes(c));
+    chips('envParaChips', para.validos);
+    chips('envParaChips', para.invalidos, 'mal', true);
+    chips('envCcChips', ccExtra);
+    chips('envCcChips', extra.invalidos, 'mal', true);
+    const perfil = (prep.correos_perfil || []).slice().sort().join(',');
+    const distinto = !prep.prueba && para.validos.length && para.validos.slice().sort().join(',') !== perfil;
+    const cbPerfil = document.getElementById('envActualizarPerfil');
+    document.getElementById('envPerfilWrap').style.display = distinto ? '' : 'none';
+    if (!distinto) cbPerfil.checked = false;
 
+    let error = '';
+    const invalidos = para.invalidos.concat(extra.invalidos);
+    if (invalidos.length) error = 'Corrige el formato de: ' + invalidos.join(', ') + '.';
+    else if (!para.validos.length) error = 'Agrega al menos un destinatario en "Para".';
+    else if (prep.prueba) {
+      const dom = '@' + prep.dominio_interno;
+      const externos = para.validos.concat(ccExtra).filter(c => !c.endsWith(dom));
+      if (externos.length) error = 'Envío de prueba: solo correos ' + dom + '. Quita: ' + externos.join(', ') + '.';
+    }
+    if (!error && prep.ya_enviada) {
+      if (!document.getElementById('envReenviar').checked) error = 'Esta OT ya fue enviada. Marca "Reenviar" si de verdad quieres mandarla otra vez.';
+      else if (document.getElementById('envMotivo').value.trim().length < (prep.min_motivo_reenvio || 10)) error = 'Escribe el motivo del reenvío.';
+    }
+    if (!error && envioOT.bloqueado) error = 'Este envío quedó sin confirmar. Cierra la ventana y revisa antes de reenviar.';
+    document.getElementById('envEnviarBtn').disabled = !!error || envioOT.enviando;
+    document.getElementById('envEnviarBtn').title = error;
+    return { error, para: para.validos, ccExtra };
+  }
 
-Qué sigue
-• Revise la orden adjunta.
-• Comparta este correo con su contacto en planta o en sitio.
-• Si hay restricciones de acceso, horarios o requisitos adicionales, respóndanos por este medio.
+  function mostrarYaEnviada_(prep) {
+    const box = document.getElementById('envYaEnviada');
+    box.hidden = !prep.ya_enviada;
+    document.getElementById('envReenviar').checked = false;
+    document.getElementById('envMotivo').value = '';
+    document.getElementById('envMotivo').hidden = true;
+    if (prep.ya_enviada && prep.ultimo_envio) {
+      const u = prep.ultimo_envio;
+      document.getElementById('envYaEnviadaTexto').textContent = u.estatus === 'Enviando'
+        ? `⚠ Hay un envío del ${u.fecha} a ${u.para} que no se pudo confirmar: el correo pudo haber salido. Revisa "Enviados" de ${prep.remitente} antes de reenviar.`
+        : `⚠ Esta OT ya se envió el ${u.fecha} a ${u.para}${u.usuario ? ' (por ' + u.usuario + ')' : ''}.`;
+    }
+  }
 
-📌 Requisitos de seguridad
-Nuestro personal acudirá con el EPP correspondiente:
-botas, casco, lentes, y guantes de seguridad, protección auditiva, y chaleco.
+  async function abrirEnvioOT() {
+    if (envioOT.enviando) return;
+    if (!servicioActual()) { showStatus('workorderStatus', 'Elija el servicio de esta OT.', 'error'); return; }
+    if (!validarRevisionContrato() || !confirmarCronologiaOT()) return;
+    const btn = document.getElementById('btnEnviarOT');
+    const textoBtn = btn.textContent;
+    btn.disabled = true; btn.textContent = '⏳ Preparando...';
+    try {
+      const folioEl = document.getElementById('wo_orderNumber');
+      if (folioEl) folioEl.value = normalizarFolioOT(folioEl.value);
+      const datos = datosEmisionOT_();
+      if (!datos.folio) { showStatus('workorderStatus', '❌ Falta el N° de Orden de Trabajo.', 'error'); return; }
+      const cambioDuranteLaPreparacion = '❌ La OT cambió mientras se preparaba el envío. Vuelve a dar "Enviar OT".';
+      showStatus('workorderStatus', 'Verificando la OT en la Base Maestra...', 'warning');
+      const cuerpo = cuerpoCorreoOT_();
+      const prep = await postAccion(Object.assign({ action: 'prepararEnvioOT', cuerpo }, datos));
+      if (!prep || !prep.success) {
+        showStatus('workorderStatus', '❌ ' + ((prep && (prep.error || prep.message)) || 'No se pudo preparar el envío.'), 'error');
+        return;
+      }
+      if (folioEl && prep.folio) folioEl.value = prep.folio;
+      // La huella se toma con el folio ya normalizado y debe ser idéntica antes
+      // y después de generar el PDF; además el cuerpo debe venir de ella.
+      const huella = huellaOT_();
+      const datosVerificados = datosEmisionOT_();
+      if (JSON.stringify(Object.assign({}, datos, { folio: datosVerificados.folio })) !== JSON.stringify(datosVerificados) ||
+          JSON.stringify(cuerpoCorreoOT_()) !== JSON.stringify(cuerpo)) {
+        showStatus('workorderStatus', cambioDuranteLaPreparacion, 'error');
+        return;
+      }
+      showStatus('workorderStatus', 'Generando el PDF de la OT...', 'warning');
+      const pdf = await generarPdfOT_();
+      if (huellaOT_() !== huella) { showStatus('workorderStatus', cambioDuranteLaPreparacion, 'error'); return; }
+      if (envioOT.pdfUrl) URL.revokeObjectURL(envioOT.pdfUrl);
+      Object.assign(envioOT, { prep, datos: datosVerificados, cuerpo, pdf, huella, intento: nuevoIntentoOT_(), bloqueado: false, pdfUrl: URL.createObjectURL(pdf.blob) });
 
-Si requiere algún ajuste o desea compartir indicaciones de acceso, puede responder a este correo o comunicarse al 222-941-7295.
+      document.getElementById('envFolio').textContent = prep.folio;
+      document.getElementById('envPruebaChip').hidden = !prep.prueba;
+      document.getElementById('envDe').textContent = `${prep.nombre_remitente} <${prep.remitente}>`;
+      const delFormulario = parsearCorreos(_valCampo('wo_email')).validos;
+      document.getElementById('envPara').value = (delFormulario.length ? delFormulario : (prep.correos_perfil || [])).join(', ');
+      document.getElementById('envCc').value = '';
+      chips('envCcFijos', prep.cc_fijos, 'fija');
+      document.getElementById('envAsunto').textContent = prep.asunto;
+      const link = document.getElementById('envPdfLink');
+      link.textContent = prep.nombre_pdf; link.href = envioOT.pdfUrl;
+      document.getElementById('envPdfInfo').textContent = `${pdf.kb} KB · 1 hoja A4` +
+        (pdf.escala < 0.999 ? ` · reducido al ${Math.round(pdf.escala * 100)}% para caber en una hoja` : '');
+      document.getElementById('envVistaPrevia').srcdoc = prep.cuerpo_html || '';
+      document.getElementById('envActualizarPerfil').checked = false;
+      mostrarYaEnviada_(prep);
+      errorEnvio('');
+      document.getElementById('envEnviarBtn').textContent = prep.ya_enviada ? 'Confirmar y reenviar' : 'Confirmar y enviar';
+      document.getElementById('workorderStatus').innerHTML = '';
+      document.getElementById('otEnvioModal').style.display = 'flex';
+      revisarDestinatariosEnvio();
+      document.getElementById('envPara').focus();
+    } catch (e) {
+      showStatus('workorderStatus', '❌ ' + (e.message || 'Error al preparar el envío.'), 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = textoBtn;
+    }
+  }
 
+  function cerrarEnvioOT() {
+    if (envioOT.enviando) return;   // no se cierra a medio envío
+    document.getElementById('otEnvioModal').style.display = 'none';
+    envioOT.prep = null;
+    envioOT.bloqueado = false;
+  }
 
-Gracias,
-Ejecutiva Ambiental
-Tel: 222-941-7295`;
+  function descargarPdfOT_(blob, nombre) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = nombre;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }
 
-    window.location.href = `mailto:${email}?cc=${cc}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    showStatus('workorderStatus', `Email preparado con copia a ${cc}`, 'success');
+  async function confirmarEnvioOT() {
+    if (envioOT.enviando || !envioOT.prep) return;
+    const rev = revisarDestinatariosEnvio();
+    if (!rev || rev.error) { errorEnvio(rev ? rev.error : 'Vuelve a abrir el envío.'); return; }
+    if (JSON.stringify(datosEmisionOT_()) !== JSON.stringify(envioOT.datos) || huellaOT_() !== envioOT.huella) {
+      errorEnvio('La OT cambió después de abrir esta ventana. Cancela y vuelve a dar "Enviar OT" para generar el PDF actualizado.');
+      return;
+    }
+    const prep = envioOT.prep;
+    const btn = document.getElementById('envEnviarBtn');
+    const textoBtn = btn.textContent;
+    envioOT.enviando = true;
+    btn.disabled = true; btn.textContent = '⏳ Enviando...';
+    document.getElementById('envCancelarBtn').disabled = true;
+    errorEnvio('');
+    try {
+      const r = await postAccion(Object.assign({
+        action: 'enviarOT', cuerpo: envioOT.cuerpo, intento_id: envioOT.intento,
+        para: rev.para.join(', '), cc_extra: rev.ccExtra.join(', '),
+        pdf_base64: envioOT.pdf.base64,
+        reenviar: !!(prep.ya_enviada && document.getElementById('envReenviar').checked),
+        motivo_reenvio: document.getElementById('envMotivo').value.trim(),
+        actualizar_perfil: document.getElementById('envActualizarPerfil').checked
+      }, envioOT.datos));
+      if (r && r.success) {
+        descargarPdfOT_(envioOT.pdf.blob, prep.nombre_pdf);
+        envioOT.enviando = false;
+        cerrarEnvioOT();
+        let msg = `✅ OT ${r.folio} ${r.tipo === 'REENVÍO' ? 'reenviada' : 'enviada'} desde ${r.remitente} a ${r.para.join(', ')}. PDF guardado en Drive y descargado.`;
+        if (r.duplicado) msg += ' (El intento anterior sí había salido; no se mandó otra vez.)';
+        if (r.cambio_perfil === 'PENDIENTE') { msg += ' El cambio de correo quedó en "Cambios pendientes".'; actualizarBadgeCambios(); }
+        if (r.cambio_perfil === 'ERROR') msg += ' ⚠ No se pudo registrar el cambio de correo en el perfil.';
+        showStatus('workorderStatus', msg, 'success');
+        return;
+      }
+      if (r && r.code === 'SIN_CONFIRMAR') envioOT.bloqueado = true;
+      if (r && r.code === 'YA_ENVIADA') {
+        prep.ya_enviada = true;
+        prep.ultimo_envio = r.ultimo || prep.ultimo_envio;
+        mostrarYaEnviada_(prep);
+      }
+      errorEnvio('❌ ' + ((r && (r.error || r.message)) || 'El servidor no confirmó el envío.') +
+        (r && r.code === 'ERROR_ENVIO' ? ' Quedó registrado como "Error de envío"; puedes reintentar.' : ''));
+      btn.textContent = r && r.code === 'ERROR_ENVIO' ? 'Reintentar envío' : textoBtn;
+    } catch (e) {
+      // Sin respuesta no se sabe si el correo salió: se consulta ESTE intento
+      // (no el historial de la OT) antes de permitir otro clic.
+      try {
+        const p = await postAccion(Object.assign({ action: 'prepararEnvioOT', cuerpo: envioOT.cuerpo, intento_id: envioOT.intento }, envioOT.datos));
+        if (p && p.success && p.estado_intento === 'Enviada') {
+          descargarPdfOT_(envioOT.pdf.blob, prep.nombre_pdf);
+          envioOT.enviando = false;
+          cerrarEnvioOT();
+          showStatus('workorderStatus', '✅ La conexión se cortó, pero la OT sí quedó enviada. No la reenvíes.', 'success');
+          return;
+        }
+        if (p && p.success && p.estado_intento === 'Enviando') {
+          errorEnvio(`⚠ La conexión se cortó y este envío quedó sin confirmar: el correo pudo haber salido. Revisa "Enviados" de ${prep.remitente}. Cierra esta ventana; si no salió, vuelve a dar "Enviar OT" y usa "Reenviar".`);
+          btn.textContent = textoBtn;
+          envioOT.bloqueado = true;
+          return;
+        }
+      } catch (_) { /* sigue sin conexión: el reintento usa el mismo intento y el servidor no duplica */ }
+      errorEnvio('❌ Sin conexión con el servidor. Revisa "Órdenes" o la hoja ENVIOS_OT antes de reintentar, para no enviarla dos veces.');
+      btn.textContent = 'Reintentar envío';
+    } finally {
+      envioOT.enviando = false;
+      document.getElementById('envCancelarBtn').disabled = false;
+      if (envioOT.prep) revisarDestinatariosEnvio();
+    }
   }
 
   // ================== TRAZABILIDAD: FECHAS Y CRONOLOGÍA ==================
