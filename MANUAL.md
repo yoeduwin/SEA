@@ -1019,7 +1019,7 @@ SEAOT ya no abre el cliente de correo de la computadora (`mailto:`). El botón *
 
 Configuración en `BACKEND_FIXES.gs` → `CONFIG.ENVIO_OT` (remitente, nombre visible, replyTo, copias fijas, subcarpeta de Drive).
 
-**Hoja ENVIOS_OT** (se crea sola): una fila por intento con fecha, folio, tipo (ENVÍO / REENVÍO / PRUEBA), cliente, sucursal, RFC, servicio, remitente, Para, CC, usuario, liga del PDF, estatus (`Enviada` / `Error de envío`), motivo del reenvío y detalle del error. `ORDENES_TRABAJO` no se modifica.
+**Hoja ENVIOS_OT** (se crea sola): una fila por intento con fecha, folio, tipo (ENVÍO / REENVÍO / PRUEBA), cliente, sucursal, RFC, servicio, remitente, Para, CC, usuario, liga del PDF, estatus (`Enviando` / `Enviada` / `Error de envío`), motivo del reenvío, detalle del error e identificador del intento. `Enviando` se escribe antes de llamar a Gmail: si una fila se queda así, el correo pudo haber salido y la OT solo se vuelve a mandar con **Reenviar** (revisa antes "Enviados" de operaciones@). Los reintentos desde la misma ventana usan el mismo intento, y el servidor no vuelve a mandar uno que ya salió. `ORDENES_TRABAJO` no se modifica.
 
 **Reglas:** una OT con estatus `Enviada` solo se vuelve a mandar marcando **Reenviar** y escribiendo el motivo. Un `Error de envío` se puede reintentar. Si se marca "Actualizar también en el perfil del cliente", el correo nuevo va a **Cambios pendientes**; nunca se escribe directo en `CLIENTES_MAESTRO`. El aviso de la NOM-081 solo aparece en el correo cuando la OT incluye esa norma.
 

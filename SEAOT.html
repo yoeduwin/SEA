@@ -1455,7 +1455,13 @@
   // A4 con márgenes de 10 mm, igual que @page en la impresión.
   const PDF_OT_ = { ancho: 210, alto: 297, margen: 10 };
   const REGEX_CORREO_OT = /^[^\s@,;<>()"']+@[^\s@,;<>()"']+\.[a-z]{2,}$/i;
-  const envioOT = { prep: null, datos: null, cuerpo: null, pdf: null, pdfUrl: '', huella: '', enviando: false };
+  const envioOT = { prep: null, datos: null, cuerpo: null, pdf: null, pdfUrl: '', huella: '', intento: '', enviando: false };
+  // Un intento por ventana abierta: los reintentos de esa ventana repiten el
+  // mismo id y el servidor no vuelve a mandar uno que ya salió.
+  function nuevoIntentoOT_() {
+    try { if (crypto.randomUUID) return crypto.randomUUID(); } catch (_) {}
+    return 'i' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
+  }
 
   // Huella de TODO lo que va en el correo y en el PDF: cada control de la OT
   // (fechas, cantidades, observaciones, casillas…) y los datos del perfil del
@@ -1620,6 +1626,7 @@
       if (!document.getElementById('envReenviar').checked) error = 'Esta OT ya fue enviada. Marca "Reenviar" si de verdad quieres mandarla otra vez.';
       else if (document.getElementById('envMotivo').value.trim().length < (prep.min_motivo_reenvio || 10)) error = 'Escribe el motivo del reenvío.';
     }
+    if (!error && envioOT.bloqueado) error = 'Este envío quedó sin confirmar. Cierra la ventana y revisa antes de reenviar.';
     document.getElementById('envEnviarBtn').disabled = !!error || envioOT.enviando;
     document.getElementById('envEnviarBtn').title = error;
     return { error, para: para.validos, ccExtra };
@@ -1673,7 +1680,7 @@
       const pdf = await generarPdfOT_();
       if (huellaOT_() !== huella) { showStatus('workorderStatus', cambioDuranteLaPreparacion, 'error'); return; }
       if (envioOT.pdfUrl) URL.revokeObjectURL(envioOT.pdfUrl);
-      Object.assign(envioOT, { prep, datos: datosVerificados, cuerpo, pdf, huella, pdfUrl: URL.createObjectURL(pdf.blob) });
+      Object.assign(envioOT, { prep, datos: datosVerificados, cuerpo, pdf, huella, intento: nuevoIntentoOT_(), bloqueado: false, pdfUrl: URL.createObjectURL(pdf.blob) });
 
       document.getElementById('envFolio').textContent = prep.folio;
       document.getElementById('envPruebaChip').hidden = !prep.prueba;
@@ -1707,6 +1714,7 @@
     if (envioOT.enviando) return;   // no se cierra a medio envío
     document.getElementById('otEnvioModal').style.display = 'none';
     envioOT.prep = null;
+    envioOT.bloqueado = false;
   }
 
   function descargarPdfOT_(blob, nombre) {
@@ -1734,7 +1742,7 @@
     errorEnvio('');
     try {
       const r = await postAccion(Object.assign({
-        action: 'enviarOT', cuerpo: envioOT.cuerpo,
+        action: 'enviarOT', cuerpo: envioOT.cuerpo, intento_id: envioOT.intento,
         para: rev.para.join(', '), cc_extra: rev.ccExtra.join(', '),
         pdf_base64: envioOT.pdf.base64,
         reenviar: !!(prep.ya_enviada && document.getElementById('envReenviar').checked),
@@ -1746,11 +1754,13 @@
         envioOT.enviando = false;
         cerrarEnvioOT();
         let msg = `✅ OT ${r.folio} ${r.tipo === 'REENVÍO' ? 'reenviada' : 'enviada'} desde ${r.remitente} a ${r.para.join(', ')}. PDF guardado en Drive y descargado.`;
+        if (r.duplicado) msg += ' (El intento anterior sí había salido; no se mandó otra vez.)';
         if (r.cambio_perfil === 'PENDIENTE') { msg += ' El cambio de correo quedó en "Cambios pendientes".'; actualizarBadgeCambios(); }
         if (r.cambio_perfil === 'ERROR') msg += ' ⚠ No se pudo registrar el cambio de correo en el perfil.';
         showStatus('workorderStatus', msg, 'success');
         return;
       }
+      if (r && r.code === 'SIN_CONFIRMAR') envioOT.bloqueado = true;
       if (r && r.code === 'YA_ENVIADA') {
         prep.ya_enviada = true;
         prep.ultimo_envio = r.ultimo || prep.ultimo_envio;
@@ -1760,20 +1770,24 @@
         (r && r.code === 'ERROR_ENVIO' ? ' Quedó registrado como "Error de envío"; puedes reintentar.' : ''));
       btn.textContent = r && r.code === 'ERROR_ENVIO' ? 'Reintentar envío' : textoBtn;
     } catch (e) {
-      // Sin respuesta no se sabe si el correo salió: se consulta antes de permitir otro intento.
+      // Sin respuesta no se sabe si el correo salió: se consulta ESTE intento
+      // (no el historial de la OT) antes de permitir otro clic.
       try {
-        const p = await postAccion(Object.assign({ action: 'prepararEnvioOT', cuerpo: envioOT.cuerpo }, envioOT.datos));
-        if (p && p.success && p.ya_enviada && !prep.ya_enviada) {
+        const p = await postAccion(Object.assign({ action: 'prepararEnvioOT', cuerpo: envioOT.cuerpo, intento_id: envioOT.intento }, envioOT.datos));
+        if (p && p.success && p.estado_intento === 'Enviada') {
           descargarPdfOT_(envioOT.pdf.blob, prep.nombre_pdf);
           envioOT.enviando = false;
           cerrarEnvioOT();
-          const u = p.ultimo_envio || {};
-          showStatus('workorderStatus', u.estatus === 'Enviando'
-            ? `⚠ La conexión se cortó y el envío quedó sin confirmar (${u.fecha || ''}). Revisa "Enviados" de ${prep.remitente} antes de reenviar.`
-            : `✅ La conexión se cortó, pero la OT sí quedó enviada (${u.fecha || ''}). No la reenvíes.`, u.estatus === 'Enviando' ? 'warning' : 'success');
+          showStatus('workorderStatus', '✅ La conexión se cortó, pero la OT sí quedó enviada. No la reenvíes.', 'success');
           return;
         }
-      } catch (_) { /* sigue sin conexión */ }
+        if (p && p.success && p.estado_intento === 'Enviando') {
+          errorEnvio(`⚠ La conexión se cortó y este envío quedó sin confirmar: el correo pudo haber salido. Revisa "Enviados" de ${prep.remitente}. Cierra esta ventana; si no salió, vuelve a dar "Enviar OT" y usa "Reenviar".`);
+          btn.textContent = textoBtn;
+          envioOT.bloqueado = true;
+          return;
+        }
+      } catch (_) { /* sigue sin conexión: el reintento usa el mismo intento y el servidor no duplica */ }
       errorEnvio('❌ Sin conexión con el servidor. Revisa "Órdenes" o la hoja ENVIOS_OT antes de reintentar, para no enviarla dos veces.');
       btn.textContent = 'Reintentar envío';
     } finally {

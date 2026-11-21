@@ -2714,9 +2714,28 @@ function verificarFolioOT_(data) {
 // ORDENES_TRABAJO no se toca: su contrato A-Q es inmutable.
 
 const ENVIOS_OT_HEADERS_ = ['ID', 'Fecha envío', 'Folio', 'Tipo', 'Cliente', 'Sucursal', 'RFC', 'Servicio',
-  'Remitente', 'Para', 'CC', 'Usuario', 'Link PDF Drive', 'Estatus', 'Motivo reenvío', 'Detalle'];
+  'Remitente', 'Para', 'CC', 'Usuario', 'Link PDF Drive', 'Estatus', 'Motivo reenvío', 'Detalle', 'Intento'];
 const CE_ = { ID: 0, FECHA: 1, FOLIO: 2, TIPO: 3, CLIENTE: 4, SUCURSAL: 5, RFC: 6, SERVICIO: 7, REMITENTE: 8,
-  PARA: 9, CC: 10, USUARIO: 11, LINK_PDF: 12, ESTATUS: 13, MOTIVO: 14, DETALLE: 15 };
+  PARA: 9, CC: 10, USUARIO: 11, LINK_PDF: 12, ESTATUS: 13, MOTIVO: 14, DETALLE: 15, INTENTO: 16 };
+
+// Identificador que SEAOT genera al abrir la ventana de envío y repite en
+// cada reintento de esa misma ventana. Si la respuesta de un envío se pierde,
+// el reintento con el mismo intento no vuelve a mandar el correo.
+function normalizarIntentoOT_(id) {
+  const s = String(id == null ? '' : id).trim();
+  return /^[A-Za-z0-9-]{8,64}$/.test(s) ? s : '';
+}
+
+// Estado más reciente de un intento: 'Enviada', 'Enviando', 'Error de envío' o ''.
+function estadoIntentoOT_(envios, intento) {
+  if (!intento) return { estatus: '' };
+  const filas = (envios || []).filter(e => e.intento === intento);
+  const ok = filas.filter(e => e.estatus === ESTATUS_ENVIO_OK_);
+  if (ok.length) return Object.assign({}, ok[ok.length - 1]);
+  const pend = filas.filter(e => e.estatus === ESTATUS_ENVIO_PENDIENTE_);
+  if (pend.length) return Object.assign({}, pend[pend.length - 1]);
+  return filas.length ? Object.assign({}, filas[filas.length - 1]) : { estatus: '' };
+}
 const ESTATUS_ENVIO_OK_ = 'Enviada';
 const ESTATUS_ENVIO_ERROR_ = 'Error de envío';
 // Se escribe ANTES de llamar a Gmail. Si después no se puede marcar como
@@ -2924,7 +2943,7 @@ function leerEnviosOT_(folio) {
   const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, ENVIOS_OT_HEADERS_.length).getDisplayValues();
   return values.filter(r => String(r[CE_.FOLIO]).trim().toUpperCase() === folio).map(r => ({
     fecha: r[CE_.FECHA], tipo: r[CE_.TIPO], para: r[CE_.PARA], cc: r[CE_.CC], usuario: r[CE_.USUARIO],
-    link_pdf: r[CE_.LINK_PDF], estatus: r[CE_.ESTATUS], detalle: r[CE_.DETALLE]
+    link_pdf: r[CE_.LINK_PDF], estatus: r[CE_.ESTATUS], detalle: r[CE_.DETALLE], intento: r[CE_.INTENTO] || ''
   }));
 }
 
@@ -2938,6 +2957,7 @@ function registrarEnvioOT_(r) {
   fila[CE_.PARA] = (r.para || []).join(', '); fila[CE_.CC] = (r.cc || []).join(', ');
   fila[CE_.USUARIO] = r.usuario || 'desconocido'; fila[CE_.LINK_PDF] = r.link_pdf || '';
   fila[CE_.ESTATUS] = r.estatus; fila[CE_.MOTIVO] = r.motivo || ''; fila[CE_.DETALLE] = r.detalle || '';
+  fila[CE_.INTENTO] = r.intento || '';
   const sheet = hojaEnviosOT_();
   const numFila = sheet.getLastRow() + 1;
   sheet.getRange(numFila, 1, 1, ENVIOS_OT_HEADERS_.length).setValues([fila.map(textoSeguroSheet_)]);
@@ -3058,6 +3078,7 @@ function prepararEnvioOT_(data) {
   if (!ctx.success) return ctx;
   const envios = leerEnviosOT_(ctx.folio);
   const previo = evaluarEnvioPrevioOT_(envios, false, '');
+  const estadoIntento = estadoIntentoOT_(envios, normalizarIntentoOT_(data && data.intento_id));
   const cuerpo = construirCorreoOT_(Object.assign({}, (data && data.cuerpo) || {},
     { folio: ctx.folio, cliente: ctx.cliente, sucursal: ctx.sucursal, servicio: ctx.servicio }));
   return {
@@ -3070,6 +3091,7 @@ function prepararEnvioOT_(data) {
     cuerpo_html: cuerpo.html,
     ya_enviada: !previo.permitido, ultimo_envio: previo.ultimo || null,
     envios: envios.slice(-5),
+    estado_intento: estadoIntento.estatus,
     min_motivo_reenvio: CONFIG.ENVIO_OT.MIN_MOTIVO_REENVIO
   };
 }
@@ -3084,14 +3106,28 @@ function enviarOT_(data, usuario) {
   if (!ctx.success) return ctx;
   const dest = armarDestinatariosOT_(data.para, data.cc_extra, ctx.prueba);
   if (!dest.success) return dest;
-  const previo = evaluarEnvioPrevioOT_(leerEnviosOT_(ctx.folio), !!data.reenviar, data.motivo_reenvio);
+  const envios = leerEnviosOT_(ctx.folio);
+  // Reintento de un intento que ya llegó a Gmail (respuesta perdida): no se
+  // vuelve a enviar, ni siquiera con "Reenviar" marcado.
+  const intento = normalizarIntentoOT_(data.intento_id);
+  const previoIntento = estadoIntentoOT_(envios, intento);
+  if (previoIntento.estatus === ESTATUS_ENVIO_OK_) {
+    return { success: true, duplicado: true, estatus: ESTATUS_ENVIO_OK_, folio: ctx.folio, tipo: previoIntento.tipo,
+      para: String(previoIntento.para || '').split(/,\s*/).filter(Boolean), cc: String(previoIntento.cc || '').split(/,\s*/).filter(Boolean),
+      remitente: CONFIG.ENVIO_OT.REMITENTE, link_pdf: previoIntento.link_pdf, cambio_perfil: '' };
+  }
+  if (previoIntento.estatus === ESTATUS_ENVIO_PENDIENTE_) {
+    return { success: false, code: 'SIN_CONFIRMAR', error: 'Este envío (' + previoIntento.fecha + ') no se pudo confirmar: el correo pudo haber salido. ' +
+      'Revisa "Enviados" de ' + CONFIG.ENVIO_OT.REMITENTE + ' antes de volver a intentarlo.' };
+  }
+  const previo = evaluarEnvioPrevioOT_(envios, !!data.reenviar, data.motivo_reenvio);
   if (!previo.permitido) return { success: false, code: previo.code, error: previo.error };
   const pdf = decodificarPdfOT_(data.pdf_base64);
   if (!pdf.success) return { success: false, code: 'PDF_INVALIDO', error: pdf.error };
 
   const tipo = ctx.prueba ? 'PRUEBA' : (previo.reenvio ? 'REENVÍO' : 'ENVÍO');
   const registro = { folio: ctx.folio, tipo: tipo, cliente: ctx.cliente, sucursal: ctx.sucursal, rfc: ctx.rfc,
-    servicio: ctx.servicio, para: dest.para, cc: dest.cc, usuario: usuario,
+    servicio: ctx.servicio, para: dest.para, cc: dest.cc, usuario: usuario, intento: intento,
     motivo: previo.reenvio ? String(data.motivo_reenvio || '').trim() : '' };
   const fallo = (detalle, linkPdf) => {
     registrarEnvioOT_(Object.assign({}, registro, { estatus: ESTATUS_ENVIO_ERROR_, detalle: detalle, link_pdf: linkPdf || '' }));

@@ -147,3 +147,35 @@ test('el intento queda escrito antes de llamar a Gmail', () => {
   assert.equal(g.sheets.ENVIOS_OT._data[1][13], 'Enviada');
   assert.equal(g.sheets.ENVIOS_OT._data.length, 2, 'una sola fila por intento');
 });
+
+test('Codex: reintento de un reenvío cuya respuesta se perdió no manda otro correo', () => {
+  const g = crear();
+  assert.equal(env(g, { intento_id: 'primer-intento-0001' }).success, true);
+  const reenvio = { reenviar: true, motivo_reenvio: 'El cliente pidió que se reenviara', intento_id: 'reenvio-intento-0002' };
+  assert.equal(env(g, reenvio).success, true);          // Gmail lo mandó; la respuesta "se perdió"
+  assert.equal(g.enviados.length, 2);
+  // La recuperación consulta ESTE intento, no el historial de la OT.
+  assert.equal(g.ctx.prepararEnvioOT_(Object.assign({}, base, { intento_id: 'reenvio-intento-0002' })).estado_intento, 'Enviada');
+  const r = env(g, reenvio);                              // clic en "Reintentar envío" con el reenvío aún marcado
+  assert.equal(r.success, true); assert.equal(r.duplicado, true);
+  assert.equal(g.enviados.length, 2, 'no hay tercer correo');
+});
+
+test('un intento que quedó en "Enviando" no se reintenta con el mismo id', () => {
+  const g = crear();
+  const original = g.ctx.cerrarEnvioOT_;
+  g.ctx.cerrarEnvioOT_ = () => { throw new Error('Sheets no disponible'); };
+  env(g, { intento_id: 'intento-sin-cierre-01' });
+  g.ctx.cerrarEnvioOT_ = original;
+  assert.equal(g.ctx.prepararEnvioOT_(Object.assign({}, base, { intento_id: 'intento-sin-cierre-01' })).estado_intento, 'Enviando');
+  assert.equal(env(g, { intento_id: 'intento-sin-cierre-01', reenviar: true, motivo_reenvio: 'Reintento automático' }).code, 'SIN_CONFIRMAR');
+  assert.equal(g.enviados.length, 1);
+});
+
+test('tras un error de Gmail, el mismo intento sí puede reintentarse', () => {
+  const g = crear({ fallarGmail: true });
+  assert.equal(env(g, { intento_id: 'intento-con-error-01' }).estatus, 'Error de envío');
+  g.fallarGmail = false;
+  assert.equal(env(g, { intento_id: 'intento-con-error-01' }).success, true);
+  assert.equal(g.enviados.length, 1);
+});
