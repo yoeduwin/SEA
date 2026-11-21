@@ -56,9 +56,11 @@ const CONFIG = {
     NOMBRE_REMITENTE: 'Ejecutiva Ambiental - Operaciones',
     REPLY_TO:         'operaciones@ejecutivambiental.com',
     // Copias internas fijas: no dependen de quién captura la OT.
+    // operaciones@ (el remitente) va en copia para recibir y confirmar cada OT.
     CC_FIJOS: [
       'aclientes@ejecutivambiental.com',
-      'direccion.general@ejecutivambiental.com'
+      'direccion.general@ejecutivambiental.com',
+      'operaciones@ejecutivambiental.com'
     ],
     DOMINIO_INTERNO:  'ejecutivambiental.com',
     TELEFONO:         '222-941-7295',
