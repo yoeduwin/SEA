@@ -612,12 +612,15 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="catalogo-servicios.js"></script>
+<script src="qr-codigo.js"></script>
 <script>
   // ✅ NUEVA API CENTRAL
   const SHEETS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby8t7Py-cilePxLiGa-Lq7Df73XaRlmkRYV_kXbTs79HFydaJyub8muA0PBLRkPevUuXg/exec';
   // Serie OTC (servicios complementarios): no admite NOM, que llevan informe.
   // Solo cuenta el servicio que EMPIEZA con NOM: "CURSO NOM-020-STPS" es capacitación.
-  const esServicioNom = s => /^NOM[\s-]?\d/i.test(String(s || '').trim());
+  // Excepción: las NOM marcadas `sinInforme` en el catálogo (las realiza un tercero) sí van en OTC.
+  const esNomSinInforme = s => (window.CATALOGO_SERVICIOS || []).some(x => x.sinInforme && x.nombre === String(s || '').trim());
+  const esServicioNom = s => /^NOM[\s-]?\d/i.test(String(s || '').trim()) && !esNomSinInforme(s);
 
   let profileData = {};
   const excelCellMapping = {
@@ -1292,6 +1295,7 @@
       }
       if (result && result.success) {
         if (folioEl) folioEl.value = result.folio;
+        generateQRCode();
         if (infoEl) infoEl.textContent = `Último en Base Maestra: ${result.ultimo} | Siguiente sugerido: ${result.folio} · editable si necesitas corregirlo.`;
       } else {
         if (infoEl) infoEl.textContent = `⚠ No se pudo calcular el folio ${series} (${(result && result.error) || 'error'}). Escríbelo manualmente.`;
@@ -1318,12 +1322,25 @@
     document.getElementById('wo_issueDate').value = fechaLocalISO();
     updateOrderNumber(); syncData(); generateQRCode(); showStatus('workorderStatus','Orden de trabajo generada automáticamente','success');
   }
-  // QR fijo con "tel:2229417295", incrustado para que el PDF generado por código
-  // lo incluya (una imagen de otro dominio no se puede capturar en el PDF).
-  const QR_TEL_EMPRESA_ = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAADIAQAAAACFI5MzAAAAyElEQVR42u2Yuw7DMAwDeUX+/5evgx9Jh84tg2QwIngiJB0JY758rzw3v7+Jq0FezkQ79RxLAx+KaO3PcdGCxF3VT6JB2/fnOH8xxDvomYvDBxJ69bD6g+yqVA9XPyX18xbdFqSzLvaf12LbBLWD2lbzmgEDEyAx0M0Dg8xjIa6ZB8g01AkF7OfblLQcqHbe2PnaEJnGeot87dmwZr7BkARIInfIozu6jZhdr8fhQ2EQvD5fj4ydkUqL/Wfx7Vwdq/U8r0V/fPMGjBVcgwZOC40AAAAASUVORK5CYII=';
+  // QR de la OT: abre WhatsApp de Atención a Clientes con el folio ya escrito.
+  // Se genera aquí mismo (qr-codigo.js), así entra en la impresión y en el PDF.
+  const WHATSAPP_ATENCION_ = '525652821561';   // 56 5282 1561
+  function urlWhatsAppOT_(folio) {
+    const f = String(folio || '').trim();
+    const msg = f ? `Hola, tengo una duda sobre la Orden de Trabajo ${f}` : 'Hola, tengo una duda sobre una Orden de Trabajo';
+    return `https://wa.me/${WHATSAPP_ATENCION_}?text=${encodeURIComponent(msg)}`;
+  }
   function generateQRCode() {
-    const cont = document.getElementById('qrCodeContainer'); if (!cont) return; cont.innerHTML = '';
-    const img = document.createElement('img'); img.src = QR_TEL_EMPRESA_; img.alt = 'QR: llamar al 222-941-7295'; img.style.cssText = 'width:80px;height:80px;border:1px solid #ccc;border-radius:4px;'; cont.appendChild(img);
+    const cont = document.getElementById('qrCodeContainer'); if (!cont || !window.QRCodigo) return;
+    const folio = (document.getElementById('wo_orderNumber')?.value || '').trim();
+    if (cont.firstChild && cont.dataset.folio === folio) return;
+    cont.innerHTML = '';
+    const img = document.createElement('img');
+    img.src = QRCodigo.dataUrl(urlWhatsAppOT_(folio), 240);
+    img.alt = 'QR: WhatsApp de Atención a Clientes';
+    img.style.cssText = 'width:80px;height:80px;border:1px solid #ccc;border-radius:4px;';
+    cont.appendChild(img);
+    cont.dataset.folio = folio;
   }
   function addWorkRow() {
     const tbody = document.getElementById('workTableBody'); const tr = document.createElement('tr');
@@ -1443,6 +1460,7 @@
       inp.style.display = 'none';
       replacedDates.push({ inp, span });
     });
+    generateQRCode();   // el QR lleva el folio ya verificado
     window.print();
     setTimeout(() => { replaced.forEach(({ sel, span }) => { sel.style.display = ''; span.remove(); }); replacedDates.forEach(({ inp, span }) => { inp.style.display = ''; span.remove(); }); controls.forEach(e => e.style.display = ''); document.getElementById('profileTab').style.display = ''; switchTab('workorder'); document.title = prevTitle; }, 800);
   }
@@ -1559,6 +1577,7 @@
   async function generarPdfOT_() {
     if (!window.html2canvas || !window.jspdf) throw new Error('No cargó el generador de PDF. Recarga la página e intenta de nuevo.');
     prepararEstilosPdf_();
+    generateQRCode();
     const utilAncho = PDF_OT_.ancho - 2 * PDF_OT_.margen, utilAlto = PDF_OT_.alto - 2 * PDF_OT_.margen;
     const anchoPx = Math.round(utilAncho / 25.4 * 96);   // 190 mm a 96 ppp, como el diálogo de impresión
     if (document.fonts && document.fonts.ready) await document.fonts.ready;
@@ -1667,6 +1686,7 @@
         return;
       }
       if (folioEl && prep.folio) folioEl.value = prep.folio;
+      generateQRCode();
       // La huella se toma con el folio ya normalizado y debe ser idéntica antes
       // y después de generar el PDF; además el cuerpo debe venir de ella.
       const huella = huellaOT_();
@@ -1934,6 +1954,7 @@
         // el siguiente se propone al generar la próxima OT o al cambiar de serie.
         const folioEl = document.getElementById('wo_orderNumber');
         if (folioEl) folioEl.value = finalFolio;
+        generateQRCode();
         const infoEl = document.getElementById('seriesInfo');
         if (infoEl) infoEl.textContent = `✅ ${finalFolio} registrada. El siguiente folio se propone al generar la próxima OT.`;
       } else {
@@ -2067,7 +2088,8 @@
     if (reviewDateInput && !reviewDateInput.value) reviewDateInput.value = today;
     poblarSelectServicios();
     document.querySelectorAll('.service-input').forEach(setupServiceAutocomplete);
-    document.getElementById('wo_orderNumber')?.addEventListener('change', function () { this.value = normalizarFolioOT(this.value); });
+    document.getElementById('wo_orderNumber')?.addEventListener('change', function () { this.value = normalizarFolioOT(this.value); generateQRCode(); });
+    document.getElementById('wo_orderNumber')?.addEventListener('input', generateQRCode);
     updateOrderNumber();
     document.querySelectorAll('.nav-tab').forEach(tab => tab.addEventListener('click', syncData));
 

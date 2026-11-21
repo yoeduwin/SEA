@@ -206,11 +206,16 @@ function folioCoincideConSerieOTC_(folio, tipo) {
 
 // Servicios NOM (llevan informe) dentro de una lista de servicios. Solo cuenta
 // el servicio que EMPIEZA con NOM: "CURSO NOM-020-STPS" es capacitación.
+// NOM que Ejecutiva no ejecuta ni informa (las realiza un tercero): van en OTC
+// con su nombre exacto. Debe coincidir con las marcadas `sinInforme: true` en
+// catalogo-servicios.js (tests/catalogo.test.cjs lo verifica).
+const NOM_SIN_INFORME_ = ['NOM-013-STPS-1993', 'NOM-043-SEMARNAT-1993', 'NOM-085-SEMARNAT-2011'];
+
 function serviciosNomEnLista_(nomServicio) {
   return String(nomServicio == null ? '' : nomServicio)
     .split(/[,;|]/)
     .map(s => s.trim())
-    .filter(s => /^NOM[\s-]?\d/i.test(s));
+    .filter(s => /^NOM[\s-]?\d/i.test(s) && NOM_SIN_INFORME_.indexOf(s.toUpperCase()) === -1);
 }
 // =========================================================================
 // MÓDULO DE SEGURIDAD — Autenticación Google OAuth + reCAPTCHA v3

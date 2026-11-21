@@ -1,6 +1,9 @@
 // Catálogo único de servicios para SEAOT y SEAINF (nombres completos).
 //   serie:  OTB = normas con informe · OT = solo NOM-081 · OTC = sin informe.
 //   equipo: el servicio usa equipo calibrado (la revisión de contrato lo exige).
+//   sinInforme: NOM que Ejecutiva no ejecuta ni informa (la realiza un tercero):
+//     se registra en OTC con su nombre exacto. Al agregar o quitar una, actualice
+//     también NOM_SIN_INFORME_ en BACKEND_FIXES.gs (una prueba verifica que coincidan).
 // Para agregar un servicio, agréguelo aquí: ambos sistemas lo toman de esta lista.
 window.CATALOGO_SERVICIOS = [
   { nombre: 'NOM-001-STPS-2008',              serie: 'OTB' },
@@ -30,6 +33,9 @@ window.CATALOGO_SERVICIOS = [
   { nombre: 'NOM-036-1-STPS-2018',            serie: 'OTB' },
   { nombre: 'NOM-037-STPS-2023',              serie: 'OTB' },
   { nombre: 'NOM-081-SEMARNAT-1994',          serie: 'OT',  equipo: true },
+  { nombre: 'NOM-013-STPS-1993',              serie: 'OTC', sinInforme: true },
+  { nombre: 'NOM-043-SEMARNAT-1993',          serie: 'OTC', sinInforme: true },
+  { nombre: 'NOM-085-SEMARNAT-2011',          serie: 'OTC', sinInforme: true },
   { nombre: 'PROGRAMA INTERNO DE PROTECCIÓN CIVIL', serie: 'OTC' },
   { nombre: 'DICTAMEN ESTRUCTURAL',           serie: 'OTC' },
   { nombre: 'DICTAMEN ELÉCTRICO',             serie: 'OTC' },
