@@ -1455,7 +1455,16 @@
   // A4 con márgenes de 10 mm, igual que @page en la impresión.
   const PDF_OT_ = { ancho: 210, alto: 297, margen: 10 };
   const REGEX_CORREO_OT = /^[^\s@,;<>()"']+@[^\s@,;<>()"']+\.[a-z]{2,}$/i;
-  const envioOT = { prep: null, datos: null, cuerpo: null, pdf: null, pdfUrl: '', enviando: false };
+  const envioOT = { prep: null, datos: null, cuerpo: null, pdf: null, pdfUrl: '', huella: '', enviando: false };
+
+  // Huella de TODO lo que va en el correo y en el PDF: cada control de la OT
+  // (fechas, cantidades, observaciones, casillas…) y los datos del perfil del
+  // cuerpo. Correo y PDF salen de la misma captura: si cambia, se rehace.
+  function huellaOT_() {
+    const controles = Array.from(document.querySelectorAll('#workorderTab input, #workorderTab select, #workorderTab textarea'))
+      .map(el => el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value);
+    return JSON.stringify([controles, cuerpoCorreoOT_()]);
+  }
 
   function parsearCorreos(texto) {
     const validos = [], invalidos = [];
@@ -1642,6 +1651,7 @@
       if (folioEl) folioEl.value = normalizarFolioOT(folioEl.value);
       const datos = datosEmisionOT_();
       if (!datos.folio) { showStatus('workorderStatus', '❌ Falta el N° de Orden de Trabajo.', 'error'); return; }
+      const cambioDuranteLaPreparacion = '❌ La OT cambió mientras se preparaba el envío. Vuelve a dar "Enviar OT".';
       showStatus('workorderStatus', 'Verificando la OT en la Base Maestra...', 'warning');
       const cuerpo = cuerpoCorreoOT_();
       const prep = await postAccion(Object.assign({ action: 'prepararEnvioOT', cuerpo }, datos));
@@ -1650,15 +1660,20 @@
         return;
       }
       if (folioEl && prep.folio) folioEl.value = prep.folio;
+      // La huella se toma con el folio ya normalizado y debe ser idéntica antes
+      // y después de generar el PDF; además el cuerpo debe venir de ella.
+      const huella = huellaOT_();
       const datosVerificados = datosEmisionOT_();
-      if (JSON.stringify(Object.assign({}, datos, { folio: datosVerificados.folio })) !== JSON.stringify(datosVerificados)) {
-        showStatus('workorderStatus', '❌ La OT cambió mientras se verificaba. Vuelve a intentarlo.', 'error');
+      if (JSON.stringify(Object.assign({}, datos, { folio: datosVerificados.folio })) !== JSON.stringify(datosVerificados) ||
+          JSON.stringify(cuerpoCorreoOT_()) !== JSON.stringify(cuerpo)) {
+        showStatus('workorderStatus', cambioDuranteLaPreparacion, 'error');
         return;
       }
       showStatus('workorderStatus', 'Generando el PDF de la OT...', 'warning');
       const pdf = await generarPdfOT_();
+      if (huellaOT_() !== huella) { showStatus('workorderStatus', cambioDuranteLaPreparacion, 'error'); return; }
       if (envioOT.pdfUrl) URL.revokeObjectURL(envioOT.pdfUrl);
-      Object.assign(envioOT, { prep, datos: datosVerificados, cuerpo, pdf, pdfUrl: URL.createObjectURL(pdf.blob) });
+      Object.assign(envioOT, { prep, datos: datosVerificados, cuerpo, pdf, huella, pdfUrl: URL.createObjectURL(pdf.blob) });
 
       document.getElementById('envFolio').textContent = prep.folio;
       document.getElementById('envPruebaChip').hidden = !prep.prueba;
@@ -1706,7 +1721,7 @@
     if (envioOT.enviando || !envioOT.prep) return;
     const rev = revisarDestinatariosEnvio();
     if (!rev || rev.error) { errorEnvio(rev ? rev.error : 'Vuelve a abrir el envío.'); return; }
-    if (JSON.stringify(datosEmisionOT_()) !== JSON.stringify(envioOT.datos)) {
+    if (JSON.stringify(datosEmisionOT_()) !== JSON.stringify(envioOT.datos) || huellaOT_() !== envioOT.huella) {
       errorEnvio('La OT cambió después de abrir esta ventana. Cancela y vuelve a dar "Enviar OT" para generar el PDF actualizado.');
       return;
     }
