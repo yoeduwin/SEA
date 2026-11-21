@@ -2719,6 +2719,10 @@ const CE_ = { ID: 0, FECHA: 1, FOLIO: 2, TIPO: 3, CLIENTE: 4, SUCURSAL: 5, RFC: 
   PARA: 9, CC: 10, USUARIO: 11, LINK_PDF: 12, ESTATUS: 13, MOTIVO: 14, DETALLE: 15 };
 const ESTATUS_ENVIO_OK_ = 'Enviada';
 const ESTATUS_ENVIO_ERROR_ = 'Error de envío';
+// Se escribe ANTES de llamar a Gmail. Si después no se puede marcar como
+// Enviada o Error, queda así y bloquea reintentos automáticos: el correo pudo
+// haber salido y sólo se vuelve a mandar con "Reenviar" y motivo.
+const ESTATUS_ENVIO_PENDIENTE_ = 'Enviando';
 
 // ── Lógica pura (cubierta por runUnitTests) ──────────────────────────────
 
@@ -2871,12 +2875,15 @@ function construirCorreoOT_(d) {
 // ¿Se puede enviar? Una OT con un envío "Enviada" sólo se vuelve a mandar con
 // "Reenviar" explícito y motivo.
 function evaluarEnvioPrevioOT_(envios, reenviar, motivo) {
-  const previos = (envios || []).filter(e => e.estatus === ESTATUS_ENVIO_OK_);
+  const previos = (envios || []).filter(e => e.estatus === ESTATUS_ENVIO_OK_ || e.estatus === ESTATUS_ENVIO_PENDIENTE_);
   if (!previos.length) return { permitido: true, reenvio: false };
   const ultimo = previos[previos.length - 1];
   if (!reenviar) {
-    return { permitido: false, code: 'YA_ENVIADA', ultimo: ultimo,
-      error: 'Esta OT ya se envió el ' + ultimo.fecha + ' a ' + ultimo.para + '. Para mandarla otra vez usa "Reenviar".' };
+    const error = ultimo.estatus === ESTATUS_ENVIO_PENDIENTE_
+      ? 'Hay un envío de esta OT del ' + ultimo.fecha + ' a ' + ultimo.para + ' que no se pudo confirmar: el correo pudo haber salido. ' +
+        'Revisa "Enviados" de ' + CONFIG.ENVIO_OT.REMITENTE + ' y, si no salió, usa "Reenviar".'
+      : 'Esta OT ya se envió el ' + ultimo.fecha + ' a ' + ultimo.para + '. Para mandarla otra vez usa "Reenviar".';
+    return { permitido: false, code: 'YA_ENVIADA', ultimo: ultimo, error: error };
   }
   if (String(motivo || '').trim().length < CONFIG.ENVIO_OT.MIN_MOTIVO_REENVIO) {
     return { permitido: false, code: 'MOTIVO_REENVIO',
@@ -2932,9 +2939,18 @@ function registrarEnvioOT_(r) {
   fila[CE_.USUARIO] = r.usuario || 'desconocido'; fila[CE_.LINK_PDF] = r.link_pdf || '';
   fila[CE_.ESTATUS] = r.estatus; fila[CE_.MOTIVO] = r.motivo || ''; fila[CE_.DETALLE] = r.detalle || '';
   const sheet = hojaEnviosOT_();
-  sheet.getRange(sheet.getLastRow() + 1, 1, 1, ENVIOS_OT_HEADERS_.length).setValues([fila.map(textoSeguroSheet_)]);
+  const numFila = sheet.getLastRow() + 1;
+  sheet.getRange(numFila, 1, 1, ENVIOS_OT_HEADERS_.length).setValues([fila.map(textoSeguroSheet_)]);
   SpreadsheetApp.flush();
-  return fila;
+  return numFila;
+}
+
+// Cierra el intento "Enviando" con su resultado final.
+function cerrarEnvioOT_(numFila, estatus, detalle) {
+  const sheet = hojaEnviosOT_();
+  sheet.getRange(numFila, CE_.ESTATUS + 1).setValue(estatus);
+  if (detalle) sheet.getRange(numFila, CE_.DETALLE + 1).setValue(textoSeguroSheet_(detalle));
+  SpreadsheetApp.flush();
 }
 
 // ── Contexto común de preparar y enviar ──────────────────────────────────
@@ -3013,12 +3029,11 @@ function guardarPdfOTEnDrive_(ctx, blob) {
   if (ctx.prueba) {
     base = obtenerSubcarpetaOT_(DriveApp.getFolderById(CONFIG.FOLDER_ID), CONFIG.ENVIO_OT.CARPETA_PRUEBAS);
   } else {
-    base = getFolderByDriveLinkSafe_(ctx.linkDrive);
-    if (!base) {
-      const r = fase2_ResolverCarpetaCliente_(ctx.rfc, ctx.sucursal, ctx.cliente);
-      base = r && r.found ? getFolderByDriveLinkSafe_(r.linkDrive) : null;
-    }
-    if (!base) throw new Error('No se encontró la carpeta de Drive del cliente para guardar el PDF.');
+    // Mismo resolvedor que SEAINF: el maestro RFC+sucursal manda, y la liga
+    // guardada en la OT sólo se acepta si la carpeta pertenece a ese cliente y
+    // sucursal (nunca la raíz ni la carpeta de otro cliente).
+    base = resolveClientBranchFolder_({ rfc: ctx.rfc, sucursal: ctx.sucursal, cliente: ctx.cliente, linkDrive: ctx.linkDrive });
+    if (!base) throw new Error('No se encontró la carpeta de Drive de este cliente y sucursal para guardar el PDF.');
   }
   const destino = obtenerSubcarpetaOT_(base, CONFIG.ENVIO_OT.SUBCARPETA_DRIVE);
   const nombre = sanitizeDriveFileName_(blob.getName());
@@ -3102,6 +3117,9 @@ function enviarOT_(data, usuario) {
 
   const correo = construirCorreoOT_(Object.assign({}, data.cuerpo || {},
     { folio: ctx.folio, cliente: ctx.cliente, sucursal: ctx.sucursal, servicio: ctx.servicio }));
+  // El intento queda escrito antes del envío: si algo falla después de que
+  // Gmail lo mandó, la fila "Enviando" impide un segundo envío automático.
+  const filaEnvio = registrarEnvioOT_(Object.assign({}, registro, { estatus: ESTATUS_ENVIO_PENDIENTE_, link_pdf: linkPdf }));
   try {
     GmailApp.sendEmail(dest.para.join(','), asuntoCorreoOT_(ctx.folio, ctx.cliente, ctx.prueba), correo.texto, {
       from: CONFIG.ENVIO_OT.REMITENTE,
@@ -3112,10 +3130,18 @@ function enviarOT_(data, usuario) {
       attachments: [blob]
     });
   } catch (e) {
-    return fallo('Gmail no envió el correo: ' + e.message, linkPdf);
+    const detalle = 'Gmail no envió el correo: ' + e.message;
+    cerrarEnvioOT_(filaEnvio, ESTATUS_ENVIO_ERROR_, detalle);
+    registrarAuditoria_(usuario, 'ENVIO_OT_ERROR', ctx.folio, 'envio', '', detalle);
+    return { success: false, code: 'ERROR_ENVIO', estatus: ESTATUS_ENVIO_ERROR_, error: detalle };
   }
 
-  registrarEnvioOT_(Object.assign({}, registro, { estatus: ESTATUS_ENVIO_OK_, link_pdf: linkPdf }));
+  try {
+    cerrarEnvioOT_(filaEnvio, ESTATUS_ENVIO_OK_);
+  } catch (e) {
+    // El correo sí salió; la fila se queda en "Enviando" y sigue bloqueando reenvíos.
+    Logger.log('enviarOT_: correo enviado pero no se pudo marcar como Enviada: ' + e.message);
+  }
   registrarAuditoria_(usuario, tipo === 'REENVÍO' ? 'REENVIO_OT' : 'ENVIO_OT', ctx.folio, 'envio', '',
     'Para: ' + dest.para.join(', ') + ' | CC: ' + dest.cc.join(', '));
 

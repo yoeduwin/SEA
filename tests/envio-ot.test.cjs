@@ -113,3 +113,37 @@ test('doPost: acciones registradas y protegidas por sesión de Google', () => {
   assert.match(out.t, /Se requiere iniciar sesión/);
   assert.equal(g.run("AUTH_MODE.prepararEnvioOT + ACTION_MODULE.enviarOT"), 'GOOGLESEAOT');
 });
+
+test('Codex P1: una liga vieja a la raíz no desvía el PDF fuera de la sucursal', () => {
+  const g = crear();
+  g.sheets.ORDENES_TRABAJO._data[1][12] = g.raiz.getUrl();
+  const r = env(g);
+  assert.equal(r.success, true, r.error);
+  assert.equal(g.raiz.getFoldersByName('ORDENES DE TRABAJO').hasNext(), false, 'nada en la raíz');
+  assert.equal(g.suc.getFoldersByName('ORDENES DE TRABAJO').next()._files.length, 1, 'PDF en la sucursal');
+});
+
+test('Codex P2: si falla el registro después de enviar, un reintento queda bloqueado', () => {
+  const g = crear();
+  const original = g.ctx.cerrarEnvioOT_;
+  g.ctx.cerrarEnvioOT_ = () => { throw new Error('Sheets no disponible'); };
+  assert.equal(env(g).success, true);
+  g.ctx.cerrarEnvioOT_ = original;
+  assert.equal(g.sheets.ENVIOS_OT._data[1][13], 'Enviando');
+  const r = env(g);
+  assert.equal(r.code, 'YA_ENVIADA');
+  assert.match(r.error, /no se pudo confirmar/);
+  assert.equal(g.enviados.length, 1, 'no hay segundo correo');
+  assert.equal(env(g, { reenviar: true, motivo_reenvio: 'Verificado: no salió el primero' }).success, true);
+});
+
+test('el intento queda escrito antes de llamar a Gmail', () => {
+  const g = crear();
+  let estatusAlEnviar = null;
+  const send = g.ctx.GmailApp.sendEmail;
+  g.ctx.GmailApp.sendEmail = (...a) => { estatusAlEnviar = g.sheets.ENVIOS_OT._data[1][13]; return send(...a); };
+  assert.equal(env(g).success, true);
+  assert.equal(estatusAlEnviar, 'Enviando');
+  assert.equal(g.sheets.ENVIOS_OT._data[1][13], 'Enviada');
+  assert.equal(g.sheets.ENVIOS_OT._data.length, 2, 'una sola fila por intento');
+});

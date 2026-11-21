@@ -1624,8 +1624,9 @@
     document.getElementById('envMotivo').hidden = true;
     if (prep.ya_enviada && prep.ultimo_envio) {
       const u = prep.ultimo_envio;
-      document.getElementById('envYaEnviadaTexto').textContent =
-        `⚠ Esta OT ya se envió el ${u.fecha} a ${u.para}${u.usuario ? ' (por ' + u.usuario + ')' : ''}.`;
+      document.getElementById('envYaEnviadaTexto').textContent = u.estatus === 'Enviando'
+        ? `⚠ Hay un envío del ${u.fecha} a ${u.para} que no se pudo confirmar: el correo pudo haber salido. Revisa "Enviados" de ${prep.remitente} antes de reenviar.`
+        : `⚠ Esta OT ya se envió el ${u.fecha} a ${u.para}${u.usuario ? ' (por ' + u.usuario + ')' : ''}.`;
     }
   }
 
@@ -1751,7 +1752,10 @@
           descargarPdfOT_(envioOT.pdf.blob, prep.nombre_pdf);
           envioOT.enviando = false;
           cerrarEnvioOT();
-          showStatus('workorderStatus', `✅ La conexión se cortó, pero la OT sí quedó enviada (${p.ultimo_envio ? p.ultimo_envio.fecha : ''}). No la reenvíes.`, 'success');
+          const u = p.ultimo_envio || {};
+          showStatus('workorderStatus', u.estatus === 'Enviando'
+            ? `⚠ La conexión se cortó y el envío quedó sin confirmar (${u.fecha || ''}). Revisa "Enviados" de ${prep.remitente} antes de reenviar.`
+            : `✅ La conexión se cortó, pero la OT sí quedó enviada (${u.fecha || ''}). No la reenvíes.`, u.estatus === 'Enviando' ? 'warning' : 'success');
           return;
         }
       } catch (_) { /* sigue sin conexión */ }

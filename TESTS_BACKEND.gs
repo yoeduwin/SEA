@@ -2011,6 +2011,8 @@ function _unitTestsEnvioOT_() {
   _check_('U186: ya no se menciona a la SMADSOT en copia', c.texto.indexOf('SMADSOT') === -1);
   var c81 = construirCorreoOT_(Object.assign({}, base, { servicio: 'NOM-081-SEMARNAT-1994', servicios: [] }));
   _check_('U187: con NOM-081 aparece el aviso de notificación', c81.conNom081 && c81.texto.indexOf('notificamos este servicio') !== -1);
+  _eq_('U190: un envío sin confirmar ("Enviando") también bloquea el reintento',
+    evaluarEnvioPrevioOT_([{ estatus: 'Enviando', fecha: '03/11/2026', para: 'a@b.com' }], false, '').code, 'YA_ENVIADA');
   _check_('U188: PDF válido se acepta', decodificarPdfOT_('data:application/pdf;base64,JVBERi0xLjQK').success);
   _eq_('U189: archivo que no es PDF se rechaza', decodificarPdfOT_('aG9sYQ==').success, false);
 }
