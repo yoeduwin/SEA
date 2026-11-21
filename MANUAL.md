@@ -1034,7 +1034,7 @@ Configuración en `BACKEND_FIXES.gs` → `CONFIG.ENVIO_OT` (remitente, nombre vi
 #### Prueba de punta a punta
 
 1. En SEAOT cargar un cliente real, elegir servicio, completar la revisión de contrato y escribir el folio `PRUEBA-0001` (sin registrar).
-2. **✉️ Enviar OT** → revisar la ventana: De = operaciones@, CC fijas visibles, asunto con `[PRUEBA]`, abrir el PDF (una hoja A4) y escanear el QR (debe marcar 222-941-7295).
+2. **✉️ Enviar OT** → revisar la ventana: De = operaciones@, CC fijas visibles, asunto con `[PRUEBA]`, abrir el PDF (una hoja A4) y escanear el QR (debe abrir WhatsApp de Atención a Clientes, 56 5282 1561, con el folio de la OT ya escrito).
 3. Escribir en Para un correo del cliente → el botón se bloquea ("solo correos @ejecutivambiental.com"). Cambiarlo por un correo interno → **Confirmar y enviar**.
 4. Verificar: correo recibido **de operaciones@** con el PDF adjunto de una hoja; copia en `_PRUEBAS_ENVIO_OT/ORDENES DE TRABAJO`; PDF descargado; fila en **ENVIOS_OT** con estatus `Enviada`.
 5. Volver a dar **✉️ Enviar OT** con el mismo folio → aparece "ya se envió" y el botón queda bloqueado hasta marcar **Reenviar** y escribir el motivo. Cancelar.

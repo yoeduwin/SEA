@@ -2017,6 +2017,10 @@ function _unitTestsEnvioOT_() {
     !/[\uD800-\uDFFF]/.test(c.html) && c.html.indexOf('&#x1F3E2;') !== -1);
   _check_('U192: el texto plano no lleva emojis fuera del plano básico',
     !/[\uD800-\uDFFF]/.test(c.texto) && c.texto.indexOf('Razón Social: EMPRESA') !== -1);
+  _eq_('U193: las NOM que realiza un tercero (sinInforme) sí se aceptan en OTC',
+    serviciosNomEnLista_('NOM-043-SEMARNAT-1993; NOM-085-SEMARNAT-2011 | NOM-013-STPS-1993').length, 0);
+  _eq_('U194: las demás NOM siguen rechazándose en OTC',
+    serviciosNomEnLista_('NOM-043-SEMARNAT-1993, NOM-025-STPS-2008').join('|'), 'NOM-025-STPS-2008');
   _check_('U188: PDF válido se acepta', decodificarPdfOT_('data:application/pdf;base64,JVBERi0xLjQK').success);
   _eq_('U189: archivo que no es PDF se rechaza', decodificarPdfOT_('aG9sYQ==').success, false);
 }
