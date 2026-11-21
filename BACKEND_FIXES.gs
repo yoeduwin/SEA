@@ -35,7 +35,7 @@ const CONFIG = {
 
   // ── Correos de notificación interna ──────────────────────────────────────
   EMAIL_TO: [
-    'direcciongeneral@ejecutivambiental.com',
+    'direccion.general@ejecutivambiental.com',
     'operaciones@ejecutivambiental.com',
     'aclientes@ejecutivambiental.com'
   ],
@@ -58,7 +58,7 @@ const CONFIG = {
     // Copias internas fijas: no dependen de quién captura la OT.
     CC_FIJOS: [
       'aclientes@ejecutivambiental.com',
-      'direcciongeneral@ejecutivambiental.com'
+      'direccion.general@ejecutivambiental.com'
     ],
     DOMINIO_INTERNO:  'ejecutivambiental.com',
     TELEFONO:         '222-941-7295',
