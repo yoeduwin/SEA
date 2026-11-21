@@ -1976,11 +1976,11 @@ function _unitTestsEnvioOT_() {
   var d = armarDestinatariosOT_('ana@cliente.com, ANA@cliente.com', 'extra@cliente.com, aclientes@ejecutivambiental.com', false);
   _eq_('U166: Para sin duplicados', d.para.join(','), 'ana@cliente.com');
   _eq_('U167: CC = fijas + adicionales sin repetir', d.cc.join(','),
-    'aclientes@ejecutivambiental.com,direccion.general@ejecutivambiental.com,extra@cliente.com');
+    'aclientes@ejecutivambiental.com,direccion.general@ejecutivambiental.com,operaciones@ejecutivambiental.com,extra@cliente.com');
   _eq_('U168: sin destinatario en Para se bloquea', armarDestinatariosOT_('', 'x@y.com', false).code, 'SIN_DESTINATARIO');
   _eq_('U169: correo inválido se bloquea', armarDestinatariosOT_('ana@cliente', '', false).code, 'CORREO_INVALIDO');
   _eq_('U170: un correo que va en Para no se repite en CC',
-    armarDestinatariosOT_('aclientes@ejecutivambiental.com', '', false).cc.join(','), 'direccion.general@ejecutivambiental.com');
+    armarDestinatariosOT_('aclientes@ejecutivambiental.com', '', false).cc.join(','), 'direccion.general@ejecutivambiental.com,operaciones@ejecutivambiental.com');
   _eq_('U171: prueba a correo externo se bloquea', armarDestinatariosOT_('ana@cliente.com', '', true).code, 'PRUEBA_EXTERNA');
   _eq_('U172: prueba a correo interno se permite', armarDestinatariosOT_('operaciones@ejecutivambiental.com', '', true).success, true);
   _eq_('U173: dominio parecido no cuenta como interno', esCorreoInternoOT_('x@noejecutivambiental.com'), false);
