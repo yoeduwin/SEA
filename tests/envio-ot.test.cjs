@@ -14,7 +14,7 @@ test('preparar devuelve remitente, CC fijas, asunto y correos del perfil', () =>
   assert.equal(r.success, true);
   assert.equal(r.folio, 'OTB2611-0012');
   assert.equal(r.remitente, 'operaciones@ejecutivambiental.com');
-  assert.deepEqual([...r.cc_fijos], ['aclientes@ejecutivambiental.com', 'direccion.general@ejecutivambiental.com']);
+  assert.deepEqual([...r.cc_fijos], ['aclientes@ejecutivambiental.com', 'direcciongeneral@ejecutivambiental.com']);
   assert.equal(r.asunto, 'Orden de Trabajo OTB2611-0012 - EMPRESA DEMO SA DE CV - Ejecutiva Ambiental');
   assert.deepEqual([...r.correos_perfil], ['compras@cliente-demo.com']);
   assert.equal(r.nombre_pdf, 'OT_OTB2611-0012_EMPRESA DEMO SA DE CV.pdf');
@@ -31,7 +31,7 @@ test('envío completo: Gmail, Drive, registro y bloqueo de doble envío', () => 
   assert.equal(m.o.from, 'operaciones@ejecutivambiental.com');
   assert.equal(m.o.name, 'Ejecutiva Ambiental - Operaciones');
   assert.equal(m.o.replyTo, 'operaciones@ejecutivambiental.com');
-  assert.equal(m.o.cc, 'aclientes@ejecutivambiental.com,direccion.general@ejecutivambiental.com,jefe@cliente-demo.com');
+  assert.equal(m.o.cc, 'aclientes@ejecutivambiental.com,direcciongeneral@ejecutivambiental.com,jefe@cliente-demo.com');
   assert.equal(m.o.attachments[0].getName(), 'OT_OTB2611-0012_EMPRESA DEMO SA DE CV.pdf');
   assert.ok(m.o.htmlBody.includes('Alimentos') && m.body.includes('Fecha: 25/11/2026'));
   const sub = g.suc.getFoldersByName('ORDENES DE TRABAJO').next();
