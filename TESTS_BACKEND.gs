@@ -2013,6 +2013,10 @@ function _unitTestsEnvioOT_() {
   _check_('U187: con NOM-081 aparece el aviso de notificación', c81.conNom081 && c81.texto.indexOf('notificamos este servicio') !== -1);
   _eq_('U190: un envío sin confirmar ("Enviando") también bloquea el reintento',
     evaluarEnvioPrevioOT_([{ estatus: 'Enviando', fecha: '03/11/2026', para: 'a@b.com' }], false, '').code, 'YA_ENVIADA');
+  _check_('U191: el HTML no lleva emojis fuera del plano básico (Gmail los daña)',
+    !/[\uD800-\uDFFF]/.test(c.html) && c.html.indexOf('&#x1F3E2;') !== -1);
+  _check_('U192: el texto plano no lleva emojis fuera del plano básico',
+    !/[\uD800-\uDFFF]/.test(c.texto) && c.texto.indexOf('Razón Social: EMPRESA') !== -1);
   _check_('U188: PDF válido se acepta', decodificarPdfOT_('data:application/pdf;base64,JVBERi0xLjQK').success);
   _eq_('U189: archivo que no es PDF se rechaza', decodificarPdfOT_('aG9sYQ==').success, false);
 }

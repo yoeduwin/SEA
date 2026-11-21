@@ -2888,7 +2888,19 @@ function construirCorreoOT_(d) {
     titulo('📌 Requisitos de seguridad') + '<p style="margin:4px 0;">' + h(epp) + '</p>' +
     '<p>' + h(ajuste) + '</p>' +
     '<p>Gracias,<br><b>Ejecutiva Ambiental</b><br>Tel: ' + h(tel) + '</p></div>';
-  return { texto: texto, html: html, conNom081: conNom081 };
+  // GmailApp daña los caracteres fuera del plano básico (emojis como 🏢 📍 📋):
+  // llegan como "������". En HTML se mandan como entidad numérica (texto ASCII
+  // que el cliente de correo vuelve a dibujar como emoji); en el texto plano se quitan.
+  return { texto: textoSinEmojisAstralesOT_(texto), html: htmlConEntidadesOT_(html), conNom081: conNom081 };
+}
+
+function htmlConEntidadesOT_(html) {
+  return String(html).replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, par =>
+    '&#x' + par.codePointAt(0).toString(16).toUpperCase() + ';');
+}
+
+function textoSinEmojisAstralesOT_(texto) {
+  return String(texto).replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]\uFE0F?\s?/g, '');
 }
 
 // ¿Se puede enviar? Una OT con un envío "Enviada" sólo se vuelve a mandar con
